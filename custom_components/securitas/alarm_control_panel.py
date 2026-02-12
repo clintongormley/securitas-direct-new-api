@@ -255,7 +255,25 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             )
 
     async def set_arm_state(self, mode: str) -> None:
-        """Send set arm state command."""
+        """Send set arm state command.
+
+        If the alarm is already in an armed state, disarm first before
+        re-arming.  This is required because the Securitas API treats
+        interior and perimeter as independent axes — e.g. sending ARMDAY1
+        while the perimeter is armed leaves the perimeter armed, so
+        transitioning from Partial+Perimeter to Partial would silently fail.
+        """
+        # Disarm first if currently armed (not disarmed / not already disarming)
+        if self._state not in (
+            AlarmControlPanelState.DISARMED,
+            AlarmControlPanelState.DISARMING,
+        ):
+            try:
+                await self.client.session.disarm_alarm(self.installation)
+            except SecuritasDirectError as err:
+                _LOGGER.error("Failed to disarm before re-arming: %s", err.args)
+                return
+            await asyncio.sleep(1)
 
         arm_status: ArmStatus = ArmStatus()
         try:
