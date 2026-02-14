@@ -35,13 +35,19 @@
                 "data": {
                     "code": "PIN Code (leave empty for no PIN)",
                     "PERI_alarm": "Is there a Perimetral alarm?",
-                    "map_home": "Arm Home maps to",
-                    "map_away": "Arm Away maps to",
-                    "map_night": "Arm Night maps to",
-                    "map_custom": "Arm Custom maps to",
                     "check_alarm_panel": "Check alarm panel's status in every request (not recommended)",
                     "scan_interval": "Update scan interval (sec)",
                     "delay_check_operation": "Delay to check the arming and disarming operation (sec)"
+                }
+            },
+            "mappings": {
+                "title": "Alarm State Mappings",
+                "description": "Map each Home Assistant alarm action to a Securitas alarm mode. Set to 'Not used' to disable a button.",
+                "data": {
+                    "map_home": "Home",
+                    "map_away": "Away",
+                    "map_night": "Night",
+                    "map_custom": "Custom"
                 }
             }
         }

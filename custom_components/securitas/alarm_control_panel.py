@@ -104,7 +104,9 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         self._status_map: dict[str, str] = {}
 
         for ha_state, conf_key in HA_STATE_TO_CONF_KEY.items():
-            sec_state_str = self.client.config.get(conf_key, SecuritasState.NOT_USED)
+            sec_state_str = self.client.config.get(conf_key)
+            if not sec_state_str or sec_state_str == SecuritasState.NOT_USED:
+                continue
             sec_state = SecuritasState(sec_state_str)
             if sec_state != SecuritasState.NOT_USED:
                 self._command_map[ha_state] = STATE_TO_COMMAND[sec_state]
@@ -205,12 +207,30 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
                 status.protomResponseData
             )
 
+            if not status.protomResponse:
+                _LOGGER.debug(
+                    "Received empty protomResponse from Securitas, ignoring"
+                )
+                return
             if status.protomResponse == "D":
                 self._state = AlarmControlPanelState.DISARMED
             elif status.protomResponse in self._status_map:
                 self._state = self._status_map[status.protomResponse]
             else:
                 self._state = AlarmControlPanelState.ARMED_CUSTOM_BYPASS
+                _LOGGER.warning(
+                    "Unmapped alarm status code '%s' from Securitas. "
+                    "Check your Alarm State Mappings in the integration options",
+                    status.protomResponse,
+                )
+                self._notify_error(
+                    "unmapped_state",
+                    "Securitas: Unmapped alarm state",
+                    f"The alarm returned status code **{status.protomResponse}** "
+                    f"which is not mapped to any Home Assistant alarm state. "
+                    f"Please check your **Alarm State Mappings** in the "
+                    f"Securitas Direct integration options.",
+                )
 
     def check_code(self, code=None) -> bool:
         """Check that the code entered in the panel matches the code in the config."""
