@@ -310,6 +310,8 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             finally:
                 self._operation_in_progress = False
 
+            self._clear_force_context(force=True)
+            self._dismiss_arming_exception_notification()
             self.update_status_alarm(
                 CheckAlarmStatus(
                     disarm_status.operation_status,
@@ -417,10 +419,10 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             "exceptions": exc.exceptions,
             "created_at": datetime.datetime.now(),
         }
-        self._attr_extra_state_attributes["arm_exceptions"] = [
-            e.get("alias", "unknown") for e in exc.exceptions
-        ]
-        self._attr_extra_state_attributes["force_arm_available"] = True
+        aliases = [e.get("alias", "unknown") for e in exc.exceptions]
+        self._attr_extra_state_attributes["arm_exceptions"] = aliases
+        self._attr_force_arm_available = True
+        self._attr_status_message = "Open: " + ", ".join(aliases)
 
     def _clear_force_context(self, force: bool = False) -> None:
         """Clear stored force-arm context and related attributes.
@@ -436,7 +438,8 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
                 return
         self._force_context = None
         self._attr_extra_state_attributes.pop("arm_exceptions", None)
-        self._attr_extra_state_attributes.pop("force_arm_available", None)
+        self._attr_force_arm_available = False
+        self._attr_status_message = None
 
     @property
     def _arming_exception_notification_id(self) -> str:
@@ -521,29 +524,53 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         self.__force_state(AlarmControlPanelState.ARMING)
         await self.set_arm_state(mode, force_arming_remote_id=ref_id, suid=suid)
 
-    async def async_alarm_arm_home(self, code: str | None = None):
+    async def _arm_with_force(
+        self, mode: str, code: str | None, force_arm: bool
+    ) -> None:
+        """Arm in the given mode, optionally using stored force context."""
+        if not self._check_code_for_arm_if_required(code):
+            return
+        force_params: dict[str, str] = {}
+        if force_arm and self._force_context is not None:
+            force_params = {
+                "force_arming_remote_id": self._force_context["reference_id"],
+                "suid": self._force_context["suid"],
+            }
+            _LOGGER.info(
+                "Force-arming via widget: overriding previous exceptions %s",
+                [e.get("alias") for e in self._force_context.get("exceptions", [])],
+            )
+            self._clear_force_context(force=True)
+        self.__force_state(AlarmControlPanelState.ARMING)
+        await self.set_arm_state(mode, **force_params)
+        if force_params:
+            self._dismiss_arming_exception_notification()
+
+    async def async_alarm_arm_home(
+        self, code: str | None = None, force_arm: bool = False
+    ) -> None:
         """Send arm home command."""
-        if self._check_code_for_arm_if_required(code):
-            self.__force_state(AlarmControlPanelState.ARMING)
-            await self.set_arm_state(AlarmControlPanelState.ARMED_HOME)
+        await self._arm_with_force(AlarmControlPanelState.ARMED_HOME, code, force_arm)
 
-    async def async_alarm_arm_away(self, code: str | None = None):
+    async def async_alarm_arm_away(
+        self, code: str | None = None, force_arm: bool = False
+    ) -> None:
         """Send arm away command."""
-        if self._check_code_for_arm_if_required(code):
-            self.__force_state(AlarmControlPanelState.ARMING)
-            await self.set_arm_state(AlarmControlPanelState.ARMED_AWAY)
+        await self._arm_with_force(AlarmControlPanelState.ARMED_AWAY, code, force_arm)
 
-    async def async_alarm_arm_night(self, code: str | None = None):
+    async def async_alarm_arm_night(
+        self, code: str | None = None, force_arm: bool = False
+    ) -> None:
         """Send arm night command."""
-        if self._check_code_for_arm_if_required(code):
-            self.__force_state(AlarmControlPanelState.ARMING)
-            await self.set_arm_state(AlarmControlPanelState.ARMED_NIGHT)
+        await self._arm_with_force(AlarmControlPanelState.ARMED_NIGHT, code, force_arm)
 
-    async def async_alarm_arm_custom_bypass(self, code: str | None = None):
+    async def async_alarm_arm_custom_bypass(
+        self, code: str | None = None, force_arm: bool = False
+    ) -> None:
         """Send arm perimeter command."""
-        if self._check_code_for_arm_if_required(code):
-            self.__force_state(AlarmControlPanelState.ARMING)
-            await self.set_arm_state(AlarmControlPanelState.ARMED_CUSTOM_BYPASS)
+        await self._arm_with_force(
+            AlarmControlPanelState.ARMED_CUSTOM_BYPASS, code, force_arm
+        )
 
     @property
     def alarm_state(self) -> AlarmControlPanelState | None:  # type: ignore[override]
