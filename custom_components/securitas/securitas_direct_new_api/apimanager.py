@@ -1317,7 +1317,7 @@ class ApiManager:
         return SmartLockMode(None, "0")
 
     async def change_lock_mode(
-        self, installation: Installation, lock: bool
+        self, installation: Installation, lock: bool, device_id: str = SMARTLOCK_DEVICE_ID,
     ) -> SmartLockModeStatus:
         content = {
             "operationName": "xSChangeSmartlockMode",
@@ -1325,7 +1325,7 @@ class ApiManager:
                 "numinst": installation.number,
                 "panel": installation.panel,
                 "deviceType": SMARTLOCK_DEVICE_TYPE,
-                "deviceId": SMARTLOCK_DEVICE_ID,
+                "deviceId": device_id,
                 "lock": lock,
             },
             "query": "mutation xSChangeSmartlockMode($numinst: String!, $panel: String!, $deviceId: String!, $deviceType: String!, $lock: Boolean!) {\n  xSChangeSmartlockMode(\n    numinst: $numinst\n    panel: $panel\n    deviceId: $deviceId\n    deviceType: $deviceType\n    lock: $lock\n  ) {\n    res\n    msg\n    referenceId\n  }\n}",
@@ -1353,6 +1353,7 @@ class ApiManager:
                 installation,
                 reference_id,
                 count,
+                device_id,
             )
 
         raw_data = await self._poll_operation(_check)
@@ -1371,12 +1372,13 @@ class ApiManager:
         installation: Installation,
         reference_id: str,
         counter: int,
+        device_id: str = SMARTLOCK_DEVICE_ID,
     ) -> dict[str, Any]:
         content = {
             "operationName": "xSChangeSmartlockModeStatus",
             "variables": {
                 "counter": counter,
-                "deviceId": SMARTLOCK_DEVICE_ID,
+                "deviceId": device_id,
                 "numinst": installation.number,
                 "panel": installation.panel,
                 "referenceId": reference_id,
