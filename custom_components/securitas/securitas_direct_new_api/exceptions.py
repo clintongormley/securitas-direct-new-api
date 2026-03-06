@@ -8,9 +8,15 @@ from typing import Any
 class SecuritasDirectError(Exception):
     """Base class for Securitas Direct errors."""
 
-    def __init__(self, *args, http_status: int | None = None) -> None:
+    def __init__(
+        self,
+        *args,
+        http_status: int | None = None,
+        error_type: str | None = None,
+    ) -> None:
         super().__init__(*args)
         self.http_status = http_status
+        self.error_type = error_type
 
 
 class APIError(SecuritasDirectError):

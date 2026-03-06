@@ -375,15 +375,15 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
                     assert result is not None
                     return result
                 else:
-                    result = await self._send_single_command(
-                        command, **force_params
-                    )
+                    result = await self._send_single_command(command, **force_params)
                     return result
             except ArmingExceptionError:
                 raise  # Arming exceptions need special handling upstream
             except SecuritasDirectError as err:
                 if err.http_status == 409:
                     raise  # Server busy — don't try alternatives
+                if err.error_type == "TECHNICAL_ERROR":
+                    raise  # Panel communication failure — not a command issue
                 _LOGGER.info(
                     "Command %s not supported by panel, trying next alternative: %s",
                     command,
@@ -403,9 +403,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
     ) -> ArmStatus | DisarmStatus:
         """Send a single arm or disarm command to the API."""
         if command.startswith("D"):
-            return await self.client.session.disarm_alarm(
-                self.installation, command
-            )
+            return await self.client.session.disarm_alarm(self.installation, command)
         else:
             return await self.client.session.arm_alarm(
                 self.installation, command, **force_params

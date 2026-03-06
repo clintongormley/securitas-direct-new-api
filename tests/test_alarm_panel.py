@@ -1973,6 +1973,29 @@ class TestCompoundArmCommands:
         )
         assert "ARMNIGHT1PERI1" not in alarm._resolver.unsupported
 
+    async def test_technical_error_does_not_trigger_fallback(self):
+        """TECHNICAL_ERROR (e.g. error_protom_session) should re-raise, not try alternatives."""
+        alarm = make_alarm(config=_night_peri_config())
+        alarm._state = AlarmControlPanelState.ARMING
+        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._notify_error = MagicMock()
+
+        alarm.client.session.arm_alarm = AsyncMock(
+            side_effect=SecuritasDirectError(
+                "Arm command failed: alarm-manager.error_protom_session",
+                error_type="TECHNICAL_ERROR",
+            )
+        )
+
+        await alarm.set_arm_state(AlarmControlPanelState.ARMED_NIGHT)
+
+        # Should only try ARMNIGHT1PERI1 once — NOT fall back to multi-step
+        alarm.client.session.arm_alarm.assert_called_once_with(
+            alarm.installation, "ARMNIGHT1PERI1"
+        )
+        # Should NOT mark as unsupported — the command itself is fine
+        assert "ARMNIGHT1PERI1" not in alarm._resolver.unsupported
+
     async def test_unsupported_enum_triggers_multi_step_and_succeeds(self):
         """GraphQL enum error triggers multi-step fallback which succeeds."""
         alarm = make_alarm(config=_night_peri_config())
@@ -2249,6 +2272,30 @@ class TestDynamicDisarm:
         assert "alarm-manager.alarm_process_error" in msg
         assert "headers" not in msg.lower()
 
+    async def test_technical_error_does_not_trigger_darm1_fallback(self):
+        """TECHNICAL_ERROR should re-raise, not fall back to DARM1."""
+        alarm = make_alarm(has_peri=True)
+        alarm._last_proto_code = "A"  # total_peri = peri armed
+        alarm._state = AlarmControlPanelState.ARMED_AWAY
+        alarm._last_status = AlarmControlPanelState.ARMED_AWAY
+        alarm._notify_error = MagicMock()
+
+        alarm.client.session.disarm_alarm = AsyncMock(
+            side_effect=SecuritasDirectError(
+                "Disarm command failed: alarm-manager.error_protom_session",
+                error_type="TECHNICAL_ERROR",
+            )
+        )
+
+        await alarm.async_alarm_disarm()
+
+        # Should only try DARM1DARMPERI once — NOT fall back to DARM1
+        alarm.client.session.disarm_alarm.assert_called_once_with(
+            alarm.installation, "DARM1DARMPERI"
+        )
+        # Should NOT mark as unsupported
+        assert "DARM1DARMPERI" not in alarm._resolver.unsupported
+
     async def test_disarm_error_notification_is_short(self):
         """Error notification should show just the message, not the full error tuple."""
         alarm = make_alarm(has_peri=False)
@@ -2326,9 +2373,7 @@ class TestExecuteTransition:
         alarm.client.session.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(protomResponse="D", operation_status="OK")
         )
-        await alarm._execute_transition(
-            AlarmState(InteriorMode.OFF, PerimeterMode.OFF)
-        )
+        await alarm._execute_transition(AlarmState(InteriorMode.OFF, PerimeterMode.OFF))
         alarm.client.session.disarm_alarm.assert_called_once_with(
             alarm.installation, "DARM1"
         )
@@ -2343,9 +2388,7 @@ class TestExecuteTransition:
                 DisarmStatus(protomResponse="D", operation_status="OK"),
             ]
         )
-        await alarm._execute_transition(
-            AlarmState(InteriorMode.OFF, PerimeterMode.OFF)
-        )
+        await alarm._execute_transition(AlarmState(InteriorMode.OFF, PerimeterMode.OFF))
         calls = alarm.client.session.disarm_alarm.call_args_list
         assert calls[0].args == (alarm.installation, "DARM1DARMPERI")
         assert calls[1].args == (alarm.installation, "DARM1")
@@ -2360,9 +2403,7 @@ class TestExecuteTransition:
                 DisarmStatus(protomResponse="D", operation_status="OK"),
             ]
         )
-        await alarm._execute_transition(
-            AlarmState(InteriorMode.OFF, PerimeterMode.OFF)
-        )
+        await alarm._execute_transition(AlarmState(InteriorMode.OFF, PerimeterMode.OFF))
         assert "DARM1DARMPERI" in alarm._resolver.unsupported
 
     async def test_409_not_treated_as_unsupported(self):
