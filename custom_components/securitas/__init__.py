@@ -71,6 +71,7 @@ CONF_MAP_NIGHT = "map_night"
 CONF_MAP_CUSTOM = "map_custom"
 CONF_MAP_VACATION = "map_vacation"
 CONF_NOTIFY_GROUP = "notify_group"
+CONF_INSTALLATION = "installation"
 
 DEFAULT_USE_2FA = True
 DEFAULT_SCAN_INTERVAL = 120
