@@ -151,15 +151,22 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             await self.securitas.login()
         self.config[CONF_TOKEN] = self.securitas.get_authentication_token()
 
-        self.hass.data[DOMAIN] = {}
+        self.hass.data.setdefault(DOMAIN, {})
         self.hass.data[DOMAIN][SecuritasHub.__name__] = self.securitas
+
+        # Seed the shared sessions dict so async_setup_entry can reuse
+        # this already-authenticated hub instead of logging in again.
+        username = self.config[CONF_USERNAME]
+        sessions = self.hass.data[DOMAIN].setdefault("sessions", {})
+        if username not in sessions:
+            sessions[username] = {"hub": self.securitas, "ref_count": 0}
 
         installations: list[
             Installation
         ] = await self.securitas.session.list_installations()
 
-        for installation in installations:
-            await self.securitas.get_services(installation)
+        # Cache installations so async_setup_entry can skip re-fetching
+        self.hass.data[DOMAIN]["installations"] = installations
 
         # Filter out already-configured installations
         configured_ids = {

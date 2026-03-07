@@ -353,11 +353,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         entry.async_on_unload(entry.add_update_listener(async_update_options))
 
-        # Fetch installations and filter to this entry's installation
+        # Use cached installations from config flow if available,
+        # otherwise fetch (e.g. on HA restart).
         try:
-            all_installations: list[
-                Installation
-            ] = await client.session.list_installations()
+            cached = hass.data[DOMAIN].pop("installations", None)
+            all_installations: list[Installation] = (
+                cached
+                if cached is not None
+                else await client.session.list_installations()
+            )
             target_number = entry.data.get(CONF_INSTALLATION)
             if target_number:
                 entry_installations = [
@@ -737,18 +741,6 @@ class SecuritasHub:
         return await self._cached_api_call(
             cache_key,
             self.session.get_sentinel_data,
-            installation,
-            service,
-        )
-
-    async def get_air_quality(
-        self, installation: Installation, service: Service
-    ) -> Any:
-        """Get air quality data with rate-limit serialization and caching."""
-        cache_key = f"air_quality_{installation.number}_{service.id}"
-        return await self._cached_api_call(
-            cache_key,
-            self.session.get_air_quality_data,
             installation,
             service,
         )

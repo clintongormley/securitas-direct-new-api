@@ -453,7 +453,7 @@ async def test_finish_setup_logs_in_gets_token_creates_entry(hass):
 
 
 async def test_finish_setup_lists_installations(hass):
-    """finish_setup should list installations and call get_services."""
+    """finish_setup lists installations; get_services is deferred to async_setup_entry."""
     mock_hub = _hub_factory()
 
     with _patches(mock_hub):
@@ -462,8 +462,11 @@ async def test_finish_setup_lists_installations(hass):
         )
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
+    # list_installations called once in config flow; async_setup_entry uses cache
     mock_hub.session.list_installations.assert_awaited_once()
-    mock_hub.get_services.assert_awaited_once()
+    # get_services NOT called in config flow; called in async_setup_entry
+    # (may be called multiple times: once in setup + once per platform)
+    assert mock_hub.get_services.await_count >= 1
 
 
 async def test_finish_setup_sets_hass_data(hass):
