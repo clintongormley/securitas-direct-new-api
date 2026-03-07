@@ -132,13 +132,9 @@ class SecuritasLock(lock.LockEntity):
         self._device_id: str = device_id
         self._danalock_config: DanalockConfig | None = danalock_config
 
-        # Backward-compatible unique_id: keep old format for device "01"
-        if device_id == SMARTLOCK_DEVICE_ID:
-            self._attr_unique_id = f"securitas_direct.{installation.number}"
-        else:
-            self._attr_unique_id = (
-                f"securitas_direct.{installation.number}_lock_{device_id}"
-            )
+        self._attr_unique_id = (
+            f"securitas_direct.{installation.number}_lock_{device_id}"
+        )
 
         self.entity_id = f"securitas_direct.{installation.number}_lock_{device_id}"
         self._time: datetime.datetime = datetime.datetime.now()
@@ -168,11 +164,12 @@ class SecuritasLock(lock.LockEntity):
                 danalock_config.features.holdBackLatchTime,
             )
 
+        # Group under the installation device (shared with alarm panel)
         self._attr_device_info: DeviceInfo | None = DeviceInfo(
-            identifiers={(DOMAIN, self._attr_unique_id)},
+            identifiers={(DOMAIN, f"securitas_direct.{installation.number}")},
             manufacturer="Securitas Direct",
             model=installation.panel,
-            name=f"{installation.alias} Lock {device_id}",
+            name=installation.alias,
             hw_version=installation.type,
         )
 

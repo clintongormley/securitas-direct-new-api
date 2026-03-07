@@ -401,13 +401,31 @@ class TestSecuritasLockInit:
 class TestSecuritasLockConfig:
     """Tests for SecuritasLock unique_id, device_info, and extra_state_attributes."""
 
-    def test_unique_id_default_device_uses_old_format(self):
+    def test_unique_id_includes_device_id(self):
         lock = make_lock(device_id="01")
-        assert lock._attr_unique_id == "securitas_direct.123456"
+        assert lock._attr_unique_id == "securitas_direct.123456_lock_01"
 
-    def test_unique_id_other_device_uses_new_format(self):
+    def test_unique_id_different_device(self):
         lock = make_lock(device_id="02")
         assert lock._attr_unique_id == "securitas_direct.123456_lock_02"
+
+    def test_device_info_groups_under_installation(self):
+        """All locks share the installation device (same as alarm panel)."""
+        lock01 = make_lock(device_id="01")
+        lock02 = make_lock(device_id="02")
+        assert lock01._attr_device_info is not None
+        assert lock02._attr_device_info is not None
+        # Both locks share the same device identifier
+        assert (
+            lock01._attr_device_info["identifiers"]
+            == lock02._attr_device_info["identifiers"]
+        )
+        # Identifier matches the alarm panel's pattern
+        assert lock01._attr_device_info["identifiers"] == {
+            ("securitas", "securitas_direct.123456")
+        }
+        # Device name is the installation alias, not a lock-specific name
+        assert lock01._attr_device_info["name"] == "Home"
 
     def test_initial_status_unknown_defaults_to_locked(self):
         lock = make_lock(initial_status="0")
