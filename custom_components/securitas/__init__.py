@@ -14,7 +14,7 @@ import voluptuous as vol
 
 from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
-from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.const import (
     CONF_CODE,
@@ -286,21 +286,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "Please login again with your phone"
                 )
                 _notify_error(hass, "2fa_error", "Securitas Direct", msg)
-                config[CONF_ERROR] = "2FA"
-                hass.async_create_task(
-                    hass.config_entries.flow.async_init(
-                        DOMAIN, context={"source": SOURCE_IMPORT}, data=config
-                    )
-                )
                 return False
             except LoginError as err:
                 _notify_error(hass, "login_error", "Securitas Direct", str(err))
-                config[CONF_ERROR] = "login"
-                hass.async_create_task(
-                    hass.config_entries.flow.async_init(
-                        DOMAIN, context={"source": SOURCE_IMPORT}, data=config
-                    )
-                )
                 _LOGGER.error(
                     "Could not log in to Securitas: %s",
                     err.log_detail(),
@@ -335,8 +323,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 # Legacy entries without CONF_INSTALLATION get all
                 entry_installations = all_installations
 
+            # Use cached services from config flow if available,
+            # otherwise fetch from API (e.g. on HA restart).
+            cached_services = hass.data[DOMAIN].pop("cached_services", None)
+
             devices: list[SecuritasDirectDevice] = []
             for installation in entry_installations:
+                if cached_services and installation.number in cached_services:
+                    # Pre-populate the hub's services cache — get_services()
+                    # will return immediately without an API call.
+                    client._services_cache[installation.number] = cached_services[
+                        installation.number
+                    ]
                 await client.get_services(installation)
                 devices.append(SecuritasDirectDevice(installation))
         except SecuritasDirectError as err:
@@ -352,16 +350,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         return True
     else:
-        config = add_device_information(entry.data.copy())
-        config[CONF_SCAN_INTERVAL] = entry.data.get(
-            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        raise ConfigEntryNotReady(
+            "Config entry missing device IDs. Delete and re-add the integration."
         )
-        hass.async_create_task(
-            hass.config_entries.flow.async_init(
-                DOMAIN, context={"source": SOURCE_IMPORT}, data=config
-            )
-        )
-        return False
 
 
 async def _register_card_resource(hass: HomeAssistant) -> None:
