@@ -31,8 +31,8 @@ from custom_components.securitas import (
     CONF_MAP_HOME,
     CONF_MAP_NIGHT,
     CONF_MAP_VACATION,
+    CONF_HAS_PERI,
     CONF_NOTIFY_GROUP,
-    CONF_PERI_ALARM,
     CONF_USE_2FA,
     DOMAIN,
     PLATFORMS,
@@ -241,7 +241,7 @@ class TestSecuritasHub:
                 CONF_DELAY_CHECK_OPERATION: 2,
                 CONF_SCAN_INTERVAL: 120,
                 CONF_CODE: "",
-                CONF_PERI_ALARM: False,
+                CONF_HAS_PERI: False,
                 CONF_CODE_ARM_REQUIRED: False,
                 CONF_USE_2FA: True,
             }
@@ -693,62 +693,6 @@ class TestAsyncSetupEntry:
         assert len(devices) == 1
         assert isinstance(devices[0], SecuritasDirectDevice)
 
-    async def test_setup_mapping_migration_std(self, hass, mock_hub):
-        """When map_home is None, STD defaults should be applied (peri_alarm=False)."""
-        data = make_config_entry_data()
-        # Remove mapping keys to trigger migration
-        data[CONF_MAP_HOME] = None
-        data[CONF_MAP_AWAY] = None
-        data[CONF_MAP_NIGHT] = None
-        data[CONF_MAP_CUSTOM] = None
-        data[CONF_MAP_VACATION] = None
-        data[CONF_PERI_ALARM] = False
-        entry = MockConfigEntry(domain=DOMAIN, data=data)
-        entry.add_to_hass(hass)
-
-        with (
-            _patch_hub(mock_hub),
-            patch("custom_components.securitas.async_get_clientsession"),
-            patch.object(
-                hass.config_entries,
-                "async_forward_entry_setups",
-                new_callable=AsyncMock,
-            ),
-        ):
-            await async_setup_entry(hass, entry)
-
-        # After migration, entry data should have STD defaults
-        assert entry.data[CONF_MAP_HOME] == STD_DEFAULTS[CONF_MAP_HOME]
-        assert entry.data[CONF_MAP_AWAY] == STD_DEFAULTS[CONF_MAP_AWAY]
-        assert entry.data[CONF_MAP_VACATION] == STD_DEFAULTS[CONF_MAP_VACATION]
-
-    async def test_setup_mapping_migration_peri(self, hass, mock_hub):
-        """When map_home is None with peri_alarm=True, PERI defaults should be applied."""
-        data = make_config_entry_data()
-        data[CONF_MAP_HOME] = None
-        data[CONF_MAP_AWAY] = None
-        data[CONF_MAP_NIGHT] = None
-        data[CONF_MAP_CUSTOM] = None
-        data[CONF_MAP_VACATION] = None
-        data[CONF_PERI_ALARM] = True
-        entry = MockConfigEntry(domain=DOMAIN, data=data)
-        entry.add_to_hass(hass)
-
-        with (
-            _patch_hub(mock_hub),
-            patch("custom_components.securitas.async_get_clientsession"),
-            patch.object(
-                hass.config_entries,
-                "async_forward_entry_setups",
-                new_callable=AsyncMock,
-            ),
-        ):
-            await async_setup_entry(hass, entry)
-
-        assert entry.data[CONF_MAP_HOME] == PERI_DEFAULTS[CONF_MAP_HOME]
-        assert entry.data[CONF_MAP_AWAY] == PERI_DEFAULTS[CONF_MAP_AWAY]
-        assert entry.data[CONF_MAP_VACATION] == PERI_DEFAULTS[CONF_MAP_VACATION]
-
     async def test_setup_no_migration_when_maps_present(self, hass, mock_hub):
         """When map_home already has a value, no migration should happen."""
         data = make_config_entry_data()
@@ -922,7 +866,7 @@ class TestAsyncUpdateOptions:
                 CONF_CODE_ARM_REQUIRED: data[CONF_CODE_ARM_REQUIRED],
                 CONF_SCAN_INTERVAL: data[CONF_SCAN_INTERVAL],
                 CONF_CHECK_ALARM_PANEL: data[CONF_CHECK_ALARM_PANEL],
-                CONF_PERI_ALARM: data[CONF_PERI_ALARM],
+                CONF_HAS_PERI: data.get(CONF_HAS_PERI, False),
                 CONF_MAP_HOME: data[CONF_MAP_HOME],
                 CONF_MAP_AWAY: data[CONF_MAP_AWAY],
                 CONF_MAP_NIGHT: data[CONF_MAP_NIGHT],
