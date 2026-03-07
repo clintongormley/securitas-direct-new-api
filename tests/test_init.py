@@ -24,6 +24,7 @@ from custom_components.securitas import (
     CONF_COUNTRY,
     CONF_DELAY_CHECK_OPERATION,
     CONF_DEVICE_INDIGITALL,
+    CONF_INSTALLATION,
     CONF_INSTALLATION_KEY,
     CONF_MAP_AWAY,
     CONF_MAP_CUSTOM,
@@ -1003,10 +1004,16 @@ class TestAsyncUnloadEntry:
         entry = MockConfigEntry(domain=DOMAIN, data=make_config_entry_data())
         entry.add_to_hass(hass)
 
+        # Set up a second entry to keep DOMAIN alive after unload
+        entry2 = MockConfigEntry(domain=DOMAIN, data=make_config_entry_data())
+        entry2.add_to_hass(hass)
+        username = entry.data[CONF_USERNAME]
+
         # Pre-populate hass.data as async_setup_entry would
         hass.data[DOMAIN] = {
-            entry.entry_id: hub,
-            "other_key": "other_value",
+            entry.entry_id: {"hub": hub, "devices": []},
+            entry2.entry_id: {"hub": hub, "devices": []},
+            "sessions": {username: {"hub": hub, "ref_count": 2}},
         }
 
         with patch.object(
@@ -1021,7 +1028,7 @@ class TestAsyncUnloadEntry:
         mock_unload.assert_awaited_once_with(entry, PLATFORMS)
         # entry_id key should be removed
         assert entry.entry_id not in hass.data[DOMAIN]
-        # DOMAIN should still be in hass.data because other_key remains
+        # DOMAIN should still be in hass.data because entry2 remains
         assert DOMAIN in hass.data
 
     async def test_unload_removes_domain_when_empty(self, hass):
@@ -1030,9 +1037,10 @@ class TestAsyncUnloadEntry:
         entry = MockConfigEntry(domain=DOMAIN, data=make_config_entry_data())
         entry.add_to_hass(hass)
 
-        # Only one key in domain data
+        username = entry.data[CONF_USERNAME]
         hass.data[DOMAIN] = {
-            entry.entry_id: hub,
+            entry.entry_id: {"hub": hub, "devices": []},
+            "sessions": {username: {"hub": hub, "ref_count": 1}},
         }
 
         with patch.object(
@@ -1044,3 +1052,249 @@ class TestAsyncUnloadEntry:
             await async_unload_entry(hass, entry)
 
         assert DOMAIN not in hass.data
+
+
+# ===========================================================================
+# 8. TestSharedSession - Shared API session with reference counting
+# ===========================================================================
+
+
+class TestSharedSession:
+    """Tests for shared API session with reference counting."""
+
+    @pytest.fixture
+    def mock_hub(self):
+        """Create a mock SecuritasHub for setup tests."""
+        hub = make_securitas_hub_mock()
+        hub.session.list_installations = AsyncMock(
+            return_value=[
+                make_installation(number="111", alias="Home"),
+                make_installation(number="222", alias="Office"),
+            ]
+        )
+        return hub
+
+    def _setup_context(self, mock_hub):
+        """Return a context manager stack for patching SecuritasHub + dependencies."""
+        return (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+        )
+
+    async def test_first_entry_creates_session_with_ref_count_1(self, hass, mock_hub):
+        """First entry for a username should create a new session with ref_count=1."""
+        data = make_config_entry_data()
+        data[CONF_INSTALLATION] = "111"
+        entry = MockConfigEntry(domain=DOMAIN, data=data)
+        entry.add_to_hass(hass)
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await async_setup_entry(hass, entry)
+
+        assert result is True
+        mock_hub.login.assert_awaited_once()
+        username = data[CONF_USERNAME]
+        sessions = hass.data[DOMAIN]["sessions"]
+        assert username in sessions
+        assert sessions[username]["ref_count"] == 1
+        assert sessions[username]["hub"] is mock_hub
+
+    async def test_second_entry_reuses_session_ref_count_2(self, hass, mock_hub):
+        """Second entry for the same username should reuse the session, ref_count=2."""
+        data1 = make_config_entry_data()
+        data1[CONF_INSTALLATION] = "111"
+        entry1 = MockConfigEntry(domain=DOMAIN, data=data1)
+        entry1.add_to_hass(hass)
+
+        data2 = make_config_entry_data()
+        data2[CONF_INSTALLATION] = "222"
+        entry2 = MockConfigEntry(domain=DOMAIN, data=data2)
+        entry2.add_to_hass(hass)
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result1 = await async_setup_entry(hass, entry1)
+            result2 = await async_setup_entry(hass, entry2)
+
+        assert result1 is True
+        assert result2 is True
+        # Login should only be called once (for the first entry)
+        mock_hub.login.assert_awaited_once()
+        username = data1[CONF_USERNAME]
+        sessions = hass.data[DOMAIN]["sessions"]
+        assert sessions[username]["ref_count"] == 2
+
+    async def test_per_entry_data_stored(self, hass, mock_hub):
+        """Each entry should have its own per-entry data with hub and devices."""
+        data1 = make_config_entry_data()
+        data1[CONF_INSTALLATION] = "111"
+        entry1 = MockConfigEntry(domain=DOMAIN, data=data1)
+        entry1.add_to_hass(hass)
+
+        data2 = make_config_entry_data()
+        data2[CONF_INSTALLATION] = "222"
+        entry2 = MockConfigEntry(domain=DOMAIN, data=data2)
+        entry2.add_to_hass(hass)
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_setup_entry(hass, entry1)
+            await async_setup_entry(hass, entry2)
+
+        # Each entry should have its own data
+        entry1_data = hass.data[DOMAIN][entry1.entry_id]
+        entry2_data = hass.data[DOMAIN][entry2.entry_id]
+
+        assert entry1_data["hub"] is mock_hub
+        assert entry2_data["hub"] is mock_hub
+        # Each entry should have only its own installation's device
+        assert len(entry1_data["devices"]) == 1
+        assert entry1_data["devices"][0].installation.number == "111"
+        assert len(entry2_data["devices"]) == 1
+        assert entry2_data["devices"][0].installation.number == "222"
+
+    async def test_unload_one_entry_decrements_ref_count(self, hass, mock_hub):
+        """Unloading one entry should decrement ref count but keep the session."""
+        data1 = make_config_entry_data()
+        data1[CONF_INSTALLATION] = "111"
+        entry1 = MockConfigEntry(domain=DOMAIN, data=data1)
+        entry1.add_to_hass(hass)
+
+        data2 = make_config_entry_data()
+        data2[CONF_INSTALLATION] = "222"
+        entry2 = MockConfigEntry(domain=DOMAIN, data=data2)
+        entry2.add_to_hass(hass)
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_setup_entry(hass, entry1)
+            await async_setup_entry(hass, entry2)
+
+        username = data1[CONF_USERNAME]
+        assert hass.data[DOMAIN]["sessions"][username]["ref_count"] == 2
+
+        # Unload entry1
+        with patch.object(
+            hass.config_entries,
+            "async_unload_platforms",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            result = await async_unload_entry(hass, entry1)
+
+        assert result is True
+        # Session should still exist with ref_count=1
+        assert username in hass.data[DOMAIN]["sessions"]
+        assert hass.data[DOMAIN]["sessions"][username]["ref_count"] == 1
+        # entry1 data removed, entry2 data remains
+        assert entry1.entry_id not in hass.data[DOMAIN]
+        assert entry2.entry_id in hass.data[DOMAIN]
+
+    async def test_unload_last_entry_removes_session(self, hass, mock_hub):
+        """Unloading the last entry should remove the session entirely."""
+        data = make_config_entry_data()
+        data[CONF_INSTALLATION] = "111"
+        entry = MockConfigEntry(domain=DOMAIN, data=data)
+        entry.add_to_hass(hass)
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_setup_entry(hass, entry)
+
+        username = data[CONF_USERNAME]
+        assert hass.data[DOMAIN]["sessions"][username]["ref_count"] == 1
+
+        with patch.object(
+            hass.config_entries,
+            "async_unload_platforms",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            result = await async_unload_entry(hass, entry)
+
+        assert result is True
+        # Entire DOMAIN should be cleaned up
+        assert DOMAIN not in hass.data
+
+    async def test_backward_compat_keys_populated(self, hass, mock_hub):
+        """Old hass.data keys should still be populated for backward compat."""
+        data = make_config_entry_data()
+        data[CONF_INSTALLATION] = "111"
+        entry = MockConfigEntry(domain=DOMAIN, data=data)
+        entry.add_to_hass(hass)
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_setup_entry(hass, entry)
+
+        # Old keys should still be present
+        assert hass.data[DOMAIN][SecuritasHub.__name__] is mock_hub
+        assert CONF_INSTALLATION_KEY in hass.data[DOMAIN]
+        devices = hass.data[DOMAIN][CONF_INSTALLATION_KEY]
+        assert len(devices) == 1
+        assert isinstance(devices[0], SecuritasDirectDevice)
+
+    async def test_legacy_entry_without_installation_gets_all(self, hass, mock_hub):
+        """An entry without CONF_INSTALLATION should get all installations."""
+        data = make_config_entry_data()
+        # No CONF_INSTALLATION key — legacy behavior
+        entry = MockConfigEntry(domain=DOMAIN, data=data)
+        entry.add_to_hass(hass)
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_setup_entry(hass, entry)
+
+        entry_data = hass.data[DOMAIN][entry.entry_id]
+        # Should get all installations (2 from mock_hub fixture)
+        assert len(entry_data["devices"]) == 2

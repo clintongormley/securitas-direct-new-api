@@ -239,20 +239,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         need_sign_in = True
 
-    _card_registered = hass.data.get(DOMAIN, {}).get("card_registered", False)
-    _card_resource_id = hass.data.get(DOMAIN, {}).get("card_resource_id")
-    hass.data[DOMAIN] = {}
-    if _card_registered:
-        hass.data[DOMAIN]["card_registered"] = True
-    if _card_resource_id is not None:
-        hass.data[DOMAIN]["card_resource_id"] = _card_resource_id
+    hass.data.setdefault(DOMAIN, {})
 
     # Set up log sanitization filter — must be on handlers, not the logger,
     # because logger-level filters don't apply to child logger records.
-    log_filter = SensitiveDataFilter()
-    for handler in logging.getLogger().handlers:
-        handler.addFilter(log_filter)
-    hass.data[DOMAIN]["log_filter"] = log_filter
+    if "log_filter" not in hass.data[DOMAIN]:
+        log_filter = SensitiveDataFilter()
+        for handler in logging.getLogger().handlers:
+            handler.addFilter(log_filter)
+        hass.data[DOMAIN]["log_filter"] = log_filter
+    else:
+        log_filter = hass.data[DOMAIN]["log_filter"]
 
     # Register credentials immediately
     log_filter.update_secret("username", config[CONF_USERNAME])
@@ -260,63 +257,94 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][CONF_ENTRY_ID] = entry.entry_id
     if not need_sign_in:
-        client: SecuritasHub = SecuritasHub(
-            config, entry, async_get_clientsession(hass), hass
-        )
-        entry.async_on_unload(entry.add_update_listener(async_update_options))
-        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = client
-        try:
-            await client.login()
-        except Login2FAError:
-            msg = (
-                "Securitas Direct need a 2FA SMS code."
-                "Please login again with your phone"
-            )
-            _notify_error(hass, "2fa_error", "Securitas Direct", msg)
-            config[CONF_ERROR] = "2FA"
-            hass.async_create_task(
-                hass.config_entries.flow.async_init(
-                    DOMAIN, context={"source": SOURCE_IMPORT}, data=config
-                )
-            )
-            return False
-        except LoginError as err:
-            _notify_error(hass, "login_error", "Securitas Direct", str(err))
-            config[CONF_ERROR] = "login"
-            hass.async_create_task(
-                hass.config_entries.flow.async_init(
-                    DOMAIN, context={"source": SOURCE_IMPORT}, data=config
-                )
-            )
-            _LOGGER.error(
-                "Could not log in to Securitas: %s",
-                err.args[0] if err.args else err,
-            )
-            return False
-        except SecuritasDirectError as err:
-            _LOGGER.error("Unable to connect to Securitas Direct: %s", err.args[0])
-            raise ConfigEntryNotReady("Unable to connect to Securitas Direct") from None
+        # --- Shared session with reference counting ---
+        # Multiple config entries for the same username share a single
+        # SecuritasHub / ApiManager session to avoid duplicate logins
+        # and WAF rate-limit blocks.
+        username = config[CONF_USERNAME]
+        sessions = hass.data[DOMAIN].setdefault("sessions", {})
+
+        if username in sessions:
+            # Reuse existing session
+            client: SecuritasHub = sessions[username]["hub"]
+            sessions[username]["ref_count"] += 1
         else:
-            hass.data[DOMAIN][SecuritasHub.__name__] = client
+            # Create new session and log in
+            client = SecuritasHub(config, entry, async_get_clientsession(hass), hass)
             try:
-                installations: list[
-                    Installation
-                ] = await client.session.list_installations()
-                devices: list[SecuritasDirectDevice] = []
-                for installation in installations:
-                    await client.get_services(installation)
-                    devices.append(SecuritasDirectDevice(installation))
+                await client.login()
+            except Login2FAError:
+                msg = (
+                    "Securitas Direct need a 2FA SMS code."
+                    "Please login again with your phone"
+                )
+                _notify_error(hass, "2fa_error", "Securitas Direct", msg)
+                config[CONF_ERROR] = "2FA"
+                hass.async_create_task(
+                    hass.config_entries.flow.async_init(
+                        DOMAIN, context={"source": SOURCE_IMPORT}, data=config
+                    )
+                )
+                return False
+            except LoginError as err:
+                _notify_error(hass, "login_error", "Securitas Direct", str(err))
+                config[CONF_ERROR] = "login"
+                hass.async_create_task(
+                    hass.config_entries.flow.async_init(
+                        DOMAIN, context={"source": SOURCE_IMPORT}, data=config
+                    )
+                )
+                _LOGGER.error(
+                    "Could not log in to Securitas: %s",
+                    err.args[0] if err.args else err,
+                )
+                return False
             except SecuritasDirectError as err:
                 _LOGGER.error("Unable to connect to Securitas Direct: %s", err.args[0])
                 raise ConfigEntryNotReady(
                     "Unable to connect to Securitas Direct"
                 ) from None
+            sessions[username] = {"hub": client, "ref_count": 1}
 
-            hass.data.setdefault(DOMAIN, {})[entry.unique_id] = config
-            hass.data.setdefault(DOMAIN, {})[CONF_INSTALLATION_KEY] = devices
+        entry.async_on_unload(entry.add_update_listener(async_update_options))
 
-            await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-            return True
+        # Fetch installations and filter to this entry's installation
+        try:
+            all_installations: list[
+                Installation
+            ] = await client.session.list_installations()
+            target_number = entry.data.get(CONF_INSTALLATION)
+            if target_number:
+                entry_installations = [
+                    inst for inst in all_installations if inst.number == target_number
+                ]
+            else:
+                # Legacy entries without CONF_INSTALLATION get all
+                entry_installations = all_installations
+
+            devices: list[SecuritasDirectDevice] = []
+            for installation in entry_installations:
+                await client.get_services(installation)
+                devices.append(SecuritasDirectDevice(installation))
+        except SecuritasDirectError as err:
+            _LOGGER.error("Unable to connect to Securitas Direct: %s", err.args[0])
+            raise ConfigEntryNotReady("Unable to connect to Securitas Direct") from None
+
+        # Store per-entry data
+        hass.data[DOMAIN][entry.entry_id] = {
+            "hub": client,
+            "devices": devices,
+        }
+
+        # Backward compatibility: populate old keys so existing entity
+        # platforms (alarm_control_panel, lock, button, sensor) keep
+        # working until they are updated to read from per-entry data.
+        hass.data[DOMAIN][SecuritasHub.__name__] = client
+        hass.data[DOMAIN][CONF_INSTALLATION_KEY] = devices
+        hass.data[DOMAIN][entry.unique_id] = config
+
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        return True
     else:
         config = add_device_information(entry.data.copy())
         config[CONF_SCAN_INTERVAL] = entry.data.get(
@@ -395,22 +423,33 @@ async def _unregister_card_resource(hass: HomeAssistant) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    log_filter = hass.data[DOMAIN].get("log_filter")
-    if log_filter:
-        for handler in logging.getLogger().handlers:
-            handler.removeFilter(log_filter)
-
     unload_ok = await hass.config_entries.async_unload_platforms(
         config_entry, PLATFORMS
     )
 
-    await _unregister_card_resource(hass)
+    # Decrement shared session ref count
+    username = config_entry.data.get(CONF_USERNAME)
+    sessions = hass.data.get(DOMAIN, {}).get("sessions", {})
+    if username and username in sessions:
+        sessions[username]["ref_count"] -= 1
+        if sessions[username]["ref_count"] <= 0:
+            sessions.pop(username)
 
+    # Clean up per-entry data
     hass.data[DOMAIN].pop(config_entry.entry_id, None)
-    hass.data[DOMAIN].pop("log_filter", None)
-    hass.data[DOMAIN].pop("card_resource_id", None)
-    if not hass.data[DOMAIN]:
-        hass.data.pop(DOMAIN)
+
+    # Check if any sessions remain — if not, do full cleanup
+    remaining_sessions = hass.data.get(DOMAIN, {}).get("sessions", {})
+    if not remaining_sessions:
+        # Last entry unloaded — full cleanup
+        log_filter = hass.data[DOMAIN].get("log_filter")
+        if log_filter:
+            for handler in logging.getLogger().handlers:
+                handler.removeFilter(log_filter)
+
+        await _unregister_card_resource(hass)
+        hass.data.pop(DOMAIN, None)
+
     return unload_ok
 
 
