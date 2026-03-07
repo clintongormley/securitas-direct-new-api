@@ -267,7 +267,7 @@ class TestSentinelAirQuality:
         await sensor.async_update()
 
         client.session.get_air_quality_data.assert_awaited_once_with(
-            service.installation, service, zone=""
+            service.installation, service
         )
         assert sensor._attr_native_value == "Poor"
 

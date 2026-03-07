@@ -855,22 +855,18 @@ class ApiManager:
             "",
             int(target_device["status"]["humidity"]),
             int(target_device["status"]["temperature"]),
-            zone,
         )
 
     async def get_air_quality_data(
         self,
         installation: Installation,
         service: Service,
-        zone: str | None = None,
     ) -> AirQuality:
         """Get sentinel status."""
-        if zone:
-            zone_val = zone
-        elif service.attributes and isinstance(service.attributes, list):
+        if service.attributes and isinstance(service.attributes, list):
             zone_val = str(service.attributes[0].value)
         else:
-            _LOGGER.warning("No zone found for air quality service %s", service.id)
+            _LOGGER.warning("No attributes found for air quality service %s", service.id)
             zone_val = "0"
 
         content = {
@@ -902,7 +898,7 @@ class ApiManager:
         content = {
             "operationName": "Status",
             "variables": {"numinst": installation.number},
-            "query": "query Status($numinst: String!) {\n  xSStatus(numinst: $numinst) {\n    status\n    timestampUpdate\n    wifiConnected\n    keepAliveDay\n    confort_message\n    exceptions {\n      status\n      deviceType\n      alias\n    }\n  }\n}",
+            "query": "query Status($numinst: String!) {\n  xSStatus(numinst: $numinst) {\n    status\n    timestampUpdate\n    exceptions {\n      status\n      deviceType\n      alias\n    }\n  }\n}",
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -919,9 +915,6 @@ class ApiManager:
             return SStatus(
                 raw_data["status"],
                 raw_data["timestampUpdate"],
-                raw_data.get("wifiConnected"),
-                raw_data.get("keepAliveDay"),
-                raw_data.get("confort_message"),
             )
 
         return SStatus(None, None)
