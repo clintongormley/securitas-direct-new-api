@@ -1090,6 +1090,7 @@ async def test_existing_session_reused_no_new_login(hass):
         CONF_DEVICE_ID: "existing-device-id",
         CONF_UNIQUE_ID: "existing-unique-id",
         CONF_DEVICE_INDIGITALL: "existing-indigitall",
+        CONF_PASSWORD: "test-password",
     }
     # Pre-set the token so finish_setup doesn't try to login again
     existing_hub.get_authentication_token = MagicMock(return_value=FAKE_JWT)
@@ -1118,6 +1119,7 @@ async def test_existing_session_copies_device_ids(hass):
         CONF_DEVICE_ID: "existing-device-id",
         CONF_UNIQUE_ID: "existing-unique-id",
         CONF_DEVICE_INDIGITALL: "existing-indigitall",
+        CONF_PASSWORD: "test-password",
     }
     existing_hub.get_authentication_token = MagicMock(return_value=FAKE_JWT)
 
@@ -1132,6 +1134,37 @@ async def test_existing_session_copies_device_ids(hass):
     assert result["data"][CONF_DEVICE_ID] == "existing-device-id"
     assert result["data"][CONF_UNIQUE_ID] == "existing-unique-id"
     assert result["data"][CONF_DEVICE_INDIGITALL] == "existing-indigitall"
+
+
+async def test_existing_session_wrong_password_does_fresh_login(hass):
+    """Wrong password should not reuse session — falls through to fresh login."""
+    existing_hub = _hub_factory()
+    existing_hub.config = {
+        CONF_DEVICE_ID: "existing-device-id",
+        CONF_UNIQUE_ID: "existing-unique-id",
+        CONF_DEVICE_INDIGITALL: "existing-indigitall",
+        CONF_PASSWORD: "correct-password",
+    }
+    existing_hub.get_authentication_token = MagicMock(return_value=FAKE_JWT)
+
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN]["sessions"] = {
+        "test@example.com": {"hub": existing_hub, "ref_count": 1}
+    }
+
+    # The new hub that will be created for the fresh login
+    new_hub = _hub_factory()
+    with _patches(new_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": SOURCE_USER},
+            data={**USER_INPUT_CREDENTIALS, CONF_PASSWORD: "wrong-password"},
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
+    # Fresh login should have been called on the NEW hub
+    new_hub.login.assert_awaited_once()
 
 
 # ===================================================================

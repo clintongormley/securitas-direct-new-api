@@ -186,16 +186,20 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Reuse existing session for this username if one is already running,
         # to avoid a new login that would invalidate the active session.
+        # Password must match to prevent unauthorized addition of installations.
         username = self.config[CONF_USERNAME]
+        password = self.config[CONF_PASSWORD]
         sessions = self.hass.data.get(DOMAIN, {}).get("sessions", {})
         if username in sessions:
-            self.securitas = sessions[username]["hub"]
-            self.config[CONF_DEVICE_ID] = self.securitas.config[CONF_DEVICE_ID]
-            self.config[CONF_UNIQUE_ID] = self.securitas.config[CONF_UNIQUE_ID]
-            self.config[CONF_DEVICE_INDIGITALL] = self.securitas.config.get(
-                CONF_DEVICE_INDIGITALL, ""
-            )
-            return await self.finish_setup()
+            existing_hub = sessions[username]["hub"]
+            if existing_hub.config[CONF_PASSWORD] == password:
+                self.securitas = existing_hub
+                self.config[CONF_DEVICE_ID] = existing_hub.config[CONF_DEVICE_ID]
+                self.config[CONF_UNIQUE_ID] = existing_hub.config[CONF_UNIQUE_ID]
+                self.config[CONF_DEVICE_INDIGITALL] = existing_hub.config.get(
+                    CONF_DEVICE_INDIGITALL, ""
+                )
+                return await self.finish_setup()
 
         uuid = generate_uuid()
         self.config[CONF_DEVICE_ID] = uuid
