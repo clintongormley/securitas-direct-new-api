@@ -6,6 +6,7 @@ import json
 import logging
 from pathlib import Path
 import time
+from typing import Any
 from uuid import uuid4
 
 from aiohttp import ClientSession
@@ -516,6 +517,8 @@ class SecuritasHub:
             str, list
         ] = {}  # installation.number -> SmartLockMode list
         self._lock_modes_time: dict[str, float] = {}  # last fetch time per installation
+        self._api_cache: dict[str, Any] = {}  # generic cache: key -> result
+        self._api_cache_time: dict[str, float] = {}  # generic cache: key -> timestamp
 
     async def login(self):
         """Login to Securitas."""
@@ -606,6 +609,65 @@ class SecuritasHub:
             self._lock_modes[installation.number] = modes
             self._lock_modes_time[installation.number] = time.monotonic()
             return modes
+
+    async def _cached_api_call(self, cache_key: str, coro_fn, *args):
+        """Execute an API call with rate-limit serialization and caching.
+
+        coro_fn is called (with *args) only when the cache misses, so no
+        coroutine is created — and therefore never leaked — on a cache hit.
+        """
+        _MIN_API_INTERVAL = 5
+        _CACHE_TTL = 30
+
+        now = time.monotonic()
+        if (
+            now - self._api_cache_time.get(cache_key, 0) < _CACHE_TTL
+            and cache_key in self._api_cache
+        ):
+            return self._api_cache[cache_key]
+
+        async with self._api_lock:
+            now = time.monotonic()
+            if (
+                now - self._api_cache_time.get(cache_key, 0) < _CACHE_TTL
+                and cache_key in self._api_cache
+            ):
+                return self._api_cache[cache_key]
+
+            elapsed = now - self._last_api_time
+            if elapsed < _MIN_API_INTERVAL:
+                await asyncio.sleep(_MIN_API_INTERVAL - elapsed)
+
+            try:
+                result = await coro_fn(*args)
+            finally:
+                self._last_api_time = time.monotonic()
+
+            self._api_cache[cache_key] = result
+            self._api_cache_time[cache_key] = time.monotonic()
+            return result
+
+    async def get_sentinel(self, installation: Installation, service: Service) -> Any:
+        """Get sentinel data with rate-limit serialization and caching."""
+        cache_key = f"sentinel_{installation.number}_{service.id}"
+        return await self._cached_api_call(
+            cache_key,
+            self.session.get_sentinel_data,
+            installation,
+            service,
+        )
+
+    async def get_air_quality(
+        self, installation: Installation, service: Service
+    ) -> Any:
+        """Get air quality data with rate-limit serialization and caching."""
+        cache_key = f"air_quality_{installation.number}_{service.id}"
+        return await self._cached_api_call(
+            cache_key,
+            self.session.get_air_quality_data,
+            installation,
+            service,
+        )
 
     async def update_overview(self, installation: Installation) -> CheckAlarmStatus:
         """Update the overview.

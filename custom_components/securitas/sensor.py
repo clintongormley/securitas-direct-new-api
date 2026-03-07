@@ -15,25 +15,25 @@ import logging
 
 from . import CONF_INSTALLATION_KEY, DOMAIN, SecuritasDirectDevice, SecuritasHub
 from .constants import SentinelName
-from .securitas_direct_new_api import SecuritasDirectError
-from .securitas_direct_new_api.dataTypes import AirQuality, Sentinel, Service
+from .securitas_direct_new_api import Installation, SecuritasDirectError
+from .securitas_direct_new_api.dataTypes import Service
 
 _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(minutes=30)
 
-_AIR_QUALITY_INDEX_SENSOR_ATTRIBUTES_MAP = {
-    "value": "value",
-    "message": "message",
-}
-
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up MELCloud device sensors based on config_entry."""
+    """Set up Securitas Direct sentinel sensors based on config_entry.
+
+    No API calls are made here beyond service discovery (already cached from
+    __init__ setup).  Entities start with unknown state; the first periodic
+    ``async_update`` populates values via rate-limited hub methods.
+    """
     client: SecuritasHub = hass.data[DOMAIN][SecuritasHub.__name__]
-    sensors = []
+    sensors: list[SensorEntity] = []
     securitas_devices: list[SecuritasDirectDevice] = hass.data[DOMAIN].get(
         CONF_INSTALLATION_KEY
     )
@@ -52,166 +52,146 @@ async def async_setup_entry(
             continue
         for service in services:
             if service.request == sentinel_confort_name:
-                try:
-                    sentinel_data: Sentinel = await client.session.get_sentinel_data(
-                        service.installation, service
-                    )
-                except SecuritasDirectError as err:
-                    _LOGGER.warning(
-                        "Sentinel data not available for installation %s: %s",
-                        service.installation.number,
-                        err.args[0] if err.args else err,
-                    )
-                    continue
                 sensors.append(
-                    SentinelTemperature(sentinel_data, service, client, device)
+                    SentinelTemperature(service, client, device.installation)
                 )
-                sensors.append(SentinelHumidity(sentinel_data, service, client, device))
+                sensors.append(SentinelHumidity(service, client, device.installation))
+                sensors.append(SentinelAirQuality(service, client, device.installation))
+    async_add_entities(sensors, False)
 
-                try:
-                    air_quality: AirQuality = await client.session.get_air_quality_data(
-                        service.installation, service
-                    )
-                except SecuritasDirectError:
-                    _LOGGER.warning(
-                        "Air quality data not available for installation %s",
-                        service.installation.number,
-                    )
-                else:
-                    sensors.append(
-                        SentinelAirQuality(
-                            air_quality, sentinel_data, service, client, device
-                        )
-                    )
-    async_add_entities(sensors, True)
+
+def _device_info(installation: Installation) -> DeviceInfo:
+    """Build DeviceInfo that groups under the installation device."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"securitas_direct.{installation.number}")},
+        manufacturer="Securitas Direct",
+        model=installation.panel,
+        name=installation.alias,
+        hw_version=installation.type,
+    )
 
 
 class SentinelTemperature(SensorEntity):
     """Sentinel temperature sensor."""
 
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+
     def __init__(
         self,
-        sentinel: Sentinel,
         service: Service,
         client: SecuritasHub,
-        parent_device: SecuritasDirectDevice,
+        installation: Installation,
     ) -> None:
         """Init the component."""
-        self._update_sensor_data(sentinel)
-        self._attr_unique_id = sentinel.alias + "_temperature_" + str(service.id)
-        self._attr_name = "Temperature " + sentinel.alias.lower().capitalize()
-        self._sentinel: Sentinel = sentinel
+        self._attr_unique_id = f"{installation.number}_temperature_{service.id}"
+        self._attr_name = f"{installation.alias} Temperature"
         self._service: Service = service
         self._client: SecuritasHub = client
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._attr_unique_id)},
-            manufacturer="Temperature Sensor",
-            model=str(service.id_service) if service.id_service is not None else None,
-            name=service.description,
-        )
+        self._installation = installation
+        self._attr_device_info = _device_info(installation)
 
     async def async_update(self):
-        """Update the status of the alarm based on the configuration."""
+        """Update the sensor via the hub's rate-limited method."""
         if self.hass is None:
             return
-        sentinel_data: Sentinel = await self._client.session.get_sentinel_data(
-            self._service.installation, self._service
-        )
-        self._update_sensor_data(sentinel_data)
-
-    def _update_sensor_data(self, sentinel: Sentinel):
-        self._attr_device_class = SensorDeviceClass.TEMPERATURE
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        try:
+            sentinel = await self._client.get_sentinel(
+                self._installation, self._service
+            )
+        except SecuritasDirectError as err:
+            _LOGGER.warning(
+                "Error updating temperature for %s: %s",
+                self._installation.number,
+                err.args[0] if err.args else err,
+            )
+            return
         self._attr_native_value = sentinel.temperature
-        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
 
 
 class SentinelHumidity(SensorEntity):
     """Sentinel Humidity sensor."""
 
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PERCENTAGE
+
     def __init__(
         self,
-        sentinel: Sentinel,
         service: Service,
         client: SecuritasHub,
-        parent_device: SecuritasDirectDevice,
+        installation: Installation,
     ) -> None:
         """Init the component."""
-        self._update_sensor_data(sentinel)
-        self._attr_unique_id = sentinel.alias + "_humidity_" + str(service.id)
-        self._attr_name = "Humidity " + sentinel.alias.lower().capitalize()
-        self._sentinel: Sentinel = sentinel
+        self._attr_unique_id = f"{installation.number}_humidity_{service.id}"
+        self._attr_name = f"{installation.alias} Humidity"
         self._service: Service = service
         self._client: SecuritasHub = client
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._attr_unique_id)},
-            manufacturer="Humidity Sensor",
-            model=str(service.id_service) if service.id_service is not None else None,
-            name=service.description,
-        )
+        self._installation = installation
+        self._attr_device_info = _device_info(installation)
 
     async def async_update(self):
-        """Update the status of the alarm based on the configuration."""
+        """Update the sensor via the hub's rate-limited method."""
         if self.hass is None:
             return
-        sentinel_data: Sentinel = await self._client.session.get_sentinel_data(
-            self._service.installation, self._service
-        )
-        self._update_sensor_data(sentinel_data)
-
-    def _update_sensor_data(self, sentinel: Sentinel):
-        self._attr_device_class = SensorDeviceClass.HUMIDITY
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        try:
+            sentinel = await self._client.get_sentinel(
+                self._installation, self._service
+            )
+        except SecuritasDirectError as err:
+            _LOGGER.warning(
+                "Error updating humidity for %s: %s",
+                self._installation.number,
+                err.args[0] if err.args else err,
+            )
+            return
         self._attr_native_value = sentinel.humidity
-        self._attr_native_unit_of_measurement = PERCENTAGE
 
 
 class SentinelAirQuality(SensorEntity):
-    """Sentinel Humidity sensor."""
+    """Sentinel Air Quality sensor."""
 
     def __init__(
         self,
-        air_quality: AirQuality,
-        sentinel: Sentinel,
         service: Service,
         client: SecuritasHub,
-        parent_device: SecuritasDirectDevice,
+        installation: Installation,
     ) -> None:
         """Init the component."""
-        self._update_sensor_data(air_quality)
-        self._attr_unique_id = sentinel.alias + "airquality_" + str(service.id)
-        self._attr_name = "Air Quality " + sentinel.alias.lower().capitalize()
-        self._air_quality: AirQuality = air_quality
+        self._attr_unique_id = f"{installation.number}_airquality_{service.id}"
+        self._attr_name = f"{installation.alias} Air Quality"
         self._service: Service = service
         self._client: SecuritasHub = client
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._attr_unique_id)},
-            manufacturer="Air Quality Sensor",
-            model=str(service.id_service) if service.id_service is not None else None,
-            name=service.description,
-        )
+        self._installation = installation
+        self._air_quality_value: int | None = None
+        self._air_quality_message: str | None = None
+        self._attr_device_info = _device_info(installation)
 
     async def async_update(self):
-        """Update the air quality sensor."""
+        """Update the air quality sensor via the hub's rate-limited method."""
         if self.hass is None:
             return
-        air_quality: AirQuality = await self._client.session.get_air_quality_data(
-            self._service.installation, self._service
-        )
-        self._update_sensor_data(air_quality)
-
-    def _update_sensor_data(self, air_quality: AirQuality):
+        try:
+            air_quality = await self._client.get_air_quality(
+                self._installation, self._service
+            )
+        except SecuritasDirectError:
+            _LOGGER.debug(
+                "Air quality data not available for installation %s",
+                self._installation.number,
+            )
+            return
+        self._air_quality_value = air_quality.value
+        self._air_quality_message = air_quality.message
         self._attr_native_value = air_quality.message
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:  # type: ignore[override]
         """Return the state attributes."""
-        sensor_attributes: dict[str, Any] = {}
-        sensor_attributes["message"] = self._air_quality.message
-        sensor_attributes["value"] = self._air_quality.value
-
+        if self._air_quality_message is None:
+            return None
         return {
-            _AIR_QUALITY_INDEX_SENSOR_ATTRIBUTES_MAP[key]: value
-            for key, value in sensor_attributes.items()
-            if key in _AIR_QUALITY_INDEX_SENSOR_ATTRIBUTES_MAP
+            "value": self._air_quality_value,
+            "message": self._air_quality_message,
         }
