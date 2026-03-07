@@ -287,7 +287,11 @@ def graphql_services(
                     "sim": "",
                     "instIbs": False,
                     "services": services,
-                    "configRepoUser": {"alarmPartitions": alarm_partitions if alarm_partitions is not None else []},
+                    "configRepoUser": {
+                        "alarmPartitions": alarm_partitions
+                        if alarm_partitions is not None
+                        else []
+                    },
                     "capabilities": capabilities_jwt,
                 },
             }

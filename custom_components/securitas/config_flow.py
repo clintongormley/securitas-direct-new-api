@@ -332,6 +332,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self.config.update(self._options_data)
             self.config.update(user_input)
+            assert self._selected_installation is not None
             return await self._create_entry_for_installation(
                 self._selected_installation
             )

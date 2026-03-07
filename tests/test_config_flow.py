@@ -11,7 +11,6 @@ from custom_components.securitas import (
     CONF_COUNTRY,
     CONF_DELAY_CHECK_OPERATION,
     CONF_DEVICE_INDIGITALL,
-    CONF_ENTRY_ID,
     CONF_HAS_PERI,
     CONF_INSTALLATION,
     CONF_MAP_AWAY,
@@ -19,16 +18,12 @@ from custom_components.securitas import (
     CONF_MAP_HOME,
     CONF_MAP_NIGHT,
     CONF_MAP_VACATION,
-    CONF_NOTIFY_GROUP,
     CONF_USE_2FA,
-    DEFAULT_CHECK_ALARM_PANEL,
-    DEFAULT_CODE_ARM_REQUIRED,
     DEFAULT_DELAY_CHECK_OPERATION,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
 from custom_components.securitas.securitas_direct_new_api import (
-    Login2FAError,
     OtpPhone,
     PERI_DEFAULTS,
     STD_DEFAULTS,
@@ -175,7 +170,9 @@ def _patches(mock_hub, uuid=FAKE_UUID):
     return _ctx()
 
 
-async def _complete_full_flow(hass, mock_hub, credentials=None, options=None, mappings=None):
+async def _complete_full_flow(
+    hass, mock_hub, credentials=None, options=None, mappings=None
+):
     """Navigate full config flow: credentials -> options -> mappings -> create entry."""
     creds = credentials or USER_INPUT_CREDENTIALS
     opts = options or USER_INPUT_OPTIONS
@@ -310,7 +307,9 @@ async def test_step_user_uses_init_data_when_user_input_is_data(hass):
     """When user_input is provided with data, it proceeds with that data."""
     mock_hub = _hub_factory()
 
-    result = await _complete_full_flow(hass, mock_hub, credentials=USER_INPUT_CREDENTIALS)
+    result = await _complete_full_flow(
+        hass, mock_hub, credentials=USER_INPUT_CREDENTIALS
+    )
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_USERNAME] == "test@example.com"

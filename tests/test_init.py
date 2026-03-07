@@ -46,7 +46,6 @@ from custom_components.securitas import (
     async_update_options,
 )
 from custom_components.securitas.securitas_direct_new_api.const import (
-    PERI_DEFAULTS,
     STD_DEFAULTS,
 )
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
