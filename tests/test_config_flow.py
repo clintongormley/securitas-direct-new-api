@@ -1020,7 +1020,7 @@ async def test_peri_detected_from_alarm_partitions(hass):
 
     async def _get_services_with_peri(installation):
         installation.alarm_partitions = [
-            {"id": "1", "enterStates": ["T", "A", "P"], "leaveStates": ["D"]}
+            {"id": "1", "enterStates": ["T", "A", "E"], "leaveStates": ["D"]}
         ]
         return []
 
