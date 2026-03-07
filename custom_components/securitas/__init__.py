@@ -256,40 +256,50 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Multiple config entries for the same username share a single
         # SecuritasHub / ApiManager session to avoid duplicate logins
         # and WAF rate-limit blocks.
+        # A per-username lock prevents concurrent async_setup_entry calls
+        # from creating duplicate hubs (login() yields, so without a lock
+        # the second entry wouldn't find the first's session yet).
         username = config[CONF_USERNAME]
         sessions = hass.data[DOMAIN].setdefault("sessions", {})
+        setup_locks = hass.data[DOMAIN].setdefault("setup_locks", {})
+        if username not in setup_locks:
+            setup_locks[username] = asyncio.Lock()
 
-        if username in sessions:
-            # Reuse existing session
-            client: SecuritasHub = sessions[username]["hub"]
-            sessions[username]["ref_count"] += 1
-        else:
-            # Create new session and log in
-            client = SecuritasHub(config, entry, async_get_clientsession(hass), hass)
-            try:
-                await client.login()
-            except Login2FAError:
-                msg = (
-                    "Securitas Direct need a 2FA SMS code."
-                    "Please login again with your phone"
+        async with setup_locks[username]:
+            if username in sessions:
+                # Reuse existing session
+                client: SecuritasHub = sessions[username]["hub"]
+                sessions[username]["ref_count"] += 1
+            else:
+                # Create new session and log in
+                client = SecuritasHub(
+                    config, entry, async_get_clientsession(hass), hass
                 )
-                _notify_error(hass, "2fa_error", "Securitas Direct", msg)
-                return False
-            except LoginError as err:
-                _notify_error(hass, "login_error", "Securitas Direct", str(err))
-                _LOGGER.error(
-                    "Could not log in to Securitas: %s",
-                    err.log_detail(),
-                )
-                return False
-            except SecuritasDirectError as err:
-                _LOGGER.error(
-                    "Unable to connect to Securitas Direct: %s", err.log_detail()
-                )
-                raise ConfigEntryNotReady(
-                    "Unable to connect to Securitas Direct"
-                ) from None
-            sessions[username] = {"hub": client, "ref_count": 1}
+                try:
+                    await client.login()
+                except Login2FAError:
+                    msg = (
+                        "Securitas Direct need a 2FA SMS code."
+                        "Please login again with your phone"
+                    )
+                    _notify_error(hass, "2fa_error", "Securitas Direct", msg)
+                    return False
+                except LoginError as err:
+                    _notify_error(hass, "login_error", "Securitas Direct", str(err))
+                    _LOGGER.error(
+                        "Could not log in to Securitas: %s",
+                        err.log_detail(),
+                    )
+                    return False
+                except SecuritasDirectError as err:
+                    _LOGGER.error(
+                        "Unable to connect to Securitas Direct: %s",
+                        err.log_detail(),
+                    )
+                    raise ConfigEntryNotReady(
+                        "Unable to connect to Securitas Direct"
+                    ) from None
+                sessions[username] = {"hub": client, "ref_count": 1}
 
         entry.async_on_unload(entry.add_update_listener(async_update_options))
 
