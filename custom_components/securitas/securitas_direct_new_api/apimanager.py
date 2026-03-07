@@ -470,7 +470,7 @@ class ApiManager:
                 if err.http_status == 409:
                     _LOGGER.warning(
                         "Transient error (409) during poll, retrying: %s",
-                        err.args[0] if err.args else err,
+                        err.log_detail(),
                     )
                     first = False
                     continue

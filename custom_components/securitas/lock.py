@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 from datetime import timedelta
 import logging
@@ -44,13 +43,16 @@ LOCK_STATUS_OPENING = "3"
 LOCK_STATUS_LOCKING = "4"
 
 # Delay between API calls during setup to avoid rate limiting
-_SETUP_API_DELAY = 5  # seconds
-
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up Securitas Direct lock entities."""
+    """Set up Securitas Direct lock entities.
+
+    Only fast, non-polling API calls are made here (get_services is cached,
+    get_lock_modes is a single query).  Danalock config is fetched lazily
+    on the first ``async_update_status`` to avoid blocking startup.
+    """
     entry_data = hass.data[DOMAIN][entry.entry_id]
     client: SecuritasHub = entry_data["hub"]
     locks: list[SecuritasLock] = []
@@ -61,7 +63,7 @@ async def async_setup_entry(
         if not has_doorlock:
             continue
 
-        # Discover all lock devices for this installation (uses hub's rate limiter)
+        # Discover all lock devices for this installation (single fast query)
         lock_modes: list[SmartLockMode] = await client.get_lock_modes(
             device.installation
         )
@@ -78,18 +80,6 @@ async def async_setup_entry(
 
         for mode in lock_modes:
             device_id = mode.deviceId or SMARTLOCK_DEVICE_ID
-            # Try to fetch Danalock config for this device
-            danalock_config: DanalockConfig | None = None
-            try:
-                await asyncio.sleep(_SETUP_API_DELAY)
-                danalock_config = await client.session.get_danalock_config(
-                    device.installation, device_id
-                )
-            except Exception:
-                _LOGGER.debug(
-                    "Could not fetch Danalock config for device %s", device_id
-                )
-
             locks.append(
                 SecuritasLock(
                     device.installation,
@@ -97,7 +87,6 @@ async def async_setup_entry(
                     hass=hass,
                     device_id=device_id,
                     initial_status=mode.lockStatus,
-                    danalock_config=danalock_config,
                 )
             )
 
@@ -129,6 +118,7 @@ class SecuritasLock(lock.LockEntity):
         self._device: str = installation.address
         self._device_id: str = device_id
         self._danalock_config: DanalockConfig | None = danalock_config
+        self._danalock_config_fetched: bool = danalock_config is not None
 
         self._attr_unique_id = (
             f"securitas_direct.{installation.number}_lock_{device_id}"
@@ -148,19 +138,6 @@ class SecuritasLock(lock.LockEntity):
             )
         else:
             self._update_unsub = None
-
-        # Log if lock supports open-door (latch hold-back)
-        if (
-            danalock_config
-            and danalock_config.features
-            and danalock_config.features.holdBackLatchTime > 0
-        ):
-            _LOGGER.info(
-                "Lock %s supports latch hold-back (%ds) — "
-                "open-door feature pending API mutation capture",
-                device_id,
-                danalock_config.features.holdBackLatchTime,
-            )
 
         # Group under the installation device (shared with alarm panel)
         self._attr_device_info: DeviceInfo | None = DeviceInfo(
@@ -213,12 +190,45 @@ class SecuritasLock(lock.LockEntity):
     async def async_update_status(self, now=None) -> None:
         if self.hass is None:
             return
+
+        # Lazily fetch Danalock config on first update (avoids blocking setup)
+        if not self._danalock_config_fetched:
+            self._danalock_config_fetched = True
+            try:
+                self._danalock_config = await self.client.session.get_danalock_config(
+                    self.installation, self._device_id
+                )
+                cfg = self._danalock_config
+                if (
+                    cfg
+                    and cfg.features
+                    and cfg.features.holdBackLatchTime > 0
+                ):
+                    _LOGGER.info(
+                        "Lock %s on %s supports latch hold-back (%ds) — "
+                        "open-door feature pending API mutation capture",
+                        self._device_id,
+                        self.installation.number,
+                        cfg.features.holdBackLatchTime,
+                    )
+            except Exception:
+                _LOGGER.debug(
+                    "Could not fetch Danalock config for %s device %s",
+                    self.installation.number,
+                    self._device_id,
+                )
+
         try:
             self._new_state = await self.get_lock_state()
             if self._new_state != LOCK_STATUS_UNKNOWN:
                 self._state = self._new_state
         except SecuritasDirectError as err:
-            _LOGGER.error("Error updating Securitas lock state: %s", err)
+            _LOGGER.error(
+                "Error updating lock state for %s device %s: %s",
+                self.installation.number,
+                self._device_id,
+                err,
+            )
 
     async def get_lock_state(self) -> str:
         lock_modes: list[SmartLockMode] = await self.client.get_lock_modes(
@@ -279,7 +289,12 @@ class SecuritasLock(lock.LockEntity):
                 self.installation, True, self._device_id
             )
         except SecuritasDirectError as err:
-            _LOGGER.error("Lock operation failed: %s", err.args[0] if err.args else err)
+            _LOGGER.error(
+                "Lock operation failed for %s device %s: %s",
+                self.installation.number,
+                self._device_id,
+                err.log_detail(),
+            )
             return
 
         self._state = LOCK_STATUS_LOCKED
@@ -292,7 +307,10 @@ class SecuritasLock(lock.LockEntity):
             )
         except SecuritasDirectError as err:
             _LOGGER.error(
-                "Unlock operation failed: %s", err.args[0] if err.args else err
+                "Unlock operation failed for %s device %s: %s",
+                self.installation.number,
+                self._device_id,
+                err.log_detail(),
             )
             return
 

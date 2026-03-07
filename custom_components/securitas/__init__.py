@@ -339,11 +339,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
                 _LOGGER.error(
                     "Could not log in to Securitas: %s",
-                    err.args[0] if err.args else err,
+                    err.log_detail(),
                 )
                 return False
             except SecuritasDirectError as err:
-                _LOGGER.error("Unable to connect to Securitas Direct: %s", err.args[0])
+                _LOGGER.error(
+                    "Unable to connect to Securitas Direct: %s", err.log_detail()
+                )
                 raise ConfigEntryNotReady(
                     "Unable to connect to Securitas Direct"
                 ) from None
@@ -370,7 +372,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await client.get_services(installation)
                 devices.append(SecuritasDirectDevice(installation))
         except SecuritasDirectError as err:
-            _LOGGER.error("Unable to connect to Securitas Direct: %s", err.args[0])
+            _LOGGER.error("Unable to connect to Securitas Direct: %s", err.log_detail())
             raise ConfigEntryNotReady("Unable to connect to Securitas Direct") from None
 
         # Store per-entry data
@@ -572,6 +574,7 @@ class SecuritasHub:
         self.lang: str = ApiDomains().get_language(self.country)
         self.hass: HomeAssistant = hass
         self.services: dict[int, list[Service]] = {1: []}
+        self._services_cache: dict[str, list[Service]] = {}
         self.log_filter: SensitiveDataFilter | None = hass.data.get(DOMAIN, {}).get(
             "log_filter"
         )
@@ -619,8 +622,13 @@ class SecuritasHub:
         return await self.session.send_otp(phone_index, challange)
 
     async def get_services(self, instalation: Installation) -> list[Service]:
-        """Get the list of services from the instalation."""
-        return await self.session.get_all_services(instalation)
+        """Get the list of services from the installation (cached)."""
+        key = instalation.number
+        if key in self._services_cache:
+            return self._services_cache[key]
+        services = await self.session.get_all_services(instalation)
+        self._services_cache[key] = services
+        return services
 
     def get_authentication_token(self) -> str | None:
         """Get the authentication token."""
@@ -676,7 +684,7 @@ class SecuritasHub:
                 _LOGGER.warning(
                     "Error fetching lock modes for %s: %s",
                     installation.number,
-                    err.args[0] if err.args else err,
+                    err.log_detail(),
                 )
                 modes = []
             finally:
@@ -763,8 +771,9 @@ class SecuritasHub:
                     status = await self.session.check_general_status(installation)
                 except SecuritasDirectError as err:
                     _LOGGER.warning(
-                        "Error checking general status: %s",
-                        err.args[0] if err.args else err,
+                        "Error checking general status for %s: %s",
+                        installation.number,
+                        err.log_detail(),
                     )
                     if getattr(err, "http_status", None) == 403:
                         raise
@@ -789,8 +798,9 @@ class SecuritasHub:
                 )
             except SecuritasDirectError as err:
                 _LOGGER.error(
-                    "Error checking alarm status: %s",
-                    err.args[0] if err.args else err,
+                    "Error checking alarm status for %s: %s",
+                    installation.number,
+                    err.log_detail(),
                 )
                 if getattr(err, "http_status", None) == 403:
                     raise

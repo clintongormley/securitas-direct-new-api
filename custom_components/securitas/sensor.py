@@ -46,7 +46,7 @@ async def async_setup_entry(
             _LOGGER.warning(
                 "Skipping installation %s for sensor setup: %s",
                 device.installation.number,
-                err.args[0] if err.args else err,
+                err.log_detail(),
             )
             continue
         for service in services:
@@ -103,7 +103,7 @@ class SentinelTemperature(SensorEntity):
             _LOGGER.warning(
                 "Error updating temperature for %s: %s",
                 self._installation.number,
-                err.args[0] if err.args else err,
+                err.log_detail(),
             )
             return
         self._attr_native_value = sentinel.temperature
@@ -142,7 +142,7 @@ class SentinelHumidity(SensorEntity):
             _LOGGER.warning(
                 "Error updating humidity for %s: %s",
                 self._installation.number,
-                err.args[0] if err.args else err,
+                err.log_detail(),
             )
             return
         self._attr_native_value = sentinel.humidity

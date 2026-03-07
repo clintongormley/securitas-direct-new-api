@@ -74,7 +74,7 @@ class SecuritasRefreshButton(ButtonEntity):
                 self.installation.number,
             )
 
-            _LOGGER.info("Update entity alarm panel securitas")
+            _LOGGER.info("Updating alarm panel entity for %s", self.installation.number)
             for entity_id in self.hass.states.async_entity_ids("alarm_control_panel"):
                 if "securitas" in entity_id:
                     await self.hass.services.async_call(
@@ -85,8 +85,11 @@ class SecuritasRefreshButton(ButtonEntity):
                     )
 
         except SecuritasDirectError as err:
-            err_msg = str(err.args[0]) if err.args else str(err)
-            _LOGGER.error("Error calling the securitas direct API: %s", err_msg)
+            _LOGGER.error(
+                "Error refreshing alarm status for %s: %s",
+                self.installation.number,
+                err.log_detail(),
+            )
             if getattr(err, "http_status", None) == 403:
                 await self.hass.services.async_call(
                     domain="persistent_notification",
