@@ -1330,9 +1330,7 @@ class TestAsyncMigrateEntry:
 
         installation = make_installation(number="111222", alias="My Home")
         mock_hub = make_securitas_hub_mock()
-        mock_hub.session.list_installations = AsyncMock(
-            return_value=[installation]
-        )
+        mock_hub.session.list_installations = AsyncMock(return_value=[installation])
 
         with (
             _patch_hub(mock_hub),
@@ -1360,9 +1358,7 @@ class TestAsyncMigrateEntry:
         inst1 = make_installation(number="111111", alias="Home")
         inst2 = make_installation(number="222222", alias="Office")
         mock_hub = make_securitas_hub_mock()
-        mock_hub.session.list_installations = AsyncMock(
-            return_value=[inst1, inst2]
-        )
+        mock_hub.session.list_installations = AsyncMock(return_value=[inst1, inst2])
 
         with (
             _patch_hub(mock_hub),

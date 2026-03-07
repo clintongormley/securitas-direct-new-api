@@ -47,7 +47,6 @@ from . import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_CODE,
     DOMAIN,
-    SecuritasDirectDevice,
     SecuritasHub,
     generate_uuid,
 )
@@ -89,9 +88,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(unique_id)
         self._abort_if_unique_id_configured()
         self.config[CONF_INSTALLATION] = installation.number
-        return self.async_create_entry(
-            title=installation.alias, data=dict(self.config)
-        )
+        return self.async_create_entry(title=installation.alias, data=dict(self.config))
 
     def _create_client(
         self,
@@ -165,8 +162,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Filter out already-configured installations
         configured_ids = {
-            entry.data.get(CONF_INSTALLATION)
-            for entry in self._async_current_entries()
+            entry.data.get(CONF_INSTALLATION) for entry in self._async_current_entries()
         }
         available = [
             inst for inst in installations if inst.number not in configured_ids
