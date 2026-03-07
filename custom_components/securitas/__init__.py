@@ -512,6 +512,10 @@ class SecuritasHub:
         self.installations: list[Installation] = []
         self._api_lock = asyncio.Lock()
         self._last_api_time: float = 0
+        self._lock_modes: dict[
+            str, list
+        ] = {}  # installation.number -> SmartLockMode list
+        self._lock_modes_time: dict[str, float] = {}  # last fetch time per installation
 
     async def login(self):
         """Login to Securitas."""
@@ -554,6 +558,54 @@ class SecuritasHub:
             _LOGGER.error("Could not log out from Securitas: %s", ret)
             return False
         return True
+
+    async def get_lock_modes(self, installation: Installation) -> list:
+        """Get lock modes for an installation, with rate-limit serialization.
+
+        Returns cached result if fetched within the last update cycle,
+        so multiple lock entities on the same installation share one API call.
+        """
+        from .securitas_direct_new_api import SmartLockMode
+
+        _MIN_API_INTERVAL = 5
+        _CACHE_TTL = 30  # seconds — cache results within an update cycle
+
+        now = time.monotonic()
+        cached_time = self._lock_modes_time.get(installation.number, 0)
+        if now - cached_time < _CACHE_TTL and installation.number in self._lock_modes:
+            return self._lock_modes[installation.number]
+
+        async with self._api_lock:
+            # Re-check cache after acquiring lock (another entity may have fetched)
+            now = time.monotonic()
+            cached_time = self._lock_modes_time.get(installation.number, 0)
+            if (
+                now - cached_time < _CACHE_TTL
+                and installation.number in self._lock_modes
+            ):
+                return self._lock_modes[installation.number]
+
+            elapsed = now - self._last_api_time
+            if elapsed < _MIN_API_INTERVAL:
+                await asyncio.sleep(_MIN_API_INTERVAL - elapsed)
+
+            try:
+                modes: list[SmartLockMode] = await self.session.get_lock_current_mode(
+                    installation
+                )
+            except SecuritasDirectError as err:
+                _LOGGER.warning(
+                    "Error fetching lock modes for %s: %s",
+                    installation.number,
+                    err.args[0] if err.args else err,
+                )
+                modes = []
+            finally:
+                self._last_api_time = time.monotonic()
+
+            self._lock_modes[installation.number] = modes
+            self._lock_modes_time[installation.number] = time.monotonic()
+            return modes
 
     async def update_overview(self, installation: Installation) -> CheckAlarmStatus:
         """Update the overview.

@@ -574,7 +574,7 @@ class TestSecuritasLockUpdateStatus:
 
     async def test_async_update_status_updates_state_from_api(self):
         lock = make_lock()
-        lock.client.session.get_lock_current_mode = AsyncMock(
+        lock.client.get_lock_modes = AsyncMock(
             return_value=[SmartLockMode(res="OK", lockStatus="1", deviceId="01")]
         )
 
@@ -587,7 +587,7 @@ class TestSecuritasLockUpdateStatus:
         # Initial state is "2" (locked)
         assert lock._state == "2"
 
-        lock.client.session.get_lock_current_mode = AsyncMock(
+        lock.client.get_lock_modes = AsyncMock(
             return_value=[SmartLockMode(res="OK", lockStatus="0", deviceId="01")]
         )
 
@@ -598,7 +598,7 @@ class TestSecuritasLockUpdateStatus:
 
     async def test_async_update_status_updates_on_non_zero(self):
         lock = make_lock()
-        lock.client.session.get_lock_current_mode = AsyncMock(
+        lock.client.get_lock_modes = AsyncMock(
             return_value=[SmartLockMode(res="OK", lockStatus="3", deviceId="01")]
         )
 
@@ -609,7 +609,7 @@ class TestSecuritasLockUpdateStatus:
     async def test_async_update_status_ignores_other_device_ids(self):
         """Only status for the lock's own device_id is used."""
         lock = make_lock(device_id="01")
-        lock.client.session.get_lock_current_mode = AsyncMock(
+        lock.client.get_lock_modes = AsyncMock(
             return_value=[
                 SmartLockMode(res="OK", lockStatus="1", deviceId="02"),
             ]
@@ -623,13 +623,13 @@ class TestSecuritasLockUpdateStatus:
     async def test_async_update_delegates_to_update_status(self):
         """async_update just calls async_update_status."""
         lock = make_lock()
-        lock.client.session.get_lock_current_mode = AsyncMock(
+        lock.client.get_lock_modes = AsyncMock(
             return_value=[SmartLockMode(res="OK", lockStatus="1", deviceId="01")]
         )
 
         await lock.async_update()
 
-        lock.client.session.get_lock_current_mode.assert_awaited_once()
+        lock.client.get_lock_modes.assert_awaited_once()
         assert lock._state == "1"
 
 
@@ -664,11 +664,11 @@ class TestHassNoneGuards:
     async def test_lock_update_status_skips_when_hass_is_none(self):
         lock = make_lock()
         lock.hass = None
-        lock.client.session.get_lock_current_mode = AsyncMock()
+        lock.client.get_lock_modes = AsyncMock()
 
         await lock.async_update_status()
 
-        lock.client.session.get_lock_current_mode.assert_not_awaited()
+        lock.client.get_lock_modes.assert_not_awaited()
 
     def test_lock_force_state_skips_schedule_when_hass_is_none(self):
         lock = make_lock()

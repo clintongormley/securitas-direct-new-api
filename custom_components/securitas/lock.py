@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 from datetime import timedelta
 import logging
@@ -43,6 +44,9 @@ LOCK_STATUS_LOCKED = "2"
 LOCK_STATUS_OPENING = "3"
 LOCK_STATUS_LOCKING = "4"
 
+# Delay between API calls during setup to avoid rate limiting
+_SETUP_API_DELAY = 5  # seconds
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
@@ -59,8 +63,8 @@ async def async_setup_entry(
         if not has_doorlock:
             continue
 
-        # Discover all lock devices for this installation
-        lock_modes: list[SmartLockMode] = await client.session.get_lock_current_mode(
+        # Discover all lock devices for this installation (uses hub's rate limiter)
+        lock_modes: list[SmartLockMode] = await client.get_lock_modes(
             device.installation
         )
 
@@ -79,6 +83,7 @@ async def async_setup_entry(
             # Try to fetch Danalock config for this device
             danalock_config: DanalockConfig | None = None
             try:
+                await asyncio.sleep(_SETUP_API_DELAY)
                 danalock_config = await client.session.get_danalock_config(
                     device.installation, device_id
                 )
@@ -221,9 +226,9 @@ class SecuritasLock(lock.LockEntity):
             _LOGGER.error("Error updating Securitas lock state: %s", err)
 
     async def get_lock_state(self) -> str:
-        lock_modes: list[
-            SmartLockMode
-        ] = await self.client.session.get_lock_current_mode(self.installation)
+        lock_modes: list[SmartLockMode] = await self.client.get_lock_modes(
+            self.installation
+        )
         for mode in lock_modes:
             if mode.deviceId == self._device_id:
                 return mode.lockStatus
