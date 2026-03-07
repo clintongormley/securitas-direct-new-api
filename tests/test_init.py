@@ -1155,6 +1155,46 @@ class TestSharedSession:
         assert len(entry2_data["devices"]) == 1
         assert entry2_data["devices"][0].installation.number == "222"
 
+    async def test_concurrent_setup_shares_single_hub(self, hass, mock_hub):
+        """Concurrent async_setup_entry calls should share one hub, not create two."""
+        import asyncio
+
+        data1 = make_config_entry_data()
+        data1[CONF_INSTALLATION] = "111"
+        entry1 = MockConfigEntry(domain=DOMAIN, data=data1)
+        entry1.add_to_hass(hass)
+
+        data2 = make_config_entry_data()
+        data2[CONF_INSTALLATION] = "222"
+        entry2 = MockConfigEntry(domain=DOMAIN, data=data2)
+        entry2.add_to_hass(hass)
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            # Run both setup calls concurrently, simulating HA restart
+            results = await asyncio.gather(
+                async_setup_entry(hass, entry1),
+                async_setup_entry(hass, entry2),
+            )
+
+        assert results == [True, True]
+        # Login should only be called once — the setup lock prevents the
+        # second entry from creating its own hub before the first finishes.
+        mock_hub.login.assert_awaited_once()
+        username = data1[CONF_USERNAME]
+        sessions = hass.data[DOMAIN]["sessions"]
+        assert sessions[username]["ref_count"] == 2
+        # Both entries should reference the same hub
+        assert hass.data[DOMAIN][entry1.entry_id]["hub"] is mock_hub
+        assert hass.data[DOMAIN][entry2.entry_id]["hub"] is mock_hub
+
     async def test_unload_one_entry_decrements_ref_count(self, hass, mock_hub):
         """Unloading one entry should decrement ref count but keep the session."""
         data1 = make_config_entry_data()
