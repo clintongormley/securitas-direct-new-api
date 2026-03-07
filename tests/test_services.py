@@ -309,6 +309,30 @@ class TestGetAllServices:
 
         assert result == []
 
+    async def test_get_all_services_extracts_alarm_partitions(
+        self, authed_api, mock_execute, installation
+    ):
+        """get_all_services should store alarmPartitions on the installation."""
+        capabilities_jwt = make_jwt(exp_minutes=60)
+        partitions = [
+            {"id": "1", "enterStates": ["T", "A", "P", "Q", "E"], "leaveStates": ["D"]}
+        ]
+        mock_execute.return_value = {
+            "data": {
+                "xSSrv": {
+                    "installation": {
+                        "services": [],
+                        "capabilities": capabilities_jwt,
+                        "configRepoUser": {"alarmPartitions": partitions},
+                    }
+                }
+            }
+        }
+
+        await authed_api.get_all_services(installation)
+
+        assert installation.alarm_partitions == partitions
+
 
 # ── get_sentinel_data() ───────────────────────────────────────────────────────
 

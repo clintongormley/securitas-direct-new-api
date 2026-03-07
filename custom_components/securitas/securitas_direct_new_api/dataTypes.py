@@ -1,6 +1,6 @@
 """Public datatypes for the securitas direct API."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -24,6 +24,7 @@ class Installation:
     phone: str = ""
     capabilities: str = ""
     capabilities_exp: datetime = datetime.min
+    alarm_partitions: list[dict] = field(default_factory=list)
 
 
 @dataclass

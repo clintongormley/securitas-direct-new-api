@@ -70,6 +70,7 @@ CONF_MAP_CUSTOM = "map_custom"
 CONF_MAP_VACATION = "map_vacation"
 CONF_NOTIFY_GROUP = "notify_group"
 CONF_INSTALLATION = "installation"
+CONF_PERI_ALARM = "peri_alarm"
 
 DEFAULT_USE_2FA = True
 DEFAULT_SCAN_INTERVAL = 120

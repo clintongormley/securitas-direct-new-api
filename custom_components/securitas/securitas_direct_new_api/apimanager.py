@@ -775,6 +775,9 @@ class ApiManager:
         if "exp" in token:
             installation.capabilities_exp = datetime.fromtimestamp(token["exp"])
 
+        config_repo = installation_data.get("configRepoUser") or {}
+        installation.alarm_partitions = config_repo.get("alarmPartitions") or []
+
         item: dict = {}
         for item in raw_data:
             attribute_list: list[Attribute] = []

@@ -265,6 +265,7 @@ def graphql_services(
     services: list[dict] | None = None,
     numinst: str = "123456",
     alias: str = "Home",
+    alarm_partitions: list | None = None,
 ) -> dict:
     """Srv (get_all_services) response."""
     if capabilities_jwt is None:
@@ -286,7 +287,7 @@ def graphql_services(
                     "sim": "",
                     "instIbs": False,
                     "services": services,
-                    "configRepoUser": {"alarmPartitions": []},
+                    "configRepoUser": {"alarmPartitions": alarm_partitions if alarm_partitions is not None else []},
                     "capabilities": capabilities_jwt,
                 },
             }
