@@ -44,6 +44,7 @@ LOCK_STATUS_LOCKING = "4"
 
 # Delay between API calls during setup to avoid rate limiting
 
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
@@ -199,11 +200,7 @@ class SecuritasLock(lock.LockEntity):
                     self.installation, self._device_id
                 )
                 cfg = self._danalock_config
-                if (
-                    cfg
-                    and cfg.features
-                    and cfg.features.holdBackLatchTime > 0
-                ):
+                if cfg and cfg.features and cfg.features.holdBackLatchTime > 0:
                     _LOGGER.info(
                         "Lock %s on %s supports latch hold-back (%ds) — "
                         "open-door feature pending API mutation capture",
