@@ -12,7 +12,6 @@ from homeassistant import config_entries
 from homeassistant.const import (
     CONF_CODE,
     CONF_DEVICE_ID,
-    CONF_ERROR,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_TOKEN,
@@ -24,12 +23,13 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import selector
 
 from . import (
-    CONF_CODE_ARM_REQUIRED,
     CONF_CHECK_ALARM_PANEL,
+    CONF_CODE_ARM_REQUIRED,
     CONF_COUNTRY,
     CONF_DELAY_CHECK_OPERATION,
     CONF_DEVICE_INDIGITALL,
     CONF_ENTRY_ID,
+    CONF_HAS_PERI,
     CONF_INSTALLATION,
     CONF_MAP_AWAY,
     CONF_MAP_CUSTOM,
@@ -37,22 +37,19 @@ from . import (
     CONF_MAP_NIGHT,
     CONF_MAP_VACATION,
     CONF_NOTIFY_GROUP,
-    CONF_PERI_ALARM,
     CONF_USE_2FA,
-    CONFIG_SCHEMA,
-    DEFAULT_CODE_ARM_REQUIRED,
+    COUNTRY_NAMES,
     DEFAULT_CHECK_ALARM_PANEL,
-    DEFAULT_DELAY_CHECK_OPERATION,
-    DEFAULT_PERI_ALARM,
-    DEFAULT_SCAN_INTERVAL,
     DEFAULT_CODE,
+    DEFAULT_CODE_ARM_REQUIRED,
+    DEFAULT_DELAY_CHECK_OPERATION,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     SecuritasHub,
     generate_uuid,
 )
 from .securitas_direct_new_api import (
     Installation,
-    Login2FAError,
     OtpPhone,
     PERI_DEFAULTS,
     PERI_OPTIONS,
@@ -61,7 +58,7 @@ from .securitas_direct_new_api import (
     STATE_LABELS,
 )
 
-VERSION = 2
+VERSION = 3
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,7 +66,7 @@ _LOGGER = logging.getLogger(__name__)
 class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow."""
 
-    VERSION = 2
+    VERSION = 3
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
     def __init__(self) -> None:
@@ -78,6 +75,9 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self.securitas: SecuritasHub | None = None
         self.otp_challenge: tuple[str | None, list[OtpPhone] | None] | None = None
         self._available_installations: list[Installation] = []
+        self._selected_installation: Installation | None = None
+        self._options_data: dict[str, Any] = {}
+        self._has_peri: bool = False
 
     async def _create_entry_for_installation(
         self, installation: Installation
@@ -144,8 +144,56 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         )
         return await self.finish_setup()
 
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Step 1: Country, username, password, 2FA toggle."""
+        if user_input is None:
+            country_options = [
+                {"value": code, "label": name} for code, name in COUNTRY_NAMES.items()
+            ]
+            schema = vol.Schema(
+                {
+                    vol.Required(CONF_COUNTRY, default="ES"): selector(
+                        {"select": {"options": country_options, "mode": "dropdown"}}
+                    ),
+                    vol.Required(CONF_USERNAME): str,
+                    vol.Required(CONF_PASSWORD): str,
+                    vol.Optional(CONF_USE_2FA, default=True): bool,
+                }
+            )
+            return self.async_show_form(step_id="user", data_schema=schema)
+
+        self.config = OrderedDict(user_input)
+
+        uuid = generate_uuid()
+        self.config[CONF_DELAY_CHECK_OPERATION] = DEFAULT_DELAY_CHECK_OPERATION
+        self.config[CONF_DEVICE_ID] = uuid
+        self.config[CONF_UNIQUE_ID] = uuid
+        self.config[CONF_DEVICE_INDIGITALL] = ""
+        self.config[CONF_ENTRY_ID] = ""
+
+        self.securitas = self._create_client()
+
+        if not self.config.get(CONF_USE_2FA, True):
+            return await self.finish_setup()
+
+        otp_result = await self.securitas.validate_device()
+        self.otp_challenge = otp_result
+        otp_phones = otp_result[1] or []
+        phone_options = [
+            {"value": f"{i}_{phone.phone}", "label": phone.phone}
+            for i, phone in enumerate(otp_phones)
+        ]
+        return self.async_show_form(
+            step_id="phone_list",
+            data_schema=vol.Schema(
+                {"phones": selector({"select": {"options": phone_options}})}
+            ),
+        )
+
     async def finish_setup(self):
-        """Login, discover installations, and create entry or show picker."""
+        """Login, discover installations, detect peri, advance to options."""
         assert self.securitas is not None
         if self.securitas.get_authentication_token() is None:
             await self.securitas.login()
@@ -154,21 +202,14 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self.hass.data.setdefault(DOMAIN, {})
         self.hass.data[DOMAIN][SecuritasHub.__name__] = self.securitas
 
-        # Seed the shared sessions dict so async_setup_entry can reuse
-        # this already-authenticated hub instead of logging in again.
         username = self.config[CONF_USERNAME]
         sessions = self.hass.data[DOMAIN].setdefault("sessions", {})
         if username not in sessions:
             sessions[username] = {"hub": self.securitas, "ref_count": 0}
 
-        installations: list[
-            Installation
-        ] = await self.securitas.session.list_installations()
-
-        # Cache installations so async_setup_entry can skip re-fetching
+        installations = await self.securitas.session.list_installations()
         self.hass.data[DOMAIN]["installations"] = installations
 
-        # Filter out already-configured installations
         configured_ids = {
             entry.data.get(CONF_INSTALLATION) for entry in self._async_current_entries()
         }
@@ -180,39 +221,147 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="already_configured")
 
         if len(available) == 1:
-            return await self._create_entry_for_installation(available[0])
+            return await self._select_installation(available[0])
 
-        # Multiple unconfigured installations — show picker
         self._available_installations = available
         return await self.async_step_select_installation()
+
+    async def _select_installation(self, installation: Installation):
+        """Set installation, call get_services, detect peri, advance to options."""
+        self.config[CONF_INSTALLATION] = installation.number
+        self._selected_installation = installation
+
+        assert self.securitas is not None
+        services = await self.securitas.get_services(installation)
+        self.hass.data.setdefault(DOMAIN, {})
+        self.hass.data[DOMAIN]["cached_services"] = {
+            installation.number: services,
+        }
+
+        self._has_peri = self._detect_peri(installation)
+        self.config[CONF_HAS_PERI] = self._has_peri
+
+        return await self.async_step_options()
+
+    def _detect_peri(self, installation: Installation) -> bool:
+        """Detect perimeter support from alarmPartitions states."""
+        peri_codes = {"E", "A", "B", "C"}
+        for partition in installation.alarm_partitions:
+            for state in partition.get("enterStates", []):
+                if state in peri_codes:
+                    return True
+            for state in partition.get("leaveStates", []):
+                if state in peri_codes:
+                    return True
+        return False
 
     async def async_step_select_installation(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Let user pick which installation to configure."""
+        """Step 2: Let user pick which installation to configure."""
         if user_input is not None:
             selected_number = user_input[CONF_INSTALLATION]
             for inst in self._available_installations:
                 if inst.number == selected_number:
-                    return await self._create_entry_for_installation(inst)
-            # Should not happen if the form works correctly
+                    return await self._select_installation(inst)
             return self.async_abort(reason="unknown_installation")
 
         install_options = [
             {"value": inst.number, "label": inst.alias}
             for inst in self._available_installations
         ]
-        data_schema = vol.Schema(
+        return self.async_show_form(
+            step_id="select_installation",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_INSTALLATION): selector(
+                        {"select": {"options": install_options}}
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_options(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Step 3: PIN, scan interval, notification settings."""
+        if user_input is not None:
+            user_input.setdefault(CONF_CODE, DEFAULT_CODE)
+            self._options_data = user_input
+            return await self.async_step_mappings()
+
+        notify_services = sorted(
+            svc
+            for svc in self.hass.services.async_services().get("notify", {}).keys()
+            if svc not in {"notify", "send_message", "persistent_notification"}
+        )
+        notify_options = [{"value": "", "label": "(disabled)"}] + [
+            {"value": svc, "label": svc} for svc in notify_services
+        ]
+
+        schema = vol.Schema(
             {
-                vol.Required(CONF_INSTALLATION): selector(
-                    {"select": {"options": install_options}}
+                vol.Optional(CONF_CODE, default=DEFAULT_CODE): str,
+                vol.Optional(
+                    CONF_CODE_ARM_REQUIRED, default=DEFAULT_CODE_ARM_REQUIRED
+                ): bool,
+                vol.Optional(
+                    CONF_CHECK_ALARM_PANEL, default=DEFAULT_CHECK_ALARM_PANEL
+                ): bool,
+                vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
+                vol.Optional(
+                    CONF_DELAY_CHECK_OPERATION, default=DEFAULT_DELAY_CHECK_OPERATION
+                ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=15.0)),
+                vol.Optional(CONF_NOTIFY_GROUP, default=""): selector(
+                    {
+                        "select": {
+                            "options": notify_options,
+                            "custom_value": True,
+                            "mode": "dropdown",
+                        }
+                    }
                 ),
             }
         )
-        return self.async_show_form(
-            step_id="select_installation",
-            data_schema=data_schema,
+        return self.async_show_form(step_id="options", data_schema=schema)
+
+    async def async_step_mappings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Step 4: Alarm state mappings, then create entry."""
+        if user_input is not None:
+            self.config.update(self._options_data)
+            self.config.update(user_input)
+            return await self._create_entry_for_installation(
+                self._selected_installation
+            )
+
+        defaults = PERI_DEFAULTS if self._has_peri else STD_DEFAULTS
+        options = PERI_OPTIONS if self._has_peri else STD_OPTIONS
+        select_options = [
+            {"value": state.value, "label": STATE_LABELS[state]} for state in options
+        ]
+
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_MAP_HOME, default=defaults[CONF_MAP_HOME]): selector(
+                    {"select": {"options": select_options}}
+                ),
+                vol.Optional(CONF_MAP_AWAY, default=defaults[CONF_MAP_AWAY]): selector(
+                    {"select": {"options": select_options}}
+                ),
+                vol.Optional(
+                    CONF_MAP_NIGHT, default=defaults[CONF_MAP_NIGHT]
+                ): selector({"select": {"options": select_options}}),
+                vol.Optional(
+                    CONF_MAP_VACATION, default=defaults[CONF_MAP_VACATION]
+                ): selector({"select": {"options": select_options}}),
+                vol.Optional(
+                    CONF_MAP_CUSTOM, default=defaults[CONF_MAP_CUSTOM]
+                ): selector({"select": {"options": select_options}}),
+            }
         )
+        return self.async_show_form(step_id="mappings", data_schema=schema)
 
     @staticmethod
     @callback
@@ -221,107 +370,6 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> SecuritasOptionsFlowHandler:
         """Get the options flow for this handler."""
         return SecuritasOptionsFlowHandler()
-
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """User initiated config flow."""
-        if (user_input is None and self.init_data is None) or (
-            self.init_data is not None and self.init_data.get("error", None) == "login"
-        ):
-            return self.async_show_form(
-                step_id="user",
-                data_schema=CONFIG_SCHEMA.schema[DOMAIN],
-            )
-
-        if user_input is not None:
-            self.config = OrderedDict(user_input)
-        else:
-            self.config = (
-                OrderedDict(self.init_data.copy()) if self.init_data else OrderedDict()
-            )
-
-        if self.securitas is None:
-            uuid = generate_uuid()
-            self.config[CONF_DELAY_CHECK_OPERATION] = DEFAULT_DELAY_CHECK_OPERATION
-            self.config[CONF_DEVICE_ID] = uuid
-            self.config[CONF_UNIQUE_ID] = uuid
-            self.config[CONF_DEVICE_INDIGITALL] = ""
-            self.config[CONF_ENTRY_ID] = ""
-
-            self.securitas = self._create_client()
-
-        # check for option to use 2fa
-        if not self.config[CONF_USE_2FA]:
-            return await self.finish_setup()
-
-        otp_result = await self.securitas.validate_device()
-        self.otp_challenge = otp_result
-        phones: list[str] = []
-        phone_options: list[dict] = []
-        otp_phones = otp_result[1] or []
-        for i, phone_item in enumerate(otp_phones):
-            phone_key = f"{i}_{phone_item.phone}"
-            phones.append(phone_key)
-            phone_options.append({"value": phone_key, "label": phone_item.phone})
-        data_schema = {}
-        data_schema["phones"] = selector({"select": {"options": phone_options}})
-        return self.async_show_form(
-            step_id="phone_list", data_schema=vol.Schema(data_schema)
-        )
-
-    async def async_step_import(self, user_input: dict):
-        """Import a config entry."""
-        if user_input.get(CONF_ERROR):
-            error = user_input[CONF_ERROR]
-            if error in {"2FA", "login"}:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=vol.Schema(
-                        {
-                            vol.Required(CONF_USERNAME): str,
-                            vol.Required(CONF_PASSWORD): str,
-                        }
-                    ),
-                )
-        self.config[CONF_USERNAME] = user_input[CONF_USERNAME]
-        self.config[CONF_PASSWORD] = user_input[CONF_PASSWORD]
-        self.config[CONF_COUNTRY] = user_input[CONF_COUNTRY]
-        self.config[CONF_CODE] = user_input[CONF_CODE]
-        self.config[CONF_CODE_ARM_REQUIRED] = user_input.get(
-            CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED
-        )
-        self.config[CONF_CHECK_ALARM_PANEL] = user_input.get(
-            CONF_CHECK_ALARM_PANEL, DEFAULT_CHECK_ALARM_PANEL
-        )
-        self.config[CONF_SCAN_INTERVAL] = user_input.get(
-            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-        )
-        self.config[CONF_DELAY_CHECK_OPERATION] = user_input.get(
-            CONF_DELAY_CHECK_OPERATION, DEFAULT_DELAY_CHECK_OPERATION
-        )
-        self.config[CONF_DEVICE_ID] = user_input[CONF_DEVICE_ID]
-        self.config[CONF_UNIQUE_ID] = user_input[CONF_UNIQUE_ID]
-        self.config[CONF_DEVICE_INDIGITALL] = user_input[CONF_DEVICE_INDIGITALL]
-        self.config[CONF_ENTRY_ID] = user_input.get(CONF_ENTRY_ID, "")
-        if CONF_INSTALLATION in user_input:
-            self.config[CONF_INSTALLATION] = user_input[CONF_INSTALLATION]
-        result = self._create_client()
-
-        try:
-            await result.login()
-        except Login2FAError:
-            return self.async_show_form(
-                step_id="user",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(CONF_USERNAME): str,
-                        vol.Required(CONF_PASSWORD): str,
-                    }
-                ),
-            )
-
-        return result
 
 
 class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
@@ -352,7 +400,6 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_DELAY_CHECK_OPERATION, DEFAULT_DELAY_CHECK_OPERATION
         )
         check_alarm_panel = self._get(CONF_CHECK_ALARM_PANEL, DEFAULT_CHECK_ALARM_PANEL)
-        peri_alarm = self._get(CONF_PERI_ALARM, DEFAULT_PERI_ALARM)
 
         notify_group = self._get(CONF_NOTIFY_GROUP, "")
 
@@ -373,7 +420,6 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
                     description={"suggested_value": self._get(CONF_CODE, DEFAULT_CODE)},
                 ): str,
                 vol.Optional(CONF_CODE_ARM_REQUIRED, default=code_arm_required): bool,
-                vol.Optional(CONF_PERI_ALARM, default=peri_alarm): bool,
                 vol.Optional(CONF_CHECK_ALARM_PANEL, default=check_alarm_panel): bool,
                 vol.Optional(CONF_SCAN_INTERVAL, default=scan_interval): int,
                 vol.Optional(
@@ -400,11 +446,11 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
             data = {**self._general_data, **user_input}
             return self.async_create_entry(title="", data=data)
 
-        peri_alarm = self._general_data.get(CONF_PERI_ALARM, DEFAULT_PERI_ALARM)
+        has_peri = self.config_entry.data.get(CONF_HAS_PERI, False)
 
         # Determine defaults for mapping dropdowns
-        defaults = PERI_DEFAULTS if peri_alarm else STD_DEFAULTS
-        options = PERI_OPTIONS if peri_alarm else STD_OPTIONS
+        defaults = PERI_DEFAULTS if has_peri else STD_DEFAULTS
+        options = PERI_OPTIONS if has_peri else STD_OPTIONS
         valid_values = {state.value for state in options}
 
         def _valid_map(key: str) -> str:

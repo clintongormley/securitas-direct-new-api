@@ -27,9 +27,8 @@ from homeassistant.exceptions import ServiceValidationError
 
 from . import (
     CONF_CODE_ARM_REQUIRED,
+    CONF_HAS_PERI,
     CONF_NOTIFY_GROUP,
-    CONF_PERI_ALARM,
-    DEFAULT_PERI_ALARM,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     SecuritasDirectDevice,
@@ -132,7 +131,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self.client: SecuritasHub = client
         self.hass: HomeAssistant = hass
-        self._has_peri = self.client.config.get(CONF_PERI_ALARM, DEFAULT_PERI_ALARM)
+        self._has_peri = self.client.config.get(CONF_HAS_PERI, False)
         self._last_proto_code: str | None = None
         self._resolver = CommandResolver(has_peri=self._has_peri)
 

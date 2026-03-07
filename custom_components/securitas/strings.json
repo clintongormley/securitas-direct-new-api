@@ -6,16 +6,10 @@
         "step": {
             "user": {
                 "data": {
+                    "country": "Country",
                     "username": "Username",
                     "password": "Password",
-                    "use_2FA": "Use 2FA",
-                    "country": "Country Code",
-                    "code": "PIN Code (leave empty for no PIN)",
-                    "code_arm_required": "Also require PIN code (if any) to arm alarm",
-                    "PERI_alarm": "Is there a Perimetral alarm?",
-                    "check_alarm_panel": "Check alarm panel's status in every request",
-                    "scan_interval": "Update scan interval in seconds (0 disables auto-updates)",
-                    "delay_check_operation": "Delay to check the arming and disarming operations (sec)"
+                    "use_2FA": "Use 2FA"
                 },
                 "description": "Login into Securitas Direct.",
                 "title": "Login"
@@ -34,6 +28,29 @@
                 "data": {
                     "installation": "Installation"
                 }
+            },
+            "options": {
+                "title": "Options",
+                "description": "Configure alarm options.",
+                "data": {
+                    "code": "PIN Code (leave empty for no PIN)",
+                    "code_arm_required": "Also require PIN code (if any) to arm alarm",
+                    "check_alarm_panel": "Check alarm panel's status in every request",
+                    "scan_interval": "Update scan interval in seconds (0 disables auto-updates)",
+                    "delay_check_operation": "Delay to check the arming and disarming operations (sec)",
+                    "notify_group": "Notify service for arming exceptions (e.g. mobile_app_phone)"
+                }
+            },
+            "mappings": {
+                "title": "Alarm State Mappings",
+                "description": "Map each Home Assistant alarm action to a Securitas alarm mode. Set to 'Not used' to disable a button.",
+                "data": {
+                    "map_home": "Home",
+                    "map_away": "Away",
+                    "map_night": "Night",
+                    "map_vacation": "Vacation",
+                    "map_custom": "Custom"
+                }
             }
         }
     },
@@ -43,8 +60,7 @@
                 "data": {
                     "code": "PIN Code (leave empty for no PIN)",
                     "code_arm_required": "Also require PIN code (if any) to arm alarm",
-                    "PERI_alarm": "Is there a Perimetral alarm?",
-                    "check_alarm_panel": "Check alarm panel's status in every request (not recommended)",
+                    "check_alarm_panel": "Check alarm panel's status in every request",
                     "scan_interval": "Update scan interval in seconds (0 disables auto-updates)",
                     "delay_check_operation": "Delay to check the arming and disarming operation (sec)",
                     "notify_group": "Notify service for arming exceptions (e.g. mobile_app_phone)"

@@ -40,11 +40,9 @@ from .securitas_direct_new_api import (
     Login2FAError,
     LoginError,
     OtpPhone,
-    PERI_DEFAULTS,
     SecuritasDirectError,
     Service,
     SStatus,
-    STD_DEFAULTS,
     generate_device_id,
     generate_uuid,
 )
@@ -60,7 +58,7 @@ CONF_COUNTRY = "country"
 CONF_CODE_ARM_REQUIRED = "code_arm_required"
 CONF_CHECK_ALARM_PANEL = "check_alarm_panel"
 CONF_USE_2FA = "use_2FA"
-CONF_PERI_ALARM = "PERI_alarm"
+CONF_HAS_PERI = "has_peri"
 CONF_DEVICE_INDIGITALL = "idDeviceIndigitall"
 CONF_ENTRY_ID = "entry_id"
 CONF_INSTALLATION_KEY = "instalation"
@@ -79,8 +77,19 @@ DEFAULT_CODE_ARM_REQUIRED = False
 DEFAULT_CHECK_ALARM_PANEL = True
 DEFAULT_DELAY_CHECK_OPERATION = 2
 DEFAULT_CODE = ""
-DEFAULT_PERI_ALARM = False
 DEFAULT_COUNTRY = "ES"
+
+COUNTRY_NAMES: dict[str, str] = {
+    "AR": "Argentina",
+    "BR": "Brazil",
+    "CL": "Chile",
+    "ES": "Spain",
+    "FR": "France",
+    "GB": "Great Britain",
+    "IE": "Ireland",
+    "IT": "Italy",
+    "PT": "Portugal",
+}
 
 
 PLATFORMS = [
@@ -102,7 +111,6 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional(CONF_USE_2FA, default=DEFAULT_USE_2FA): bool,
                 vol.Optional(CONF_COUNTRY, default=DEFAULT_COUNTRY): str,
                 vol.Optional(CONF_CODE, default=DEFAULT_CODE): str,
-                vol.Optional(CONF_PERI_ALARM, default=DEFAULT_PERI_ALARM): bool,
                 vol.Optional(
                     CONF_CODE_ARM_REQUIRED, default=DEFAULT_CODE_ARM_REQUIRED
                 ): bool,
@@ -140,7 +148,6 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
             CONF_CODE_ARM_REQUIRED,
             CONF_SCAN_INTERVAL,
             CONF_CHECK_ALARM_PANEL,
-            CONF_PERI_ALARM,
             CONF_MAP_HOME,
             CONF_MAP_AWAY,
             CONF_MAP_NIGHT,
@@ -157,45 +164,22 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate old config entries to new format."""
-    if config_entry.version == 1:
-        _LOGGER.debug("Migrating config entry from v1 to v2")
-
-        # Create temporary API session to discover installations
-        config = dict(config_entry.data)
-        add_device_information(config)
-        http_client = async_get_clientsession(hass)
-        hub = SecuritasHub(config, config_entry, http_client, hass)
-
-        try:
-            await hub.login()
-            installations = await hub.session.list_installations()
-        except Exception:
-            _LOGGER.error("Migration failed: could not connect to Securitas API")
-            return False
-
-        if not installations:
-            _LOGGER.error("Migration failed: no installations found")
-            return False
-
-        # Assign first installation
-        installation = installations[0]
-        new_data = dict(config_entry.data)
-        new_data[CONF_INSTALLATION] = installation.number
-
-        hass.config_entries.async_update_entry(
-            config_entry,
-            data=new_data,
-            unique_id=f"{config_entry.data[CONF_USERNAME]}_{installation.number}",
-            version=2,
+    """Reject old config entries — users must delete and re-add."""
+    if config_entry.version < 3:
+        _LOGGER.error(
+            "Config entry %s uses format v%s which is no longer supported. "
+            "Please remove this integration entry and re-add it.",
+            config_entry.entry_id,
+            config_entry.version,
         )
-
-        _LOGGER.info(
-            "Migrated config entry to v2: installation %s (%s)",
-            installation.number,
-            installation.alias,
+        _notify_error(
+            hass,
+            "migration_required",
+            "Securitas Direct",
+            "Your Securitas Direct configuration uses an old format. "
+            "Please remove the integration entry and re-add it.",
         )
-
+        return False
     return True
 
 
@@ -209,7 +193,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     config[CONF_USE_2FA] = entry.data.get(CONF_USE_2FA, DEFAULT_USE_2FA)
     config[CONF_COUNTRY] = entry.data.get(CONF_COUNTRY, None)
     config[CONF_CODE] = entry.data.get(CONF_CODE, DEFAULT_CODE)
-    config[CONF_PERI_ALARM] = entry.data.get(CONF_PERI_ALARM, DEFAULT_PERI_ALARM)
+    config[CONF_HAS_PERI] = entry.data.get(CONF_HAS_PERI, False)
     config[CONF_CODE_ARM_REQUIRED] = entry.data.get(
         CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED
     )
@@ -247,27 +231,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     config[CONF_MAP_NIGHT] = entry.data.get(CONF_MAP_NIGHT)
     config[CONF_MAP_CUSTOM] = entry.data.get(CONF_MAP_CUSTOM)
     config[CONF_MAP_VACATION] = entry.data.get(CONF_MAP_VACATION)
-
-    # Migrate old config: derive per-button mappings from PERI_alarm checkbox
-    if config[CONF_MAP_HOME] is None:
-        is_peri = config.get(CONF_PERI_ALARM, DEFAULT_PERI_ALARM)
-        defaults = PERI_DEFAULTS if is_peri else STD_DEFAULTS
-        config[CONF_MAP_HOME] = defaults[CONF_MAP_HOME]
-        config[CONF_MAP_AWAY] = defaults[CONF_MAP_AWAY]
-        config[CONF_MAP_NIGHT] = defaults[CONF_MAP_NIGHT]
-        config[CONF_MAP_CUSTOM] = defaults[CONF_MAP_CUSTOM]
-        config[CONF_MAP_VACATION] = defaults[CONF_MAP_VACATION]
-        hass.config_entries.async_update_entry(
-            entry,
-            data={
-                **entry.data,
-                CONF_MAP_HOME: config[CONF_MAP_HOME],
-                CONF_MAP_AWAY: config[CONF_MAP_AWAY],
-                CONF_MAP_NIGHT: config[CONF_MAP_NIGHT],
-                CONF_MAP_CUSTOM: config[CONF_MAP_CUSTOM],
-                CONF_MAP_VACATION: config[CONF_MAP_VACATION],
-            },
-        )
 
     if CONF_DEVICE_ID in entry.data:
         config[CONF_DEVICE_ID] = entry.data[CONF_DEVICE_ID]
