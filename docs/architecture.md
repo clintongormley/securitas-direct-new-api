@@ -194,6 +194,20 @@ When the user changes options (PIN code, scan interval, alarm mappings, etc.), t
 
 A thin wrapper around `Installation` that provides `device_info` for the HA device registry. Each physical installation becomes one device.
 
+## Polling intervals
+
+Home Assistant has a built-in polling mechanism: if a platform module defines a module-level `SCAN_INTERVAL` constant and an entity's `should_poll` property returns `True` (the default), HA calls `async_update()` on each entity at that interval.
+
+The integration has a **user-configurable scan interval** (`scan_interval` in options, default `DEFAULT_SCAN_INTERVAL = 120` seconds). Each platform handles polling differently:
+
+| Platform | Module-level `SCAN_INTERVAL` | Actually used? | How polling works |
+|----------|------------------------------|----------------|-------------------|
+| `alarm_control_panel.py` | `timedelta(minutes=20)` | No (dead code) | Uses `async_track_time_interval` with the user's configured `scan_interval`. The 20-minute constant is a safety fallback if HA's default polling somehow fires. |
+| `lock.py` | `timedelta(minutes=20)` | No (dead code) | Same as alarm — uses `async_track_time_interval` with configured interval. |
+| `sensor.py` | `timedelta(minutes=30)` | **Yes** | Relies on HA's built-in polling. Does not read the user's configured interval. 30 minutes is appropriate for environmental data (temperature, humidity, air quality) which changes slowly. |
+
+The alarm and lock platforms manage their own timers because they need per-entity control (e.g. skipping polls during `_operation_in_progress`, supporting `scan_interval=0` to disable polling). The sensor platform uses the simpler HA-native approach since sensor data changes slowly and doesn't need the same level of control.
+
 ## Entity platforms
 
 ### Alarm control panel (`alarm_control_panel.py`)
@@ -305,7 +319,7 @@ Three sensor types from Sentinel environmental monitoring devices:
 - **SentinelHumidity** — Humidity as percentage
 - **SentinelAirQuality** — Air quality index with message (e.g. "Good")
 
-Sensors are discovered during platform setup by scanning services for ones matching the Sentinel name (language-dependent: "CONFORT" in Spanish, "COMFORTO" in Portuguese). Each sensor polls its data independently via `async_update()` with a 30-minute interval.
+Sensors are discovered during platform setup by scanning services for ones matching the Sentinel name (language-dependent: "CONFORT" in Spanish, "COMFORTO" in Portuguese). No API calls are made during setup — entities start with unknown state. Data is populated by `async_update()` using HA's built-in polling at a 30-minute interval (see [Polling intervals](#polling-intervals)).
 
 ### Smart lock (`lock.py`)
 
