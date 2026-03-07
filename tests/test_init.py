@@ -1261,7 +1261,8 @@ class TestAsyncMigrateEntry:
         )
         entry.add_to_hass(hass)
 
-        result = await async_migrate_entry(hass, entry)
+        with patch("custom_components.securitas._notify_error"):
+            result = await async_migrate_entry(hass, entry)
 
         assert result is False
         # Entry version remains unchanged
@@ -1280,7 +1281,8 @@ class TestAsyncMigrateEntry:
         )
         entry.add_to_hass(hass)
 
-        result = await async_migrate_entry(hass, entry)
+        with patch("custom_components.securitas._notify_error"):
+            result = await async_migrate_entry(hass, entry)
 
         assert result is False
         assert entry.version == 2
