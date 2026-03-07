@@ -15,6 +15,7 @@ from custom_components.securitas import (
     CONF_DELAY_CHECK_OPERATION,
     CONF_DEVICE_INDIGITALL,
     CONF_ENTRY_ID,
+    CONF_HAS_PERI,
     CONF_MAP_AWAY,
     CONF_MAP_CUSTOM,
     CONF_MAP_HOME,
@@ -196,7 +197,7 @@ def make_config_entry_data(
     password: str = "test-password",
     country: str = "ES",
     code: str = "",
-    peri_alarm: bool = False,
+    has_peri: bool = False,
     code_arm_required: bool = False,
     check_alarm_panel: bool = True,
     scan_interval: int = DEFAULT_SCAN_INTERVAL,
@@ -212,13 +213,14 @@ def make_config_entry_data(
     notify_group: str = "",
 ) -> dict:
     """Build config entry data dict with sensible defaults."""
-    defaults = PERI_DEFAULTS if peri_alarm else STD_DEFAULTS
+    defaults = PERI_DEFAULTS if has_peri else STD_DEFAULTS
     return {
         CONF_USERNAME: username,
         CONF_PASSWORD: password,
         CONF_COUNTRY: country,
         CONF_CODE: code,
-        CONF_PERI_ALARM: peri_alarm,
+        CONF_HAS_PERI: has_peri,
+        CONF_PERI_ALARM: has_peri,
         CONF_CODE_ARM_REQUIRED: code_arm_required,
         CONF_CHECK_ALARM_PANEL: check_alarm_panel,
         CONF_SCAN_INTERVAL: scan_interval,

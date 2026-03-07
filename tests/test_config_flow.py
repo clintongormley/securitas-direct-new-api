@@ -12,13 +12,14 @@ from custom_components.securitas import (
     CONF_DELAY_CHECK_OPERATION,
     CONF_DEVICE_INDIGITALL,
     CONF_ENTRY_ID,
+    CONF_HAS_PERI,
     CONF_INSTALLATION,
     CONF_MAP_AWAY,
     CONF_MAP_CUSTOM,
     CONF_MAP_HOME,
     CONF_MAP_NIGHT,
     CONF_MAP_VACATION,
-    CONF_PERI_ALARM,
+    CONF_NOTIFY_GROUP,
     CONF_USE_2FA,
     DEFAULT_CHECK_ALARM_PANEL,
     DEFAULT_CODE_ARM_REQUIRED,
@@ -33,11 +34,10 @@ from custom_components.securitas.securitas_direct_new_api import (
     STD_DEFAULTS,
     SecuritasState,
 )
-from homeassistant.config_entries import SOURCE_IMPORT, SOURCE_USER
+from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import (
     CONF_CODE,
     CONF_DEVICE_ID,
-    CONF_ERROR,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_TOKEN,
@@ -70,36 +70,32 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 FAKE_UUID = "abcd1234efgh5678"
 
-USER_INPUT_NO_2FA = {
+USER_INPUT_CREDENTIALS = {
+    CONF_COUNTRY: "ES",
     CONF_USERNAME: "test@example.com",
     CONF_PASSWORD: "test-password",
     CONF_USE_2FA: False,
-    CONF_COUNTRY: "ES",
-    CONF_CODE: "",
-    CONF_PERI_ALARM: False,
-    CONF_CODE_ARM_REQUIRED: False,
-    CONF_CHECK_ALARM_PANEL: True,
-    CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
 }
 
-USER_INPUT_2FA = {
-    **USER_INPUT_NO_2FA,
+USER_INPUT_CREDENTIALS_2FA = {
+    **USER_INPUT_CREDENTIALS,
     CONF_USE_2FA: True,
 }
 
-IMPORT_DATA = {
-    CONF_USERNAME: "test@example.com",
-    CONF_PASSWORD: "test-password",
-    CONF_COUNTRY: "ES",
+USER_INPUT_OPTIONS = {
     CONF_CODE: "",
-    CONF_CODE_ARM_REQUIRED: DEFAULT_CODE_ARM_REQUIRED,
-    CONF_CHECK_ALARM_PANEL: DEFAULT_CHECK_ALARM_PANEL,
+    CONF_CODE_ARM_REQUIRED: False,
+    CONF_CHECK_ALARM_PANEL: True,
     CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
-    CONF_DELAY_CHECK_OPERATION: DEFAULT_DELAY_CHECK_OPERATION,
-    CONF_DEVICE_ID: "test-device-id",
-    CONF_UNIQUE_ID: "test-uuid",
-    CONF_DEVICE_INDIGITALL: "test-indigitall",
-    CONF_ENTRY_ID: "",
+    CONF_DELAY_CHECK_OPERATION: float(DEFAULT_DELAY_CHECK_OPERATION),
+}
+
+USER_INPUT_MAPPINGS_STD = {
+    CONF_MAP_HOME: STD_DEFAULTS[CONF_MAP_HOME],
+    CONF_MAP_AWAY: STD_DEFAULTS[CONF_MAP_AWAY],
+    CONF_MAP_NIGHT: STD_DEFAULTS[CONF_MAP_NIGHT],
+    CONF_MAP_VACATION: STD_DEFAULTS[CONF_MAP_VACATION],
+    CONF_MAP_CUSTOM: STD_DEFAULTS[CONF_MAP_CUSTOM],
 }
 
 
@@ -140,6 +136,14 @@ def _hub_factory(**overrides):
     hub.get_authentication_token = MagicMock(side_effect=_get_token)
     hub.login = AsyncMock(side_effect=_login)
     hub.send_sms_code = AsyncMock(side_effect=_send_sms_code)
+
+    # get_services sets alarm_partitions on the installation (no peri by default)
+    async def _get_services(installation):
+        installation.alarm_partitions = []
+        return []
+
+    hub.get_services = AsyncMock(side_effect=_get_services)
+
     return hub
 
 
@@ -171,11 +175,37 @@ def _patches(mock_hub, uuid=FAKE_UUID):
     return _ctx()
 
 
+async def _complete_full_flow(hass, mock_hub, credentials=None, options=None, mappings=None):
+    """Navigate full config flow: credentials -> options -> mappings -> create entry."""
+    creds = credentials or USER_INPUT_CREDENTIALS
+    opts = options or USER_INPUT_OPTIONS
+    maps = mappings or USER_INPUT_MAPPINGS_STD
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=creds
+        )
+
+    if result["type"] == FlowResultType.FORM and result["step_id"] == "options":
+        flow_id = result["flow_id"]
+        result = await hass.config_entries.flow.async_configure(
+            flow_id, user_input=opts
+        )
+
+    if result["type"] == FlowResultType.FORM and result["step_id"] == "mappings":
+        flow_id = result["flow_id"]
+        result = await hass.config_entries.flow.async_configure(
+            flow_id, user_input=maps
+        )
+
+    return result
+
+
 async def _start_2fa_flow(hass, mock_hub):
     """Helper: start the 2FA flow up to the phone_list step and return flow_id."""
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS_2FA
         )
     assert result["step_id"] == "phone_list"
     return result["flow_id"]
@@ -192,7 +222,7 @@ async def _get_to_otp_step(hass, mock_hub):
     return flow_id
 
 
-async def _advance_to_mappings(hass, entry, peri_alarm=False):
+async def _advance_to_mappings(hass, entry):
     """Helper to get to the mappings step of options flow."""
     result = await hass.config_entries.options.async_init(entry.entry_id)
     flow_id = result["flow_id"]
@@ -202,7 +232,6 @@ async def _advance_to_mappings(hass, entry, peri_alarm=False):
         user_input={
             CONF_CODE: "1234",
             CONF_CODE_ARM_REQUIRED: False,
-            CONF_PERI_ALARM: peri_alarm,
             CONF_CHECK_ALARM_PANEL: True,
             CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
             CONF_DELAY_CHECK_OPERATION: float(DEFAULT_DELAY_CHECK_OPERATION),
@@ -213,7 +242,7 @@ async def _advance_to_mappings(hass, entry, peri_alarm=False):
 
 
 # ===================================================================
-# TestStepUser (~8 tests)
+# TestStepUser (~7 tests)
 # ===================================================================
 
 
@@ -226,19 +255,17 @@ async def test_step_user_initial_form_shown_when_no_input(hass):
     assert result["step_id"] == "user"
 
 
-async def test_step_user_non_2fa_flow_finishes_setup(hass):
-    """Non-2FA flow should call finish_setup and create an entry."""
+async def test_step_user_non_2fa_advances_to_options(hass):
+    """Non-2FA flow should advance to options step after credentials."""
     mock_hub = _hub_factory()
 
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Home"  # auto-selected installation alias
-    assert result["data"][CONF_USERNAME] == "test@example.com"
-    assert result["data"][CONF_INSTALLATION] == "123456"  # default installation number
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
     mock_hub.login.assert_awaited_once()
 
 
@@ -248,7 +275,7 @@ async def test_step_user_2fa_flow_shows_phone_list(hass):
 
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS_2FA
         )
 
     assert result["type"] == FlowResultType.FORM
@@ -260,10 +287,7 @@ async def test_step_user_generates_device_ids(hass):
     """async_step_user should generate uuid, device_id, and indigitall."""
     mock_hub = _hub_factory()
 
-    with _patches(mock_hub):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
-        )
+    result = await _complete_full_flow(hass, mock_hub)
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     data = result["data"]
@@ -276,10 +300,7 @@ async def test_step_user_sets_delay_check_operation(hass):
     """async_step_user should set default delay_check_operation."""
     mock_hub = _hub_factory()
 
-    with _patches(mock_hub):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
-        )
+    result = await _complete_full_flow(hass, mock_hub)
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_DELAY_CHECK_OPERATION] == DEFAULT_DELAY_CHECK_OPERATION
@@ -288,26 +309,11 @@ async def test_step_user_sets_delay_check_operation(hass):
 async def test_step_user_uses_init_data_when_user_input_is_data(hass):
     """When user_input is provided with data, it proceeds with that data."""
     mock_hub = _hub_factory()
-    init_data = {**USER_INPUT_NO_2FA}
 
-    with _patches(mock_hub):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=init_data
-        )
+    result = await _complete_full_flow(hass, mock_hub, credentials=USER_INPUT_CREDENTIALS)
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_USERNAME] == "test@example.com"
-
-
-async def test_step_user_login_error_during_import_shows_user_form(hass):
-    """When import data has error=login, async_step_import shows user form."""
-    import_data = {**IMPORT_DATA, CONF_ERROR: "login"}
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_IMPORT}, data=import_data
-    )
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "user"
 
 
 async def test_step_user_creates_securitas_hub(hass):
@@ -316,10 +322,11 @@ async def test_step_user_creates_securitas_hub(hass):
 
     with _patches(mock_hub) as hub_cls:
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
     hub_cls.assert_called_once()
 
 
@@ -414,8 +421,8 @@ async def test_otp_challenge_sends_sms_code(hass):
     mock_hub.send_sms_code.assert_awaited_once_with("otp-hash-abc", "123456")
 
 
-async def test_otp_challenge_calls_finish_setup(hass):
-    """After sending SMS code, finish_setup is called and entry is created."""
+async def test_otp_challenge_advances_to_options(hass):
+    """After sending SMS code, flow should advance to options step."""
     mock_hub = _hub_factory()
     flow_id = await _get_to_otp_step(hass, mock_hub)
 
@@ -424,9 +431,9 @@ async def test_otp_challenge_calls_finish_setup(hass):
             flow_id, user_input={CONF_CODE: "123456"}
         )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Home"  # auto-selected installation alias
-    # After OTP, token is already set by send_sms_code — login is skipped
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
+    # After OTP, token is already set by send_sms_code -- login is skipped
     mock_hub.login.assert_not_awaited()
 
 
@@ -435,60 +442,49 @@ async def test_otp_challenge_calls_finish_setup(hass):
 # ===================================================================
 
 
-async def test_finish_setup_logs_in_gets_token_creates_entry(hass):
-    """finish_setup should login, get token, and create entry."""
+async def test_finish_setup_logs_in_gets_token_advances_to_options(hass):
+    """finish_setup should login, get token, and advance to options."""
     mock_hub = _hub_factory()
 
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
     mock_hub.login.assert_awaited_once()
     assert (
         mock_hub.get_authentication_token.call_count == 2
     )  # is None check + get token
-    assert result["data"][CONF_TOKEN] == FAKE_JWT
 
 
 async def test_finish_setup_lists_installations(hass):
-    """finish_setup lists installations; get_services is deferred to async_setup_entry."""
+    """finish_setup lists installations and calls get_services."""
     mock_hub = _hub_factory()
 
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    # list_installations called once in config flow; async_setup_entry uses cache
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
     mock_hub.session.list_installations.assert_awaited_once()
-    # get_services NOT called in config flow; called in async_setup_entry
-    # (may be called multiple times: once in setup + once per platform)
-    assert mock_hub.get_services.await_count >= 1
+    mock_hub.get_services.assert_awaited_once()
 
 
 async def test_finish_setup_sets_hass_data(hass):
-    """finish_setup should populate hass.data[DOMAIN].
-
-    Note: async_setup_entry runs after the entry is created and may overwrite
-    hass.data[DOMAIN]. We mock it to isolate the config flow behavior.
-    """
+    """finish_setup should populate hass.data[DOMAIN]."""
     mock_hub = _hub_factory()
 
-    with (
-        _patches(mock_hub),
-        patch(
-            "custom_components.securitas.async_setup_entry",
-            return_value=True,
-        ),
-    ):
+    with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
     assert DOMAIN in hass.data
     assert "SecuritasHub" in hass.data[DOMAIN]
 
@@ -504,10 +500,11 @@ async def test_create_client_creates_hub_when_password_present(hass):
 
     with _patches(mock_hub) as hub_cls:
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
     hub_cls.assert_called_once()
     call_args = hub_cls.call_args
     config_arg = call_args[0][0]
@@ -525,106 +522,6 @@ async def test_create_client_raises_value_error_when_password_none(hass):
 
     with pytest.raises(ValueError, match="Invalid internal state"):
         flow._create_client()
-
-
-# ===================================================================
-# TestStepImport (~5 tests)
-# ===================================================================
-
-
-async def test_import_error_2fa_shows_user_form(hass):
-    """Import with error='2FA' should show user form."""
-    data = {**IMPORT_DATA, CONF_ERROR: "2FA"}
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_IMPORT}, data=data
-    )
-
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "user"
-
-
-async def test_import_error_login_shows_user_form(hass):
-    """Import with error='login' should show user form."""
-    data = {**IMPORT_DATA, CONF_ERROR: "login"}
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_IMPORT}, data=data
-    )
-
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "user"
-
-
-async def test_import_success_copies_config_and_creates_client(hass):
-    """Successful import should copy config data and create client.
-
-    Note: async_step_import returns the SecuritasHub object (not a FlowResult)
-    on success, so we test the handler method directly to avoid HA flow
-    infrastructure errors.
-    """
-    from custom_components.securitas.config_flow import FlowHandler
-
-    mock_hub = _hub_factory()
-    flow = FlowHandler()
-    flow.hass = hass
-
-    hub_cls = _make_hub_class_mock(mock_hub)
-    with (
-        patch(PATCH_HUB, hub_cls),
-        patch(PATCH_SESSION, return_value=MagicMock()),
-    ):
-        await flow.async_step_import(IMPORT_DATA)
-
-    hub_cls.assert_called_once()
-    mock_hub.login.assert_awaited_once()
-
-
-async def test_import_login_2fa_error_shows_user_form(hass):
-    """Login2FAError during import login should show user form."""
-    mock_hub = _hub_factory()
-    mock_hub.login = AsyncMock(side_effect=Login2FAError("2FA required"))
-
-    with (
-        patch(PATCH_HUB, return_value=mock_hub),
-        patch(PATCH_SESSION, return_value=MagicMock()),
-    ):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_IMPORT}, data=IMPORT_DATA
-        )
-
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "user"
-
-
-async def test_import_sets_all_config_fields(hass):
-    """Import should copy all config fields from user_input.
-
-    Tested directly on the handler since async_step_import returns a
-    SecuritasHub (not a FlowResult) on success.
-    """
-    from custom_components.securitas.config_flow import FlowHandler
-
-    mock_hub = _hub_factory()
-    flow = FlowHandler()
-    flow.hass = hass
-
-    hub_cls = _make_hub_class_mock(mock_hub)
-    with (
-        patch(PATCH_HUB, hub_cls),
-        patch(PATCH_SESSION, return_value=MagicMock()),
-    ):
-        await flow.async_step_import(IMPORT_DATA)
-
-    mock_hub.login.assert_awaited_once()
-    # Verify the config was passed to SecuritasHub constructor
-    call_args = hub_cls.call_args[0][0]
-    assert call_args[CONF_USERNAME] == "test@example.com"
-    assert call_args[CONF_PASSWORD] == "test-password"
-    assert call_args[CONF_COUNTRY] == "ES"
-    assert call_args[CONF_DEVICE_ID] == "test-device-id"
-    assert call_args[CONF_UNIQUE_ID] == "test-uuid"
-    assert call_args[CONF_DEVICE_INDIGITALL] == "test-indigitall"
 
 
 # ===================================================================
@@ -664,7 +561,6 @@ async def test_options_init_submitting_advances_to_mappings(hass):
         user_input={
             CONF_CODE: "1234",
             CONF_CODE_ARM_REQUIRED: True,
-            CONF_PERI_ALARM: False,
             CONF_CHECK_ALARM_PANEL: True,
             CONF_SCAN_INTERVAL: 60,
             CONF_DELAY_CHECK_OPERATION: 3.0,
@@ -714,15 +610,15 @@ async def test_options_init_reads_from_options_first(hass):
 
 
 async def test_options_mappings_std_options_when_peri_false(hass):
-    """Mappings step shows STD options when peri_alarm is False."""
+    """Mappings step shows STD options when has_peri is False."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data=make_config_entry_data(peri_alarm=False),
+        data=make_config_entry_data(has_peri=False),
         options={},
     )
     entry.add_to_hass(hass)
 
-    flow_id = await _advance_to_mappings(hass, entry, peri_alarm=False)
+    flow_id = await _advance_to_mappings(hass, entry)
     result = await hass.config_entries.options.async_configure(
         flow_id,
         user_input={
@@ -737,15 +633,15 @@ async def test_options_mappings_std_options_when_peri_false(hass):
 
 
 async def test_options_mappings_peri_options_when_peri_true(hass):
-    """Mappings step shows PERI options when peri_alarm is True."""
+    """Mappings step shows PERI options when has_peri is True."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data=make_config_entry_data(peri_alarm=True),
+        data=make_config_entry_data(has_peri=True),
         options={},
     )
     entry.add_to_hass(hass)
 
-    flow_id = await _advance_to_mappings(hass, entry, peri_alarm=True)
+    flow_id = await _advance_to_mappings(hass, entry)
     result = await hass.config_entries.options.async_configure(
         flow_id,
         user_input={
@@ -764,14 +660,14 @@ async def test_options_mappings_invalid_mapping_falls_back(hass):
     entry = MockConfigEntry(
         domain=DOMAIN,
         data=make_config_entry_data(
-            peri_alarm=False,
+            has_peri=False,
             map_home=SecuritasState.TOTAL_PERI.value,
         ),
         options={},
     )
     entry.add_to_hass(hass)
 
-    flow_id = await _advance_to_mappings(hass, entry, peri_alarm=False)
+    flow_id = await _advance_to_mappings(hass, entry)
     result = await hass.config_entries.options.async_configure(
         flow_id,
         user_input={
@@ -794,7 +690,7 @@ async def test_options_mappings_submitting_creates_entry(hass):
     )
     entry.add_to_hass(hass)
 
-    flow_id = await _advance_to_mappings(hass, entry, peri_alarm=False)
+    flow_id = await _advance_to_mappings(hass, entry)
 
     result = await hass.config_entries.options.async_configure(
         flow_id,
@@ -824,7 +720,7 @@ async def test_options_mappings_entry_contains_general_and_mapping_data(hass):
     )
     entry.add_to_hass(hass)
 
-    flow_id = await _advance_to_mappings(hass, entry, peri_alarm=False)
+    flow_id = await _advance_to_mappings(hass, entry)
 
     result = await hass.config_entries.options.async_configure(
         flow_id,
@@ -901,12 +797,12 @@ async def test_single_installation_auto_selects(hass):
 
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == "My Home"
-    assert result["data"][CONF_INSTALLATION] == "111"
+    # After credentials, flow goes to options (not CREATE_ENTRY)
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
 
 
 async def test_multiple_installations_show_picker(hass):
@@ -921,15 +817,15 @@ async def test_multiple_installations_show_picker(hass):
 
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "select_installation"
 
 
-async def test_select_installation_creates_entry(hass):
-    """Picking an installation from the list creates a config entry."""
+async def test_select_installation_advances_to_options(hass):
+    """Picking an installation from the list advances to options."""
     mock_hub = _hub_factory()
     mock_hub.session.list_installations = AsyncMock(
         return_value=[
@@ -940,7 +836,7 @@ async def test_select_installation_creates_entry(hass):
 
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
     assert result["type"] == FlowResultType.FORM
@@ -951,9 +847,8 @@ async def test_select_installation_creates_entry(hass):
         flow_id, user_input={CONF_INSTALLATION: "222"}
     )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Office"
-    assert result["data"][CONF_INSTALLATION] == "222"
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
 
 
 async def test_unique_id_includes_installation(hass):
@@ -963,10 +858,7 @@ async def test_unique_id_includes_installation(hass):
         return_value=[make_installation(number="42", alias="Cabin")]
     )
 
-    with _patches(mock_hub):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
-        )
+    result = await _complete_full_flow(hass, mock_hub)
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     # Check unique_id on the created config entry
@@ -978,10 +870,13 @@ async def test_unique_id_includes_installation(hass):
 async def test_already_configured_filtered_out(hass):
     """Installations with existing config entries should be excluded."""
     # Pre-add a config entry for installation 111
+    existing_data = make_config_entry_data()
+    existing_data[CONF_INSTALLATION] = "111"
     existing = MockConfigEntry(
         domain=DOMAIN,
         unique_id="test@example.com_111",
-        data={"username": "test@example.com", CONF_INSTALLATION: "111"},
+        data=existing_data,
+        version=3,
     )
     existing.add_to_hass(hass)
 
@@ -993,12 +888,9 @@ async def test_already_configured_filtered_out(hass):
         ]
     )
 
-    with _patches(mock_hub):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
-        )
+    result = await _complete_full_flow(hass, mock_hub)
 
-    # Only installation 222 remains, so it should auto-select
+    # Only installation 222 remains, so it should auto-select and complete
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_INSTALLATION] == "222"
     assert result["title"] == "Office"
@@ -1006,10 +898,13 @@ async def test_already_configured_filtered_out(hass):
 
 async def test_all_configured_aborts(hass):
     """When all installations are already configured, abort."""
+    existing_data = make_config_entry_data()
+    existing_data[CONF_INSTALLATION] = "111"
     existing = MockConfigEntry(
         domain=DOMAIN,
         unique_id="test@example.com_111",
-        data={"username": "test@example.com", CONF_INSTALLATION: "111"},
+        data=existing_data,
+        version=3,
     )
     existing.add_to_hass(hass)
 
@@ -1020,8 +915,128 @@ async def test_all_configured_aborts(hass):
 
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+# ===================================================================
+# TestFullFlow (~3 tests)
+# ===================================================================
+
+
+async def test_full_flow_creates_entry(hass):
+    """Complete flow: credentials -> options -> mappings -> CREATE_ENTRY."""
+    mock_hub = _hub_factory()
+
+    result = await _complete_full_flow(hass, mock_hub)
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Home"  # auto-selected installation alias
+    assert result["data"][CONF_USERNAME] == "test@example.com"
+    assert result["data"][CONF_INSTALLATION] == "123456"  # default installation number
+    assert result["data"][CONF_TOKEN] == FAKE_JWT
+
+
+async def test_full_flow_2fa_creates_entry(hass):
+    """Complete 2FA flow: credentials -> phone -> otp -> options -> mappings."""
+    mock_hub = _hub_factory()
+    flow_id = await _get_to_otp_step(hass, mock_hub)
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_configure(
+            flow_id, user_input={CONF_CODE: "123456"}
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
+    flow_id = result["flow_id"]
+
+    result = await hass.config_entries.flow.async_configure(
+        flow_id, user_input=USER_INPUT_OPTIONS
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "mappings"
+    flow_id = result["flow_id"]
+
+    result = await hass.config_entries.flow.async_configure(
+        flow_id, user_input=USER_INPUT_MAPPINGS_STD
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Home"
+
+
+async def test_full_flow_select_installation_creates_entry(hass):
+    """Complete flow with installation picker creates entry."""
+    mock_hub = _hub_factory()
+    mock_hub.session.list_installations = AsyncMock(
+        return_value=[
+            make_installation(number="111", alias="Home"),
+            make_installation(number="222", alias="Office"),
+        ]
+    )
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "select_installation"
+    flow_id = result["flow_id"]
+
+    result = await hass.config_entries.flow.async_configure(
+        flow_id, user_input={CONF_INSTALLATION: "222"}
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
+    flow_id = result["flow_id"]
+
+    result = await hass.config_entries.flow.async_configure(
+        flow_id, user_input=USER_INPUT_OPTIONS
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "mappings"
+    flow_id = result["flow_id"]
+
+    result = await hass.config_entries.flow.async_configure(
+        flow_id, user_input=USER_INPUT_MAPPINGS_STD
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Office"
+    assert result["data"][CONF_INSTALLATION] == "222"
+
+
+# ===================================================================
+# TestPeriAutoDetection (~2 tests)
+# ===================================================================
+
+
+async def test_peri_detected_from_alarm_partitions(hass):
+    """When alarm_partitions contain peri states, CONF_HAS_PERI should be True."""
+    mock_hub = _hub_factory()
+
+    async def _get_services_with_peri(installation):
+        installation.alarm_partitions = [
+            {"id": "1", "enterStates": ["T", "A", "P"], "leaveStates": ["D"]}
+        ]
+        return []
+
+    mock_hub.get_services = AsyncMock(side_effect=_get_services_with_peri)
+
+    result = await _complete_full_flow(hass, mock_hub)
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_HAS_PERI] is True
+
+
+async def test_no_peri_when_alarm_partitions_empty(hass):
+    """When alarm_partitions are empty, CONF_HAS_PERI should be False."""
+    mock_hub = _hub_factory()
+
+    result = await _complete_full_flow(hass, mock_hub)
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_HAS_PERI] is False
