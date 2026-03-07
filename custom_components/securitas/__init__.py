@@ -156,6 +156,49 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await hass.config_entries.async_reload(entry.entry_id)
 
 
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate old config entries to new format."""
+    if config_entry.version == 1:
+        _LOGGER.debug("Migrating config entry from v1 to v2")
+
+        # Create temporary API session to discover installations
+        config = dict(config_entry.data)
+        add_device_information(config)
+        http_client = async_get_clientsession(hass)
+        hub = SecuritasHub(config, config_entry, http_client, hass)
+
+        try:
+            await hub.login()
+            installations = await hub.session.list_installations()
+        except Exception:
+            _LOGGER.error("Migration failed: could not connect to Securitas API")
+            return False
+
+        if not installations:
+            _LOGGER.error("Migration failed: no installations found")
+            return False
+
+        # Assign first installation
+        installation = installations[0]
+        new_data = dict(config_entry.data)
+        new_data[CONF_INSTALLATION] = installation.number
+
+        hass.config_entries.async_update_entry(
+            config_entry,
+            data=new_data,
+            unique_id=f"{config_entry.data[CONF_USERNAME]}_{installation.number}",
+            version=2,
+        )
+
+        _LOGGER.info(
+            "Migrated config entry to v2: installation %s (%s)",
+            installation.number,
+            installation.alias,
+        )
+
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Establish connection with Securitas Direct."""
     need_sign_in: bool = False

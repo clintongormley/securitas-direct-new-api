@@ -40,6 +40,7 @@ from custom_components.securitas import (
     SecuritasHub,
     _notify_error,
     add_device_information,
+    async_migrate_entry,
     async_setup_entry,
     async_unload_entry,
     async_update_options,
@@ -1303,3 +1304,142 @@ class TestSharedSession:
         entry_data = hass.data[DOMAIN][entry.entry_id]
         # Should get all installations (2 from mock_hub fixture)
         assert len(entry_data["devices"]) == 2
+
+
+# ===========================================================================
+# Migration tests
+# ===========================================================================
+
+
+class TestAsyncMigrateEntry:
+    """Tests for async_migrate_entry (v1 → v2 migration)."""
+
+    async def test_migration_v1_to_v2_single_installation(self, hass):
+        """v1 entry with one installation -> updates unique_id and adds CONF_INSTALLATION."""
+        data = make_config_entry_data(username="user@example.com")
+        # v1 entries have no CONF_INSTALLATION
+        assert CONF_INSTALLATION not in data
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=data,
+            unique_id="user@example.com",
+            version=1,
+        )
+        entry.add_to_hass(hass)
+
+        installation = make_installation(number="111222", alias="My Home")
+        mock_hub = make_securitas_hub_mock()
+        mock_hub.session.list_installations = AsyncMock(
+            return_value=[installation]
+        )
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+        ):
+            result = await async_migrate_entry(hass, entry)
+
+        assert result is True
+        assert entry.version == 2
+        assert entry.unique_id == "user@example.com_111222"
+        assert entry.data[CONF_INSTALLATION] == "111222"
+
+    async def test_migration_v1_to_v2_multi_installation(self, hass):
+        """v1 entry with multiple installations -> assigns first one."""
+        data = make_config_entry_data(username="user@example.com")
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=data,
+            unique_id="user@example.com",
+            version=1,
+        )
+        entry.add_to_hass(hass)
+
+        inst1 = make_installation(number="111111", alias="Home")
+        inst2 = make_installation(number="222222", alias="Office")
+        mock_hub = make_securitas_hub_mock()
+        mock_hub.session.list_installations = AsyncMock(
+            return_value=[inst1, inst2]
+        )
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+        ):
+            result = await async_migrate_entry(hass, entry)
+
+        assert result is True
+        assert entry.version == 2
+        assert entry.unique_id == "user@example.com_111111"
+        assert entry.data[CONF_INSTALLATION] == "111111"
+
+    async def test_migration_v2_is_noop(self, hass):
+        """v2 entry passes through unchanged."""
+        data = make_config_entry_data(username="user@example.com")
+        data[CONF_INSTALLATION] = "123456"
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=data,
+            unique_id="user@example.com_123456",
+            version=2,
+        )
+        entry.add_to_hass(hass)
+
+        result = await async_migrate_entry(hass, entry)
+
+        assert result is True
+        assert entry.version == 2
+        assert entry.unique_id == "user@example.com_123456"
+        assert entry.data[CONF_INSTALLATION] == "123456"
+
+    async def test_migration_api_failure(self, hass):
+        """Login fails -> returns False."""
+        data = make_config_entry_data(username="user@example.com")
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=data,
+            unique_id="user@example.com",
+            version=1,
+        )
+        entry.add_to_hass(hass)
+
+        mock_hub = make_securitas_hub_mock()
+        mock_hub.login = AsyncMock(side_effect=Exception("Connection failed"))
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+        ):
+            result = await async_migrate_entry(hass, entry)
+
+        assert result is False
+        # Entry should remain v1
+        assert entry.version == 1
+
+    async def test_migration_no_installations(self, hass):
+        """No installations found -> returns False."""
+        data = make_config_entry_data(username="user@example.com")
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=data,
+            unique_id="user@example.com",
+            version=1,
+        )
+        entry.add_to_hass(hass)
+
+        mock_hub = make_securitas_hub_mock()
+        mock_hub.session.list_installations = AsyncMock(return_value=[])
+
+        with (
+            _patch_hub(mock_hub),
+            patch("custom_components.securitas.async_get_clientsession"),
+        ):
+            result = await async_migrate_entry(hass, entry)
+
+        assert result is False
+        assert entry.version == 1

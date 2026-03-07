@@ -62,7 +62,7 @@ from .securitas_direct_new_api import (
     STATE_LABELS,
 )
 
-VERSION = 1
+VERSION = 2
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ _LOGGER = logging.getLogger(__name__)
 class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow."""
 
-    VERSION = 1
+    VERSION = 2
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
     def __init__(self) -> None:
