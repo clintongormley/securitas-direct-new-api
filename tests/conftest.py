@@ -15,7 +15,6 @@ from custom_components.securitas import (
     CONF_DELAY_CHECK_OPERATION,
     CONF_DEVICE_INDIGITALL,
     CONF_ENTRY_ID,
-    CONF_INSTALLATION_KEY,
     CONF_MAP_AWAY,
     CONF_MAP_CUSTOM,
     CONF_MAP_HOME,
@@ -287,8 +286,9 @@ def setup_integration_data(
     if devices is None:
         devices = [SecuritasDirectDevice(make_installation())]
     hass.data[DOMAIN] = {
-        SecuritasHub.__name__: client,
-        CONF_INSTALLATION_KEY: devices,
         CONF_ENTRY_ID: entry_id,
-        entry_id: client,
+        entry_id: {
+            "hub": client,
+            "devices": devices,
+        },
     }

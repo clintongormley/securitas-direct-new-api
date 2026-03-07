@@ -283,6 +283,7 @@ class TestAsyncSetupEntry:
         setup_integration_data(hass, client, devices=devices)
 
         entry = MagicMock()
+        entry.entry_id = "test-entry-id"
         async_add_entities = MagicMock()
 
         await async_setup_entry(hass, entry, async_add_entities)
@@ -303,6 +304,7 @@ class TestAsyncSetupEntry:
         setup_integration_data(hass, client, devices=devices)
 
         entry = MagicMock()
+        entry.entry_id = "test-entry-id"
         async_add_entities = MagicMock()
 
         await async_setup_entry(hass, entry, async_add_entities)
@@ -324,6 +326,7 @@ class TestAsyncSetupEntry:
         setup_integration_data(hass, client, devices=devices)
 
         entry = MagicMock()
+        entry.entry_id = "test-entry-id"
         async_add_entities = MagicMock()
 
         await async_setup_entry(hass, entry, async_add_entities)

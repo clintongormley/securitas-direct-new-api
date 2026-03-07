@@ -13,7 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 import logging
 
-from . import CONF_INSTALLATION_KEY, DOMAIN, SecuritasDirectDevice, SecuritasHub
+from . import DOMAIN, SecuritasDirectDevice, SecuritasHub
 from .constants import SentinelName
 from .securitas_direct_new_api import Installation, SecuritasDirectError
 from .securitas_direct_new_api.dataTypes import Service
@@ -32,11 +32,10 @@ async def async_setup_entry(
     __init__ setup).  Entities start with unknown state; the first periodic
     ``async_update`` populates values via rate-limited hub methods.
     """
-    client: SecuritasHub = hass.data[DOMAIN][SecuritasHub.__name__]
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    client: SecuritasHub = entry_data["hub"]
     sensors: list[SensorEntity] = []
-    securitas_devices: list[SecuritasDirectDevice] = hass.data[DOMAIN].get(
-        CONF_INSTALLATION_KEY
-    )
+    securitas_devices: list[SecuritasDirectDevice] = entry_data["devices"]
 
     sentinel_name: SentinelName = SentinelName()
     sentinel_confort_name = sentinel_name.get_sentinel_name(client.lang)

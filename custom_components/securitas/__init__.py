@@ -336,13 +336,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "devices": devices,
         }
 
-        # Backward compatibility: populate old keys so existing entity
-        # platforms (alarm_control_panel, lock, button, sensor) keep
-        # working until they are updated to read from per-entry data.
-        hass.data[DOMAIN][SecuritasHub.__name__] = client
-        hass.data[DOMAIN][CONF_INSTALLATION_KEY] = devices
-        hass.data[DOMAIN][entry.unique_id] = config
-
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         return True
     else:

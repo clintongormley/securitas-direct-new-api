@@ -27,7 +27,6 @@ from homeassistant.exceptions import ServiceValidationError
 
 from . import (
     CONF_CODE_ARM_REQUIRED,
-    CONF_INSTALLATION_KEY,
     CONF_NOTIFY_GROUP,
     CONF_PERI_ALARM,
     DEFAULT_PERI_ALARM,
@@ -77,11 +76,10 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Securitas Direct based on config_entry."""
-    client: SecuritasHub = hass.data[DOMAIN][SecuritasHub.__name__]
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    client: SecuritasHub = entry_data["hub"]
     alarms = []
-    securitas_devices: list[SecuritasDirectDevice] = hass.data[DOMAIN].get(
-        CONF_INSTALLATION_KEY
-    )
+    securitas_devices: list[SecuritasDirectDevice] = entry_data["devices"]
     for devices in securitas_devices:
         try:
             current_state: CheckAlarmStatus = await client.update_overview(

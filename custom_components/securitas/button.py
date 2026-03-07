@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import CONF_INSTALLATION_KEY, DOMAIN, SecuritasDirectDevice, SecuritasHub
+from . import DOMAIN, SecuritasDirectDevice, SecuritasHub
 from .securitas_direct_new_api import (
     ALARM_STATUS_POLL_DELAY,
     Installation,
@@ -23,11 +23,10 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Securitas Direct Refresh Button based on config_entry."""
-    client: SecuritasHub = hass.data[DOMAIN][SecuritasHub.__name__]
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    client: SecuritasHub = entry_data["hub"]
     buttons = []
-    securitas_devices: list[SecuritasDirectDevice] = hass.data[DOMAIN].get(
-        CONF_INSTALLATION_KEY
-    )
+    securitas_devices: list[SecuritasDirectDevice] = entry_data["devices"]
     for device in securitas_devices:
         buttons.append(SecuritasRefreshButton(device.installation, client, hass))
     async_add_entities(buttons, True)

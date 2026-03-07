@@ -14,7 +14,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 
 from . import (
-    CONF_INSTALLATION_KEY,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     SecuritasDirectDevice,
@@ -52,11 +51,10 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Securitas Direct lock entities."""
-    client: SecuritasHub = hass.data[DOMAIN][SecuritasHub.__name__]
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    client: SecuritasHub = entry_data["hub"]
     locks: list[SecuritasLock] = []
-    securitas_devices: list[SecuritasDirectDevice] = hass.data[DOMAIN].get(
-        CONF_INSTALLATION_KEY
-    )
+    securitas_devices: list[SecuritasDirectDevice] = entry_data["devices"]
     for device in securitas_devices:
         services: list[Service] = await client.get_services(device.installation)
         has_doorlock = any(s.request == DOORLOCK_SERVICE for s in services)

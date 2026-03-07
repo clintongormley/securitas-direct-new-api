@@ -524,7 +524,9 @@ class TestAsyncSetupEntry:
         mock_hub.login.assert_awaited_once()
         mock_hub.session.list_installations.assert_awaited_once()
         assert DOMAIN in hass.data
-        assert CONF_INSTALLATION_KEY in hass.data[DOMAIN]
+        assert entry.entry_id in hass.data[DOMAIN]
+        assert "hub" in hass.data[DOMAIN][entry.entry_id]
+        assert "devices" in hass.data[DOMAIN][entry.entry_id]
 
     async def test_setup_login_2fa_error(self, hass, mock_hub):
         """Login2FAError should return False and create a notification."""
@@ -653,7 +655,7 @@ class TestAsyncSetupEntry:
         assert result is False
 
     async def test_setup_stores_hub_in_hass_data(self, hass, mock_hub):
-        """After successful setup, SecuritasHub should be stored in hass.data."""
+        """After successful setup, SecuritasHub should be stored in per-entry data."""
         entry = MockConfigEntry(domain=DOMAIN, data=make_config_entry_data())
         entry.add_to_hass(hass)
 
@@ -668,10 +670,10 @@ class TestAsyncSetupEntry:
         ):
             await async_setup_entry(hass, entry)
 
-        assert hass.data[DOMAIN][SecuritasHub.__name__] is mock_hub
+        assert hass.data[DOMAIN][entry.entry_id]["hub"] is mock_hub
 
     async def test_setup_stores_devices_in_hass_data(self, hass, mock_hub):
-        """After successful setup, devices list should be in hass.data."""
+        """After successful setup, devices list should be in per-entry data."""
         entry = MockConfigEntry(domain=DOMAIN, data=make_config_entry_data())
         entry.add_to_hass(hass)
 
@@ -686,7 +688,7 @@ class TestAsyncSetupEntry:
         ):
             await async_setup_entry(hass, entry)
 
-        devices = hass.data[DOMAIN][CONF_INSTALLATION_KEY]
+        devices = hass.data[DOMAIN][entry.entry_id]["devices"]
         assert len(devices) == 1
         assert isinstance(devices[0], SecuritasDirectDevice)
 
@@ -1252,8 +1254,8 @@ class TestSharedSession:
         # Entire DOMAIN should be cleaned up
         assert DOMAIN not in hass.data
 
-    async def test_backward_compat_keys_populated(self, hass, mock_hub):
-        """Old hass.data keys should still be populated for backward compat."""
+    async def test_per_entry_data_populated(self, hass, mock_hub):
+        """Per-entry data should contain hub and filtered devices."""
         data = make_config_entry_data()
         data[CONF_INSTALLATION] = "111"
         entry = MockConfigEntry(domain=DOMAIN, data=data)
@@ -1270,12 +1272,15 @@ class TestSharedSession:
         ):
             await async_setup_entry(hass, entry)
 
-        # Old keys should still be present
-        assert hass.data[DOMAIN][SecuritasHub.__name__] is mock_hub
-        assert CONF_INSTALLATION_KEY in hass.data[DOMAIN]
-        devices = hass.data[DOMAIN][CONF_INSTALLATION_KEY]
+        # Per-entry data should be present
+        entry_data = hass.data[DOMAIN][entry.entry_id]
+        assert entry_data["hub"] is mock_hub
+        devices = entry_data["devices"]
         assert len(devices) == 1
         assert isinstance(devices[0], SecuritasDirectDevice)
+        # Old backward-compat keys should NOT be present
+        assert SecuritasHub.__name__ not in hass.data[DOMAIN]
+        assert CONF_INSTALLATION_KEY not in hass.data[DOMAIN]
 
     async def test_legacy_entry_without_installation_gets_all(self, hass, mock_hub):
         """An entry without CONF_INSTALLATION should get all installations."""
