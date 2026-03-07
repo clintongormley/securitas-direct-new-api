@@ -7,6 +7,9 @@ from custom_components.securitas.securitas_direct_new_api.dataTypes import (
     AirQuality,
     Attribute,
     Attributes,
+    DanalockAutolock,
+    DanalockConfig,
+    DanalockFeatures,
     Installation,
     Sentinel,
     Service,
@@ -93,7 +96,11 @@ def make_device():
     return SecuritasDirectDevice(make_installation())
 
 
-def make_lock():
+def make_lock(
+    device_id: str = "01",
+    initial_status: str = "2",
+    danalock_config: DanalockConfig | None = None,
+):
     """Create a SecuritasLock with mocked dependencies."""
     installation = make_installation()
     client = MagicMock()
@@ -107,7 +114,14 @@ def make_lock():
         "custom_components.securitas.lock.async_track_time_interval"
     ) as mock_track:
         mock_track.return_value = MagicMock()
-        lock_entity = SecuritasLock(installation=installation, client=client, hass=hass)
+        lock_entity = SecuritasLock(
+            installation=installation,
+            client=client,
+            hass=hass,
+            device_id=device_id,
+            initial_status=initial_status,
+            danalock_config=danalock_config,
+        )
     return lock_entity
 
 
@@ -375,9 +389,87 @@ class TestSecuritasLockInit:
             lock._state = state
             assert lock.is_unlocking is False
 
-    def test_name_returns_installation_alias(self):
+    def test_name_returns_installation_alias_with_device_id(self):
         lock = make_lock()
-        assert lock.name == "Home"
+        assert lock.name == "Home Lock 01"
+
+    def test_name_includes_custom_device_id(self):
+        lock = make_lock(device_id="02")
+        assert lock.name == "Home Lock 02"
+
+
+class TestSecuritasLockConfig:
+    """Tests for SecuritasLock unique_id, device_info, and extra_state_attributes."""
+
+    def test_unique_id_default_device_uses_old_format(self):
+        lock = make_lock(device_id="01")
+        assert lock._attr_unique_id == "securitas_direct.123456"
+
+    def test_unique_id_other_device_uses_new_format(self):
+        lock = make_lock(device_id="02")
+        assert lock._attr_unique_id == "securitas_direct.123456_lock_02"
+
+    def test_initial_status_unknown_defaults_to_locked(self):
+        lock = make_lock(initial_status="0")
+        assert lock._state == "2"
+
+    def test_initial_status_preserved_when_not_unknown(self):
+        lock = make_lock(initial_status="1")
+        assert lock._state == "1"
+
+    def test_extra_state_attributes_empty_without_danalock_config(self):
+        lock = make_lock()
+        assert lock.extra_state_attributes == {}
+
+    def test_extra_state_attributes_with_danalock_config(self):
+        config = DanalockConfig(
+            batteryLowPercentage="40",
+            lockBeforeFullArm="1",
+            lockBeforePartialArm="1",
+            lockBeforePerimeterArm="1",
+            unlockAfterDisarm="0",
+            autoLockTime="000",
+            features=DanalockFeatures(
+                holdBackLatchTime=3,
+                calibrationType=0,
+                autolock=DanalockAutolock(active=True, timeout=30),
+            ),
+        )
+        lock = make_lock(danalock_config=config)
+        attrs = lock.extra_state_attributes
+        assert attrs is not None
+        assert attrs["battery_low_threshold"] == "40"
+        assert attrs["lock_before_full_arm"] is True
+        assert attrs["lock_before_partial_arm"] is True
+        assert attrs["lock_before_perimeter_arm"] is True
+        assert attrs["unlock_after_disarm"] is False
+        assert attrs["auto_lock_time"] == "000"
+        assert attrs["hold_back_latch_time"] == 3
+        assert attrs["autolock_active"] is True
+        assert attrs["autolock_timeout"] == 30
+
+    def test_extra_state_attributes_with_no_features(self):
+        config = DanalockConfig(
+            batteryLowPercentage="40",
+            lockBeforeFullArm="1",
+            lockBeforePartialArm="0",
+            lockBeforePerimeterArm="0",
+            unlockAfterDisarm="1",
+            autoLockTime="060",
+        )
+        lock = make_lock(danalock_config=config)
+        attrs = lock.extra_state_attributes
+        assert attrs is not None
+        assert attrs["battery_low_threshold"] == "40"
+        assert attrs["lock_before_partial_arm"] is False
+        assert attrs["unlock_after_disarm"] is True
+        assert "hold_back_latch_time" not in attrs
+
+    def test_supported_features_returns_zero(self):
+        import homeassistant.components.lock as lock_mod
+
+        lock = make_lock()
+        assert lock.supported_features == lock_mod.LockEntityFeature(0)
 
 
 class TestSecuritasLockActions:
@@ -483,7 +575,7 @@ class TestSecuritasLockUpdateStatus:
     async def test_async_update_status_updates_state_from_api(self):
         lock = make_lock()
         lock.client.session.get_lock_current_mode = AsyncMock(
-            return_value=SmartLockMode(res="OK", lockStatus="1")
+            return_value=[SmartLockMode(res="OK", lockStatus="1", deviceId="01")]
         )
 
         await lock.async_update_status()
@@ -496,7 +588,7 @@ class TestSecuritasLockUpdateStatus:
         assert lock._state == "2"
 
         lock.client.session.get_lock_current_mode = AsyncMock(
-            return_value=SmartLockMode(res="OK", lockStatus="0")
+            return_value=[SmartLockMode(res="OK", lockStatus="0", deviceId="01")]
         )
 
         await lock.async_update_status()
@@ -507,18 +599,32 @@ class TestSecuritasLockUpdateStatus:
     async def test_async_update_status_updates_on_non_zero(self):
         lock = make_lock()
         lock.client.session.get_lock_current_mode = AsyncMock(
-            return_value=SmartLockMode(res="OK", lockStatus="3")
+            return_value=[SmartLockMode(res="OK", lockStatus="3", deviceId="01")]
         )
 
         await lock.async_update_status()
 
         assert lock._state == "3"
 
+    async def test_async_update_status_ignores_other_device_ids(self):
+        """Only status for the lock's own device_id is used."""
+        lock = make_lock(device_id="01")
+        lock.client.session.get_lock_current_mode = AsyncMock(
+            return_value=[
+                SmartLockMode(res="OK", lockStatus="1", deviceId="02"),
+            ]
+        )
+
+        await lock.async_update_status()
+
+        # No matching device_id → get_lock_state returns "0" (unknown) → ignored
+        assert lock._state == "2"
+
     async def test_async_update_delegates_to_update_status(self):
         """async_update just calls async_update_status."""
         lock = make_lock()
         lock.client.session.get_lock_current_mode = AsyncMock(
-            return_value=SmartLockMode(res="OK", lockStatus="1")
+            return_value=[SmartLockMode(res="OK", lockStatus="1", deviceId="01")]
         )
 
         await lock.async_update()

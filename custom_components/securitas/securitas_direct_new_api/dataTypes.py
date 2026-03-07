@@ -159,6 +159,7 @@ class SmartLockMode:
     res: str | None = None
     lockStatus: str = ""
     deviceId: str = ""
+    statusTimestamp: str = ""
 
 
 @dataclass
@@ -167,3 +168,37 @@ class SmartLockModeStatus:
     message: str = ""
     protomResponse: str = ""
     status: str = ""
+
+
+@dataclass
+class DanalockAutolock:
+    """Danalock auto-lock configuration."""
+
+    active: bool | None = None
+    timeout: int | None = None
+
+
+@dataclass
+class DanalockFeatures:
+    """Danalock feature configuration."""
+
+    holdBackLatchTime: int = 0
+    calibrationType: int = 0
+    autolock: DanalockAutolock | None = None
+
+
+@dataclass
+class DanalockConfig:
+    """Full Danalock configuration from xSGetDanalockConfig."""
+
+    action: str = ""
+    deviceNumber: str = ""
+    asyncCylinder: str | None = None
+    batteryLowPercentage: str = ""
+    lockBeforePartialArm: str = ""
+    lockBeforeFullArm: str = ""
+    unlockAfterDisarm: str = ""
+    lockBeforePerimeterArm: str = ""
+    periodicBitExtension: str = ""
+    autoLockTime: str = ""
+    features: DanalockFeatures | None = None

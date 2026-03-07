@@ -21,6 +21,9 @@ from .dataTypes import (
     ArmStatus,
     Attribute,
     CheckAlarmStatus,
+    DanalockAutolock,
+    DanalockConfig,
+    DanalockFeatures,
     DisarmStatus,
     Installation,
     OtpPhone,
@@ -858,15 +861,15 @@ class ApiManager:
         )
 
     async def get_air_quality_data(
-        self,
-        installation: Installation,
-        service: Service,
+        self, installation: Installation, service: Service
     ) -> AirQuality:
         """Get sentinel status."""
         if service.attributes and isinstance(service.attributes, list):
             zone_val = str(service.attributes[0].value)
         else:
-            _LOGGER.warning("No attributes found for air quality service %s", service.id)
+            _LOGGER.warning(
+                "No attributes found for air quality service %s", service.id
+            )
             zone_val = "0"
 
         content = {
@@ -1288,13 +1291,15 @@ class ApiManager:
 
         return SmartLock(None, None, None)
 
-    async def get_lock_current_mode(self, installation: Installation) -> SmartLockMode:
+    async def get_lock_current_mode(
+        self, installation: Installation
+    ) -> list[SmartLockMode]:
         content = {
             "operationName": "xSGetLockCurrentMode",
             "variables": {
                 "numinst": installation.number,
             },
-            "query": "query xSGetLockCurrentMode($numinst: String!, $counter: Int) {\n  xSGetLockCurrentMode(numinst: $numinst, counter: $counter) {\n    res\n    smartlockInfo {\n      lockStatus\n      deviceId\n    }\n  }\n}",
+            "query": "query xSGetLockCurrentMode($numinst: String!, $counter: Int) {\n  xSGetLockCurrentMode(numinst: $numinst, counter: $counter) {\n    res\n    smartlockInfo {\n      lockStatus\n      deviceId\n      statusTimestamp\n    }\n  }\n}",
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -1304,20 +1309,25 @@ class ApiManager:
 
         if "errors" in response:
             _LOGGER.error(response)
-            return SmartLockMode(None, "0")
+            return []
 
         if "data" in response:
             raw_data = response["data"]["xSGetLockCurrentMode"]
             if raw_data is None:
-                return SmartLockMode(None, "0")
-            lock_status = "0"
-            device_id = ""
-            if raw_data.get("smartlockInfo"):
-                lock_status = raw_data["smartlockInfo"][0]["lockStatus"]
-                device_id = raw_data["smartlockInfo"][0].get("deviceId", "")
-            return SmartLockMode(raw_data["res"], lock_status, device_id)
+                return []
+            modes: list[SmartLockMode] = []
+            for info in raw_data.get("smartlockInfo") or []:
+                modes.append(
+                    SmartLockMode(
+                        res=raw_data["res"],
+                        lockStatus=info.get("lockStatus", "0"),
+                        deviceId=info.get("deviceId", ""),
+                        statusTimestamp=info.get("statusTimestamp", ""),
+                    )
+                )
+            return modes
 
-        return SmartLockMode(None, "0")
+        return []
 
     async def change_lock_mode(
         self,
@@ -1399,3 +1409,92 @@ class ApiManager:
             response, "xSChangeSmartlockModeStatus"
         )
         return lock_status_data
+
+    async def get_danalock_config(
+        self,
+        installation: Installation,
+        device_id: str = SMARTLOCK_DEVICE_ID,
+    ) -> DanalockConfig | None:
+        """Fetch Danalock configuration via xSGetDanalockConfig + polling."""
+        content = {
+            "operationName": "xSGetDanalockConfig",
+            "variables": {
+                "numinst": installation.number,
+                "panel": installation.panel,
+                "deviceType": SMARTLOCK_DEVICE_TYPE,
+                "deviceId": device_id,
+            },
+            "query": "query xSGetDanalockConfig($numinst: String!, $panel: String!, $deviceId: String!, $deviceType: String) {\n  xSGetDanalockConfig(\n    numinst: $numinst\n    panel: $panel\n    deviceId: $deviceId\n    deviceType: $deviceType\n  ) {\n    res\n    msg\n    referenceId\n  }\n}",
+        }
+        await self._check_authentication_token()
+        await self._check_capabilities_token(installation)
+        response = await self._execute_request(
+            content, "xSGetDanalockConfig", installation
+        )
+
+        config_data = self._extract_response_data(response, "xSGetDanalockConfig")
+        if config_data.get("res") != "OK" or "referenceId" not in config_data:
+            _LOGGER.warning("Could not initiate Danalock config request")
+            return None
+
+        reference_id = config_data["referenceId"]
+        count = 0
+
+        async def _check() -> dict[str, Any]:
+            nonlocal count
+            count += 1
+            return await self._check_danalock_config_status(
+                installation, reference_id, count
+            )
+
+        raw_data = await self._poll_operation(_check)
+        return self._parse_danalock_config(raw_data)
+
+    async def _check_danalock_config_status(
+        self,
+        installation: Installation,
+        reference_id: str,
+        counter: int,
+    ) -> dict[str, Any]:
+        content = {
+            "operationName": "xSGetDanalockConfigStatus",
+            "variables": {
+                "numinst": installation.number,
+                "referenceId": reference_id,
+                "counter": counter,
+            },
+            "query": "query xSGetDanalockConfigStatus($numinst: String!, $referenceId: String!, $counter: Int!) {\n  xSGetDanalockConfigStatus(\n    numinst: $numinst\n    referenceId: $referenceId\n    counter: $counter\n  ) {\n    res\n    msg\n    action\n    deviceNumber\n    asyncCylinder\n    batteryLowPercenteage\n    lockBeforePartialArm\n    lockBeforeFullArm\n    unlockAfterDisarm\n    lockBeforePerimeterArm\n    periodicBitExtension\n    autoLockTime\n    features {\n      holdBackLatchTime\n      calibrationType\n      autolock {\n        active\n        timeout\n      }\n    }\n  }\n}",
+        }
+        response = await self._execute_request(
+            content, "xSGetDanalockConfigStatus", installation
+        )
+        return self._extract_response_data(response, "xSGetDanalockConfigStatus")
+
+    @staticmethod
+    def _parse_danalock_config(raw_data: dict[str, Any]) -> DanalockConfig:
+        features = None
+        if raw_features := raw_data.get("features"):
+            autolock = None
+            if raw_autolock := raw_features.get("autolock"):
+                autolock = DanalockAutolock(
+                    active=raw_autolock.get("active"),
+                    timeout=raw_autolock.get("timeout"),
+                )
+            features = DanalockFeatures(
+                holdBackLatchTime=raw_features.get("holdBackLatchTime", 0),
+                calibrationType=raw_features.get("calibrationType", 0),
+                autolock=autolock,
+            )
+        return DanalockConfig(
+            action=raw_data.get("action", ""),
+            deviceNumber=raw_data.get("deviceNumber", ""),
+            asyncCylinder=raw_data.get("asyncCylinder"),
+            batteryLowPercentage=raw_data.get("batteryLowPercenteage", ""),
+            lockBeforePartialArm=raw_data.get("lockBeforePartialArm", ""),
+            lockBeforeFullArm=raw_data.get("lockBeforeFullArm", ""),
+            unlockAfterDisarm=raw_data.get("unlockAfterDisarm", ""),
+            lockBeforePerimeterArm=raw_data.get("lockBeforePerimeterArm", ""),
+            periodicBitExtension=raw_data.get("periodicBitExtension", ""),
+            autoLockTime=raw_data.get("autoLockTime", ""),
+            features=features,
+        )

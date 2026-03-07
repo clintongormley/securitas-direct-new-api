@@ -19,6 +19,7 @@ from .const import (  # noqa: F401
 from .dataTypes import (  # noqa: F401
     ArmStatus,
     CheckAlarmStatus,
+    DanalockConfig,
     DisarmStatus,
     Installation,
     OtpPhone,
