@@ -446,7 +446,9 @@ async def test_finish_setup_logs_in_gets_token_creates_entry(hass):
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     mock_hub.login.assert_awaited_once()
-    assert mock_hub.get_authentication_token.call_count == 2  # is None check + get token
+    assert (
+        mock_hub.get_authentication_token.call_count == 2
+    )  # is None check + get token
     assert result["data"][CONF_TOKEN] == FAKE_JWT
 
 
