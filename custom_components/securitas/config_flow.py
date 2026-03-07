@@ -30,6 +30,7 @@ from . import (
     CONF_DELAY_CHECK_OPERATION,
     CONF_DEVICE_INDIGITALL,
     CONF_ENTRY_ID,
+    CONF_INSTALLATION,
     CONF_MAP_AWAY,
     CONF_MAP_CUSTOM,
     CONF_MAP_HOME,
@@ -77,15 +78,20 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self.config: OrderedDict = OrderedDict()
         self.securitas: SecuritasHub | None = None
         self.otp_challenge: tuple[str | None, list[OtpPhone] | None] | None = None
+        self._available_installations: list[Installation] = []
 
-    async def _create_entry(
-        self, username: str, data: OrderedDict
+    async def _create_entry_for_installation(
+        self, installation: Installation
     ) -> config_entries.ConfigFlowResult:
-        """Register new entry."""
-
-        await self.async_set_unique_id(username)
+        """Register new entry for a specific installation."""
+        username = self.config[CONF_USERNAME]
+        unique_id = f"{username}_{installation.number}"
+        await self.async_set_unique_id(unique_id)
         self._abort_if_unique_id_configured()
-        return self.async_create_entry(title=username, data=data)
+        self.config[CONF_INSTALLATION] = installation.number
+        return self.async_create_entry(
+            title=installation.alias, data=dict(self.config)
+        )
 
     def _create_client(
         self,
@@ -142,23 +148,67 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return await self.finish_setup()
 
     async def finish_setup(self):
-        """Login and set up installations."""
+        """Login, discover installations, and create entry or show picker."""
         assert self.securitas is not None
         await self.securitas.login()
         self.config[CONF_TOKEN] = self.securitas.get_authentication_token()
-        result = await self._create_entry(self.config[CONF_USERNAME], self.config)
 
         self.hass.data[DOMAIN] = {}
         self.hass.data[DOMAIN][SecuritasHub.__name__] = self.securitas
+
         installations: list[
             Installation
         ] = await self.securitas.session.list_installations()
-        devices: list[SecuritasDirectDevice] = []
+
         for installation in installations:
             await self.securitas.get_services(installation)
-            devices.append(SecuritasDirectDevice(installation))
 
-        return result
+        # Filter out already-configured installations
+        configured_ids = {
+            entry.data.get(CONF_INSTALLATION)
+            for entry in self._async_current_entries()
+        }
+        available = [
+            inst for inst in installations if inst.number not in configured_ids
+        ]
+
+        if not available:
+            return self.async_abort(reason="already_configured")
+
+        if len(available) == 1:
+            return await self._create_entry_for_installation(available[0])
+
+        # Multiple unconfigured installations — show picker
+        self._available_installations = available
+        return await self.async_step_select_installation()
+
+    async def async_step_select_installation(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Let user pick which installation to configure."""
+        if user_input is not None:
+            selected_number = user_input[CONF_INSTALLATION]
+            for inst in self._available_installations:
+                if inst.number == selected_number:
+                    return await self._create_entry_for_installation(inst)
+            # Should not happen if the form works correctly
+            return self.async_abort(reason="unknown_installation")
+
+        install_options = [
+            {"value": inst.number, "label": inst.alias}
+            for inst in self._available_installations
+        ]
+        data_schema = vol.Schema(
+            {
+                vol.Required(CONF_INSTALLATION): selector(
+                    {"select": {"options": install_options}}
+                ),
+            }
+        )
+        return self.async_show_form(
+            step_id="select_installation",
+            data_schema=data_schema,
+        )
 
     @staticmethod
     @callback
@@ -250,6 +300,8 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self.config[CONF_UNIQUE_ID] = user_input[CONF_UNIQUE_ID]
         self.config[CONF_DEVICE_INDIGITALL] = user_input[CONF_DEVICE_INDIGITALL]
         self.config[CONF_ENTRY_ID] = user_input.get(CONF_ENTRY_ID, "")
+        if CONF_INSTALLATION in user_input:
+            self.config[CONF_INSTALLATION] = user_input[CONF_INSTALLATION]
         result = self._create_client()
 
         try:

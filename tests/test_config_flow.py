@@ -12,6 +12,7 @@ from custom_components.securitas import (
     CONF_DELAY_CHECK_OPERATION,
     CONF_DEVICE_INDIGITALL,
     CONF_ENTRY_ID,
+    CONF_INSTALLATION,
     CONF_MAP_AWAY,
     CONF_MAP_CUSTOM,
     CONF_MAP_HOME,
@@ -213,8 +214,9 @@ async def test_step_user_non_2fa_flow_finishes_setup(hass):
         )
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test@example.com"
+    assert result["title"] == "Home"  # auto-selected installation alias
     assert result["data"][CONF_USERNAME] == "test@example.com"
+    assert result["data"][CONF_INSTALLATION] == "123456"  # default installation number
     mock_hub.login.assert_awaited_once()
 
 
@@ -401,7 +403,7 @@ async def test_otp_challenge_calls_finish_setup(hass):
         )
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test@example.com"
+    assert result["title"] == "Home"  # auto-selected installation alias
     mock_hub.login.assert_awaited_once()
 
 
@@ -855,3 +857,143 @@ async def test_options_get_falls_back_to_data(hass):
     ):
         result = handler._get(CONF_SCAN_INTERVAL)
     assert result == 120
+
+
+# ===================================================================
+# TestInstallationSelection (~6 tests)
+# ===================================================================
+
+
+async def test_single_installation_auto_selects(hass):
+    """When there is exactly one unconfigured installation, auto-select it."""
+    mock_hub = _hub_factory()
+    mock_hub.session.list_installations = AsyncMock(
+        return_value=[make_installation(number="111", alias="My Home")]
+    )
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+        )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "My Home"
+    assert result["data"][CONF_INSTALLATION] == "111"
+
+
+async def test_multiple_installations_show_picker(hass):
+    """When multiple unconfigured installations exist, show a selection form."""
+    mock_hub = _hub_factory()
+    mock_hub.session.list_installations = AsyncMock(
+        return_value=[
+            make_installation(number="111", alias="Home"),
+            make_installation(number="222", alias="Office"),
+        ]
+    )
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "select_installation"
+
+
+async def test_select_installation_creates_entry(hass):
+    """Picking an installation from the list creates a config entry."""
+    mock_hub = _hub_factory()
+    mock_hub.session.list_installations = AsyncMock(
+        return_value=[
+            make_installation(number="111", alias="Home"),
+            make_installation(number="222", alias="Office"),
+        ]
+    )
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "select_installation"
+    flow_id = result["flow_id"]
+
+    result = await hass.config_entries.flow.async_configure(
+        flow_id, user_input={CONF_INSTALLATION: "222"}
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Office"
+    assert result["data"][CONF_INSTALLATION] == "222"
+
+
+async def test_unique_id_includes_installation(hass):
+    """The config entry unique_id should be username_installationNumber."""
+    mock_hub = _hub_factory()
+    mock_hub.session.list_installations = AsyncMock(
+        return_value=[make_installation(number="42", alias="Cabin")]
+    )
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+        )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    # Check unique_id on the created config entry
+    entries = hass.config_entries.async_entries(DOMAIN)
+    assert len(entries) == 1
+    assert entries[0].unique_id == "test@example.com_42"
+
+
+async def test_already_configured_filtered_out(hass):
+    """Installations with existing config entries should be excluded."""
+    # Pre-add a config entry for installation 111
+    existing = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="test@example.com_111",
+        data={"username": "test@example.com", CONF_INSTALLATION: "111"},
+    )
+    existing.add_to_hass(hass)
+
+    mock_hub = _hub_factory()
+    mock_hub.session.list_installations = AsyncMock(
+        return_value=[
+            make_installation(number="111", alias="Home"),
+            make_installation(number="222", alias="Office"),
+        ]
+    )
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+        )
+
+    # Only installation 222 remains, so it should auto-select
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_INSTALLATION] == "222"
+    assert result["title"] == "Office"
+
+
+async def test_all_configured_aborts(hass):
+    """When all installations are already configured, abort."""
+    existing = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="test@example.com_111",
+        data={"username": "test@example.com", CONF_INSTALLATION: "111"},
+    )
+    existing.add_to_hass(hass)
+
+    mock_hub = _hub_factory()
+    mock_hub.session.list_installations = AsyncMock(
+        return_value=[make_installation(number="111", alias="Home")]
+    )
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_NO_2FA
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "already_configured"

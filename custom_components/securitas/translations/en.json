@@ -27,6 +27,13 @@
             "otp_challenge": {
                 "description": "Enter the code you received on your phone",
                 "title": "Securitas Direct 2FA"
+            },
+            "select_installation": {
+                "title": "Select Installation",
+                "description": "Multiple installations found. Please select the one to configure.",
+                "data": {
+                    "installation": "Installation"
+                }
             }
         }
     },
