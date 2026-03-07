@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
-    AirQuality,
     Attribute,
     Installation,
     Sentinel,
@@ -328,7 +327,7 @@ class TestGetSentinelData:
                             "status": {
                                 "temperature": 22,
                                 "humidity": 45,
-                                "airQualityCode": "GOOD",
+                                "airQualityCode": 2,
                             },
                             "zone": "1",
                         }
@@ -343,6 +342,7 @@ class TestGetSentinelData:
         assert result.alias == "Living"
         assert result.temperature == 22
         assert result.humidity == 45
+        assert result.air_quality == "2"
 
     async def test_error_response_returns_empty_sentinel(
         self, authed_api, mock_execute, installation, mock_service
@@ -362,6 +362,33 @@ class TestGetSentinelData:
 
         assert result == Sentinel("", "", 0, 0)
 
+    async def test_missing_air_quality_code_returns_empty_string(
+        self, authed_api, mock_execute, installation, mock_service
+    ):
+        mock_execute.return_value = {
+            "data": {
+                "xSComfort": {
+                    "res": "OK",
+                    "devices": [
+                        {
+                            "alias": "Living",
+                            "status": {
+                                "temperature": 22,
+                                "humidity": 45,
+                            },
+                            "zone": "1",
+                        }
+                    ],
+                }
+            }
+        }
+
+        result = await authed_api.get_sentinel_data(installation, mock_service)
+
+        assert result.air_quality == ""
+        assert result.temperature == 22
+        assert result.humidity == 45
+
     async def test_device_not_found_returns_empty_sentinel(
         self, authed_api, mock_execute, installation, mock_service
     ):
@@ -375,7 +402,7 @@ class TestGetSentinelData:
                             "status": {
                                 "temperature": 18,
                                 "humidity": 50,
-                                "airQualityCode": "GOOD",
+                                "airQualityCode": 2,
                             },
                             "zone": "99",
                         }
@@ -387,46 +414,6 @@ class TestGetSentinelData:
         result = await authed_api.get_sentinel_data(installation, mock_service)
 
         assert result == Sentinel("", "", 0, 0)
-
-
-# ── get_air_quality_data() ────────────────────────────────────────────────────
-
-
-class TestGetAirQualityData:
-    async def test_returns_air_quality(
-        self, authed_api, mock_execute, installation, mock_service
-    ):
-        mock_execute.return_value = {
-            "data": {
-                "xSAirQ": {
-                    "graphData": {"status": {"current": 85, "currentMsg": "Good"}}
-                }
-            }
-        }
-
-        result = await authed_api.get_air_quality_data(installation, mock_service)
-
-        assert isinstance(result, AirQuality)
-        assert result.value == 85
-        assert result.message == "Good"
-
-    async def test_error_response_returns_empty_air_quality(
-        self, authed_api, mock_execute, installation, mock_service
-    ):
-        mock_execute.return_value = {"errors": [{"message": "Something went wrong"}]}
-
-        result = await authed_api.get_air_quality_data(installation, mock_service)
-
-        assert result == AirQuality(0, "")
-
-    async def test_none_xsairq_returns_empty_air_quality(
-        self, authed_api, mock_execute, installation, mock_service
-    ):
-        mock_execute.return_value = {"data": {"xSAirQ": None}}
-
-        result = await authed_api.get_air_quality_data(installation, mock_service)
-
-        assert result == AirQuality(0, "")
 
 
 # ── send_otp() ────────────────────────────────────────────────────────────────
@@ -502,7 +489,7 @@ class TestGetSentinelDataEdgeCases:
                             "status": {
                                 "temperature": 22,
                                 "humidity": 45,
-                                "airQualityCode": "GOOD",
+                                "airQualityCode": 2,
                             },
                             "zone": "1",
                         }
@@ -514,50 +501,6 @@ class TestGetSentinelDataEdgeCases:
         result = await authed_api.get_sentinel_data(installation, service_no_attrs)
 
         assert result == Sentinel("", "", 0, 0)
-
-
-class TestGetAirQualityDataEdgeCases:
-    async def test_get_air_quality_with_no_attributes_uses_zone_0(
-        self, authed_api, mock_execute, installation
-    ):
-        """Service with no zone attribute defaults to zone '0'."""
-        service_no_attrs = Service(
-            id=2,
-            id_service=2,
-            active=True,
-            visible=True,
-            bde=False,
-            is_premium=False,
-            cod_oper=False,
-            total_device=0,
-            request="AIR_QUALITY",
-            multiple_req=False,
-            num_devices_mr=0,
-            secret_word=False,
-            min_wrapper_version=None,
-            description="Air Quality",
-            attributes=[],
-            listdiy=[],
-            listprompt=[],
-            installation=installation,
-        )
-        mock_execute.return_value = {
-            "data": {
-                "xSAirQ": {
-                    "graphData": {"status": {"current": 75, "currentMsg": "Moderate"}}
-                }
-            }
-        }
-
-        result = await authed_api.get_air_quality_data(installation, service_no_attrs)
-
-        assert isinstance(result, AirQuality)
-        assert result.value == 75
-        assert result.message == "Moderate"
-        # Verify it used zone "0" by checking the request variables
-        call_args = mock_execute.call_args
-        content = call_args[0][0]
-        assert content["variables"]["zone"] == "0"
 
 
 class TestGetAllServicesEdgeCases:

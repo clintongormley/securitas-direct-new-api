@@ -4,7 +4,6 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
-    AirQuality,
     Attribute,
     Attributes,
     DanalockAutolock,
@@ -71,13 +70,8 @@ def make_service():
 def make_sentinel(temp=22, humidity=45):
     """Create a test Sentinel data object."""
     return Sentinel(
-        alias="Living", air_quality="GOOD", humidity=humidity, temperature=temp
+        alias="Living", air_quality="2", humidity=humidity, temperature=temp
     )
-
-
-def make_air_quality(value=85, message="Good"):
-    """Create a test AirQuality data object."""
-    return AirQuality(value=value, message=message)
 
 
 def make_client():
@@ -256,44 +250,51 @@ class TestSentinelAirQuality:
         sensor = SentinelAirQuality(service, client, installation)
         sensor.hass = MagicMock()
 
-        client.get_air_quality = AsyncMock(
-            return_value=make_air_quality(value=85, message="Good")
+        client.get_sentinel = AsyncMock(return_value=make_sentinel())
+        await sensor.async_update()
+
+        client.get_sentinel.assert_awaited_once_with(installation, service)
+        assert sensor._attr_native_value == "Poor"
+
+    async def test_async_update_passes_unknown_code_through(self):
+        client = make_client()
+        service = make_service()
+        installation = make_installation()
+        sensor = SentinelAirQuality(service, client, installation)
+        sensor.hass = MagicMock()
+
+        client.get_sentinel = AsyncMock(
+            return_value=Sentinel(
+                alias="Living", air_quality="5", humidity=45, temperature=22
+            )
         )
         await sensor.async_update()
 
-        client.get_air_quality.assert_awaited_once_with(installation, service)
-        assert sensor._attr_native_value == "Good"
+        assert sensor._attr_native_value == "5"
 
     async def test_async_update_handles_error_gracefully(self):
         client = make_client()
         sensor = SentinelAirQuality(make_service(), client, make_installation())
         sensor.hass = MagicMock()
 
-        client.get_air_quality = AsyncMock(
-            side_effect=SecuritasDirectError("API error")
-        )
+        client.get_sentinel = AsyncMock(side_effect=SecuritasDirectError("API error"))
         await sensor.async_update()
 
         assert sensor._attr_native_value is None
 
-    def test_extra_state_attributes_none_before_first_update(self):
-        sensor = SentinelAirQuality(make_service(), make_client(), make_installation())
-        assert sensor.extra_state_attributes is None
-
-    async def test_extra_state_attributes_after_update(self):
+    async def test_async_update_handles_empty_air_quality(self):
         client = make_client()
         sensor = SentinelAirQuality(make_service(), client, make_installation())
         sensor.hass = MagicMock()
 
-        client.get_air_quality = AsyncMock(
-            return_value=make_air_quality(value=85, message="Good")
+        client.get_sentinel = AsyncMock(
+            return_value=Sentinel(
+                alias="Living", air_quality="", humidity=45, temperature=22
+            )
         )
         await sensor.async_update()
 
-        attrs = sensor.extra_state_attributes
-        assert attrs is not None
-        assert attrs["value"] == 85
-        assert attrs["message"] == "Good"
+        assert sensor._attr_native_value is None
 
     def test_unique_id_contains_installation_number_and_service_id(self):
         service = make_service()
@@ -711,8 +712,8 @@ class TestHassNoneGuards:
         client = make_client()
         sensor = SentinelAirQuality(make_service(), client, make_installation())
         sensor.hass = None
-        client.get_air_quality = AsyncMock()
+        client.get_sentinel = AsyncMock()
 
         await sensor.async_update()
 
-        client.get_air_quality.assert_not_awaited()
+        client.get_sentinel.assert_not_awaited()

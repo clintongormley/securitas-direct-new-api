@@ -17,7 +17,6 @@ from aiohttp import ClientConnectorError, ClientSession
 import jwt
 
 from .dataTypes import (
-    AirQuality,
     ArmStatus,
     Attribute,
     CheckAlarmStatus,
@@ -853,47 +852,12 @@ class ApiManager:
         if target_device is None:
             return Sentinel("", "", 0, 0)
 
+        air_quality_code = target_device["status"].get("airQualityCode")
         return Sentinel(
             target_device["alias"],
-            "",
+            str(air_quality_code) if air_quality_code is not None else "",
             int(target_device["status"]["humidity"]),
             int(target_device["status"]["temperature"]),
-        )
-
-    async def get_air_quality_data(
-        self, installation: Installation, service: Service
-    ) -> AirQuality:
-        """Get sentinel status."""
-        if service.attributes and isinstance(service.attributes, list):
-            zone_val = str(service.attributes[0].value)
-        else:
-            _LOGGER.warning(
-                "No attributes found for air quality service %s", service.id
-            )
-            zone_val = "0"
-
-        content = {
-            "operationName": "AirQualityGraph",
-            "variables": {
-                "numinst": installation.number,
-                "zone": zone_val,
-            },
-            "query": "query AirQualityGraph($numinst: String!, $zone: String!) {\n  xSAirQ(numinst: $numinst, zone: $zone) {\n    res\n    msg\n    graphData {\n      status {\n        avg6h\n        avg6hMsg\n        avg24h\n        avg24hMsg\n        avg7d\n        avg7dMsg\n        avg4w\n        avg4wMsg\n        current\n        currentMsg\n      }\n      daysTotal\n      days {\n        id\n        value\n      }\n      hoursTotal\n      hours {\n        id\n        value\n      }\n      weeksTotal\n      weeks {\n        id\n        value\n      }\n    }\n  }\n}",
-        }
-        await self._check_authentication_token()
-        await self._check_capabilities_token(installation)
-        response = await self._execute_request(content, "AirQualityGraph")
-
-        if "errors" in response:
-            return AirQuality(0, "")
-
-        air_data = response["data"]["xSAirQ"]
-        if air_data is None:
-            return AirQuality(0, "")
-        raw_data = air_data["graphData"]["status"]
-        return AirQuality(
-            int(raw_data["current"]),
-            raw_data["currentMsg"],
         )
 
     async def check_general_status(self, installation: Installation) -> SStatus:

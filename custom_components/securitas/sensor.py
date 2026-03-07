@@ -1,15 +1,15 @@
 """Securitas direct sentinel sensor."""
 
 from datetime import timedelta
-from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTemperature
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_call_later
 
 import logging
 
@@ -57,6 +57,17 @@ async def async_setup_entry(
                 sensors.append(SentinelHumidity(service, client, device.installation))
                 sensors.append(SentinelAirQuality(service, client, device.installation))
     async_add_entities(sensors, False)
+
+    # Schedule initial update shortly after setup to populate values
+    # without blocking entity registration.
+    if sensors:
+
+        @callback
+        def _initial_update(_now) -> None:
+            for sensor in sensors:
+                sensor.async_schedule_update_ha_state(force_refresh=True)
+
+        async_call_later(hass, 5, _initial_update)
 
 
 def _device_info(installation: Installation) -> DeviceInfo:
@@ -148,8 +159,19 @@ class SentinelHumidity(SensorEntity):
         self._attr_native_value = sentinel.humidity
 
 
+AIR_QUALITY_LABELS: dict[str, str] = {
+    "2": "Poor",
+}
+
+
 class SentinelAirQuality(SensorEntity):
-    """Sentinel Air Quality sensor."""
+    """Sentinel Air Quality sensor.
+
+    Uses the airQualityCode from the xSComfort response (same call as
+    temperature/humidity) instead of the separate xSAirQ graph endpoint.
+    Known codes are mapped to human-readable labels; unknown codes are
+    shown as-is.
+    """
 
     def __init__(
         self,
@@ -163,16 +185,14 @@ class SentinelAirQuality(SensorEntity):
         self._service: Service = service
         self._client: SecuritasHub = client
         self._installation = installation
-        self._air_quality_value: int | None = None
-        self._air_quality_message: str | None = None
         self._attr_device_info = _device_info(installation)
 
     async def async_update(self):
-        """Update the air quality sensor via the hub's rate-limited method."""
+        """Update air quality from the same xSComfort call as temp/humidity."""
         if self.hass is None:
             return
         try:
-            air_quality = await self._client.get_air_quality(
+            sentinel = await self._client.get_sentinel(
                 self._installation, self._service
             )
         except SecuritasDirectError:
@@ -181,16 +201,11 @@ class SentinelAirQuality(SensorEntity):
                 self._installation.number,
             )
             return
-        self._air_quality_value = air_quality.value
-        self._air_quality_message = air_quality.message
-        self._attr_native_value = air_quality.message
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:  # type: ignore[override]
-        """Return the state attributes."""
-        if self._air_quality_message is None:
-            return None
-        return {
-            "value": self._air_quality_value,
-            "message": self._air_quality_message,
-        }
+        if not sentinel.air_quality:
+            _LOGGER.debug(
+                "Air quality data not available for installation %s",
+                self._installation.number,
+            )
+            return
+        code = sentinel.air_quality
+        self._attr_native_value = AIR_QUALITY_LABELS.get(code, code)

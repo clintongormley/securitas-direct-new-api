@@ -34,7 +34,6 @@ from .mock_graphql import (
     graphql_login_error,
     graphql_services,
     graphql_sentinel,
-    graphql_air_quality,
     make_doorlock_service,
     make_jwt,
     make_sentinel_service,
@@ -576,33 +575,6 @@ async def test_sentinel_data_returned(
     sentinel = await hub.session.get_sentinel_data(installation, svc)
     assert sentinel.temperature == 23
     assert sentinel.humidity == 60
-
-
-async def test_air_quality_data_returned(
-    hass: HomeAssistant, mock_server: MockGraphQLServer
-):
-    """get_air_quality_data() parses current AQI value."""
-    sentinel_svc = make_sentinel_service(zone="1")
-    queue_standard_setup(mock_server, extra_services=[sentinel_svc])
-    entry, _ = await _setup(hass, mock_server)
-
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    hub = entry_data["hub"]
-    devices = entry_data["devices"]
-    installation = devices[0].installation
-    services = await hub.get_services(installation)
-    svc = next(s for s in services if s.request == "CONFORT")
-
-    mock_server.add_response("Srv", graphql_services(capabilities_jwt=make_jwt(60)))
-    mock_server.add_response("CheckAlarm", graphql_check_alarm())
-    mock_server.add_response("CheckAlarmStatus", graphql_alarm_status())
-    mock_server.add_response(
-        "AirQualityGraph", graphql_air_quality(current=75, message="Moderate")
-    )
-
-    aq = await hub.session.get_air_quality_data(installation, svc)
-    assert aq.value == 75
-    assert aq.message == "Moderate"
 
 
 # ── Unload ────────────────────────────────────────────────────────────────────
