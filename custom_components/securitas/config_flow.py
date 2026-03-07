@@ -147,7 +147,8 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def finish_setup(self):
         """Login, discover installations, and create entry or show picker."""
         assert self.securitas is not None
-        await self.securitas.login()
+        if self.securitas.get_authentication_token() is None:
+            await self.securitas.login()
         self.config[CONF_TOKEN] = self.securitas.get_authentication_token()
 
         self.hass.data[DOMAIN] = {}

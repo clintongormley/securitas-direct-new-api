@@ -114,10 +114,32 @@ PATCH_UUID = "custom_components.securitas.config_flow.generate_uuid"
 
 
 def _hub_factory(**overrides):
-    """Create a mock SecuritasHub for config flow tests."""
+    """Create a mock SecuritasHub for config flow tests.
+
+    Starts with no auth token.  login() sets it (via side_effect) so that
+    finish_setup's ``get_authentication_token() is None`` check works
+    correctly for both non-2FA (calls login) and 2FA (token already set
+    by validate_device/send_sms_code) paths.
+    """
     hub = make_securitas_hub_mock(**overrides)
     hub.validate_device = AsyncMock(return_value=("otp-hash-abc", MOCK_PHONES))
     hub.session.list_installations = AsyncMock(return_value=[make_installation()])
+
+    # Start without a token; login() and send_sms_code() set it.
+    _token_holder = {"token": None}
+
+    def _get_token():
+        return _token_holder["token"]
+
+    async def _login():
+        _token_holder["token"] = FAKE_JWT
+
+    async def _send_sms_code(*_args):
+        _token_holder["token"] = FAKE_JWT
+
+    hub.get_authentication_token = MagicMock(side_effect=_get_token)
+    hub.login = AsyncMock(side_effect=_login)
+    hub.send_sms_code = AsyncMock(side_effect=_send_sms_code)
     return hub
 
 
@@ -404,7 +426,8 @@ async def test_otp_challenge_calls_finish_setup(hass):
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["title"] == "Home"  # auto-selected installation alias
-    mock_hub.login.assert_awaited_once()
+    # After OTP, token is already set by send_sms_code — login is skipped
+    mock_hub.login.assert_not_awaited()
 
 
 # ===================================================================
@@ -423,7 +446,7 @@ async def test_finish_setup_logs_in_gets_token_creates_entry(hass):
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     mock_hub.login.assert_awaited_once()
-    mock_hub.get_authentication_token.assert_called_once()
+    assert mock_hub.get_authentication_token.call_count == 2  # is None check + get token
     assert result["data"][CONF_TOKEN] == FAKE_JWT
 
 
