@@ -78,17 +78,7 @@ DEFAULT_DELAY_CHECK_OPERATION = 2
 DEFAULT_CODE = ""
 DEFAULT_COUNTRY = "ES"
 
-COUNTRY_NAMES: dict[str, str] = {
-    "AR": "Argentina",
-    "BR": "Brazil",
-    "CL": "Chile",
-    "ES": "Spain",
-    "FR": "France",
-    "GB": "Great Britain",
-    "IE": "Ireland",
-    "IT": "Italy",
-    "PT": "Portugal",
-}
+COUNTRY_CODES: list[str] = ["AR", "BR", "CL", "ES", "FR", "GB", "IE", "IT", "PT"]
 
 
 PLATFORMS = [

@@ -18,6 +18,8 @@ from .const import (  # noqa: F401
 )
 from .dataTypes import (  # noqa: F401
     ArmStatus,
+    Attribute,
+    Attributes,
     CheckAlarmStatus,
     DanalockConfig,
     DisarmStatus,

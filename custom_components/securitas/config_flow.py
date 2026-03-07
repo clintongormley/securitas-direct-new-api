@@ -20,7 +20,11 @@ from homeassistant.const import (
 )
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import selector
+from homeassistant.helpers.selector import (
+    CountrySelector,
+    CountrySelectorConfig,
+    selector,
+)
 
 from . import (
     CONF_CHECK_ALARM_PANEL,
@@ -37,8 +41,7 @@ from . import (
     CONF_MAP_NIGHT,
     CONF_MAP_VACATION,
     CONF_NOTIFY_GROUP,
-    CONF_USE_2FA,
-    COUNTRY_NAMES,
+    COUNTRY_CODES,
     DEFAULT_CHECK_ALARM_PANEL,
     DEFAULT_CODE,
     DEFAULT_CODE_ARM_REQUIRED,
@@ -49,10 +52,16 @@ from . import (
     generate_uuid,
 )
 from .securitas_direct_new_api import (
+    Attribute,
+    Attributes,
     Installation,
+    Login2FAError,
+    LoginError,
     OtpPhone,
     PERI_DEFAULTS,
     PERI_OPTIONS,
+    SecuritasDirectError,
+    Service,
     STD_DEFAULTS,
     STD_OPTIONS,
     STATE_LABELS,
@@ -144,40 +153,81 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         )
         return await self.finish_setup()
 
+    def _user_schema(self, defaults: dict[str, Any] | None = None) -> vol.Schema:
+        """Build the credentials form schema with optional defaults."""
+        d = defaults or {}
+        ha_country = self.hass.config.country
+        default_country = d.get(
+            CONF_COUNTRY, ha_country if ha_country in COUNTRY_CODES else "ES"
+        )
+        return vol.Schema(
+            {
+                vol.Required(CONF_COUNTRY, default=default_country): CountrySelector(
+                    CountrySelectorConfig(countries=COUNTRY_CODES)
+                ),
+                vol.Required(CONF_USERNAME, default=d.get(CONF_USERNAME, "")): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Step 1: Country, username, password, 2FA toggle."""
         if user_input is None:
-            country_options = [
-                {"value": code, "label": name} for code, name in COUNTRY_NAMES.items()
-            ]
-            schema = vol.Schema(
-                {
-                    vol.Required(CONF_COUNTRY, default="ES"): selector(
-                        {"select": {"options": country_options, "mode": "dropdown"}}
-                    ),
-                    vol.Required(CONF_USERNAME): str,
-                    vol.Required(CONF_PASSWORD): str,
-                    vol.Optional(CONF_USE_2FA, default=True): bool,
-                }
-            )
-            return self.async_show_form(step_id="user", data_schema=schema)
+            return self.async_show_form(step_id="user", data_schema=self._user_schema())
 
         self.config = OrderedDict(user_input)
 
-        uuid = generate_uuid()
         self.config[CONF_DELAY_CHECK_OPERATION] = DEFAULT_DELAY_CHECK_OPERATION
-        self.config[CONF_DEVICE_ID] = uuid
-        self.config[CONF_UNIQUE_ID] = uuid
         self.config[CONF_DEVICE_INDIGITALL] = ""
         self.config[CONF_ENTRY_ID] = ""
+        self.config[CONF_CHECK_ALARM_PANEL] = DEFAULT_CHECK_ALARM_PANEL
+
+        # Reuse existing session for this username if one is already running,
+        # to avoid a new login that would invalidate the active session.
+        username = self.config[CONF_USERNAME]
+        sessions = self.hass.data.get(DOMAIN, {}).get("sessions", {})
+        if username in sessions:
+            self.securitas = sessions[username]["hub"]
+            self.config[CONF_DEVICE_ID] = self.securitas.config[CONF_DEVICE_ID]
+            self.config[CONF_UNIQUE_ID] = self.securitas.config[CONF_UNIQUE_ID]
+            self.config[CONF_DEVICE_INDIGITALL] = self.securitas.config.get(
+                CONF_DEVICE_INDIGITALL, ""
+            )
+            return await self.finish_setup()
+
+        uuid = generate_uuid()
+        self.config[CONF_DEVICE_ID] = uuid
+        self.config[CONF_UNIQUE_ID] = uuid
 
         self.securitas = self._create_client()
 
-        if not self.config.get(CONF_USE_2FA, True):
-            return await self.finish_setup()
+        # Login — catches credential errors and network failures
+        try:
+            await self.securitas.login()
+        except Login2FAError:
+            # 2FA required — proceed to device validation for phone list
+            return await self._start_2fa_flow()
+        except LoginError:
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self._user_schema(user_input),
+                errors={"base": "invalid_auth"},
+            )
+        except SecuritasDirectError:
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self._user_schema(user_input),
+                errors={"base": "cannot_connect"},
+            )
 
+        # Login succeeded without 2FA — proceed directly
+        return await self.finish_setup()
+
+    async def _start_2fa_flow(self) -> config_entries.ConfigFlowResult:
+        """Call validate_device and show phone selection form."""
+        assert self.securitas is not None
         otp_result = await self.securitas.validate_device()
         self.otp_challenge = otp_result
         otp_phones = otp_result[1] or []
@@ -238,21 +288,25 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             installation.number: services,
         }
 
-        self._has_peri = self._detect_peri(installation)
+        self._has_peri = self._detect_peri(services)
         self.config[CONF_HAS_PERI] = self._has_peri
+        _LOGGER.debug(
+            "Perimeter detected for %s: %s", installation.number, self._has_peri
+        )
 
         return await self.async_step_options()
 
-    def _detect_peri(self, installation: Installation) -> bool:
-        """Detect perimeter support from alarmPartitions states."""
-        peri_codes = {"E", "A", "B", "C"}
-        for partition in installation.alarm_partitions:
-            for state in partition.get("enterStates", []):
-                if state in peri_codes:
-                    return True
-            for state in partition.get("leaveStates", []):
-                if state in peri_codes:
-                    return True
+    @staticmethod
+    def _detect_peri(services: list[Service]) -> bool:
+        """Detect perimeter support from service attributes (e.g. SCH PERI)."""
+        for svc in services:
+            attrs = svc.attributes
+            if isinstance(attrs, Attributes):
+                attrs = attrs.attributes
+            if isinstance(attrs, list):
+                for attr in attrs:
+                    if isinstance(attr, Attribute) and attr.name == "PERI":
+                        return True
         return False
 
     async def async_step_select_installation(
@@ -342,24 +396,25 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         select_options = [
             {"value": state.value, "label": STATE_LABELS[state]} for state in options
         ]
+        select_cfg = {"select": {"options": select_options, "mode": "dropdown"}}
 
         schema = vol.Schema(
             {
                 vol.Optional(CONF_MAP_HOME, default=defaults[CONF_MAP_HOME]): selector(
-                    {"select": {"options": select_options}}
+                    select_cfg
                 ),
                 vol.Optional(CONF_MAP_AWAY, default=defaults[CONF_MAP_AWAY]): selector(
-                    {"select": {"options": select_options}}
+                    select_cfg
                 ),
                 vol.Optional(
                     CONF_MAP_NIGHT, default=defaults[CONF_MAP_NIGHT]
-                ): selector({"select": {"options": select_options}}),
+                ): selector(select_cfg),
                 vol.Optional(
                     CONF_MAP_VACATION, default=defaults[CONF_MAP_VACATION]
-                ): selector({"select": {"options": select_options}}),
+                ): selector(select_cfg),
                 vol.Optional(
                     CONF_MAP_CUSTOM, default=defaults[CONF_MAP_CUSTOM]
-                ): selector({"select": {"options": select_options}}),
+                ): selector(select_cfg),
             }
         )
         return self.async_show_form(step_id="mappings", data_schema=schema)
@@ -469,24 +524,17 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
         select_options = [
             {"value": state.value, "label": STATE_LABELS[state]} for state in options
         ]
+        select_cfg = {"select": {"options": select_options, "mode": "dropdown"}}
 
         schema = vol.Schema(
             {
-                vol.Optional(CONF_MAP_HOME, default=map_home): selector(
-                    {"select": {"options": select_options}}
-                ),
-                vol.Optional(CONF_MAP_AWAY, default=map_away): selector(
-                    {"select": {"options": select_options}}
-                ),
-                vol.Optional(CONF_MAP_NIGHT, default=map_night): selector(
-                    {"select": {"options": select_options}}
-                ),
+                vol.Optional(CONF_MAP_HOME, default=map_home): selector(select_cfg),
+                vol.Optional(CONF_MAP_AWAY, default=map_away): selector(select_cfg),
+                vol.Optional(CONF_MAP_NIGHT, default=map_night): selector(select_cfg),
                 vol.Optional(CONF_MAP_VACATION, default=map_vacation): selector(
-                    {"select": {"options": select_options}}
+                    select_cfg
                 ),
-                vol.Optional(CONF_MAP_CUSTOM, default=map_custom): selector(
-                    {"select": {"options": select_options}}
-                ),
+                vol.Optional(CONF_MAP_CUSTOM, default=map_custom): selector(select_cfg),
             }
         )
         return self.async_show_form(step_id="mappings", data_schema=schema)

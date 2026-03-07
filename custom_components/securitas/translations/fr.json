@@ -8,7 +8,6 @@
                 "data": {
                     "username": "Nom d'utilisateur",
                     "password": "Mot de passe",
-                    "use_2FA": "Utiliser la 2FA",
                     "country": "Code pays",
                     "code": "Code PIN (laisser vide pour ne pas utiliser de PIN)",
                     "code_arm_required": "Exiger également le code PIN (s'il y en a un) pour armer l'alarme",

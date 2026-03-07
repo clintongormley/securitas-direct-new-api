@@ -18,15 +18,18 @@ from custom_components.securitas import (
     CONF_MAP_HOME,
     CONF_MAP_NIGHT,
     CONF_MAP_VACATION,
-    CONF_USE_2FA,
     DEFAULT_DELAY_CHECK_OPERATION,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
 from custom_components.securitas.securitas_direct_new_api import (
+    Attribute,
+    Login2FAError,
+    LoginError,
     OtpPhone,
     PERI_DEFAULTS,
     STD_DEFAULTS,
+    SecuritasDirectError,
     SecuritasState,
 )
 from homeassistant.config_entries import SOURCE_USER
@@ -69,12 +72,6 @@ USER_INPUT_CREDENTIALS = {
     CONF_COUNTRY: "ES",
     CONF_USERNAME: "test@example.com",
     CONF_PASSWORD: "test-password",
-    CONF_USE_2FA: False,
-}
-
-USER_INPUT_CREDENTIALS_2FA = {
-    **USER_INPUT_CREDENTIALS,
-    CONF_USE_2FA: True,
 }
 
 USER_INPUT_OPTIONS = {
@@ -104,13 +101,15 @@ PATCH_SESSION = "custom_components.securitas.config_flow.async_get_clientsession
 PATCH_UUID = "custom_components.securitas.config_flow.generate_uuid"
 
 
-def _hub_factory(**overrides):
+def _hub_factory(*, two_fa: bool = False, **overrides):
     """Create a mock SecuritasHub for config flow tests.
 
     Starts with no auth token.  login() sets it (via side_effect) so that
     finish_setup's ``get_authentication_token() is None`` check works
-    correctly for both non-2FA (calls login) and 2FA (token already set
-    by validate_device/send_sms_code) paths.
+    correctly for both non-2FA (calls login) and 2FA paths.
+
+    When two_fa=True, login() raises Login2FAError (establishing a session)
+    and validate_device() returns the phone list — matching production behavior.
     """
     hub = make_securitas_hub_mock(**overrides)
     hub.validate_device = AsyncMock(return_value=("otp-hash-abc", MOCK_PHONES))
@@ -123,6 +122,8 @@ def _hub_factory(**overrides):
         return _token_holder["token"]
 
     async def _login():
+        if two_fa:
+            raise Login2FAError("2FA required")
         _token_holder["token"] = FAKE_JWT
 
     async def _send_sms_code(*_args):
@@ -202,7 +203,7 @@ async def _start_2fa_flow(hass, mock_hub):
     """Helper: start the 2FA flow up to the phone_list step and return flow_id."""
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
     assert result["step_id"] == "phone_list"
     return result["flow_id"]
@@ -267,17 +268,63 @@ async def test_step_user_non_2fa_advances_to_options(hass):
 
 
 async def test_step_user_2fa_flow_shows_phone_list(hass):
-    """2FA flow should validate device and show phone list form."""
-    mock_hub = _hub_factory()
+    """2FA flow should login (raising Login2FAError), then validate device and show phone list."""
+    mock_hub = _hub_factory(two_fa=True)
 
     with _patches(mock_hub):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS_2FA
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
         )
 
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "phone_list"
+    mock_hub.login.assert_awaited_once()
     mock_hub.validate_device.assert_awaited_once()
+
+
+async def test_step_user_login_succeeds_skips_2fa(hass):
+    """When login succeeds without 2FA, skip device validation."""
+    mock_hub = _hub_factory(two_fa=False)  # login succeeds
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
+    mock_hub.login.assert_awaited_once()
+    mock_hub.validate_device.assert_not_awaited()
+
+
+async def test_step_user_login_error_shows_invalid_auth(hass):
+    """Wrong credentials should re-show the form with invalid_auth error."""
+    mock_hub = _hub_factory()
+    mock_hub.login.side_effect = LoginError("bad credentials")
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_step_user_connection_error_shows_cannot_connect(hass):
+    """Network errors should re-show the form with cannot_connect error."""
+    mock_hub = _hub_factory()
+    mock_hub.login.side_effect = SecuritasDirectError("connection failed")
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"] == {"base": "cannot_connect"}
 
 
 async def test_step_user_generates_device_ids(hass):
@@ -336,7 +383,7 @@ async def test_step_user_creates_securitas_hub(hass):
 
 async def test_phone_list_selects_phone_by_index(hass):
     """Select phone using the index prefix (e.g., '0_555-1234')."""
-    mock_hub = _hub_factory()
+    mock_hub = _hub_factory(two_fa=True)
     flow_id = await _start_2fa_flow(hass, mock_hub)
 
     with _patches(mock_hub):
@@ -352,7 +399,7 @@ async def test_phone_list_selects_phone_by_index(hass):
 
 async def test_phone_list_selects_second_phone_by_index(hass):
     """Select the second phone using index prefix."""
-    mock_hub = _hub_factory()
+    mock_hub = _hub_factory(two_fa=True)
     flow_id = await _start_2fa_flow(hass, mock_hub)
 
     with _patches(mock_hub):
@@ -389,7 +436,7 @@ async def test_phone_list_fallback_selection_by_phone_name(hass):
 
 async def test_phone_list_sends_otp_and_shows_challenge_form(hass):
     """After selecting phone, OTP is sent and the challenge form is shown."""
-    mock_hub = _hub_factory()
+    mock_hub = _hub_factory(two_fa=True)
     flow_id = await _start_2fa_flow(hass, mock_hub)
 
     with _patches(mock_hub):
@@ -409,7 +456,7 @@ async def test_phone_list_sends_otp_and_shows_challenge_form(hass):
 
 async def test_otp_challenge_sends_sms_code(hass):
     """Submitting OTP code sends it via securitas.send_sms_code."""
-    mock_hub = _hub_factory()
+    mock_hub = _hub_factory(two_fa=True)
     flow_id = await _get_to_otp_step(hass, mock_hub)
 
     with _patches(mock_hub):
@@ -422,7 +469,7 @@ async def test_otp_challenge_sends_sms_code(hass):
 
 async def test_otp_challenge_advances_to_options(hass):
     """After sending SMS code, flow should advance to options step."""
-    mock_hub = _hub_factory()
+    mock_hub = _hub_factory(two_fa=True)
     flow_id = await _get_to_otp_step(hass, mock_hub)
 
     with _patches(mock_hub):
@@ -432,8 +479,9 @@ async def test_otp_challenge_advances_to_options(hass):
 
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "options"
-    # After OTP, token is already set by send_sms_code -- login is skipped
-    mock_hub.login.assert_not_awaited()
+    # login was called once during async_step_user (raised Login2FAError);
+    # finish_setup skips login because send_sms_code already set the token
+    assert mock_hub.login.await_count == 1
 
 
 # ===================================================================
@@ -508,6 +556,28 @@ async def test_create_client_creates_hub_when_password_present(hass):
     call_args = hub_cls.call_args
     config_arg = call_args[0][0]
     assert config_arg[CONF_PASSWORD] == "test-password"
+
+
+async def test_create_client_with_real_hub_init(hass):
+    """_create_client with real SecuritasHub.__init__ — catches missing config keys."""
+    from custom_components.securitas.config_flow import FlowHandler
+
+    flow = FlowHandler()
+    flow.hass = hass
+    # Simulate the config dict built by async_step_user before _create_client
+    flow.config = OrderedDict(USER_INPUT_CREDENTIALS)
+    flow.config[CONF_DELAY_CHECK_OPERATION] = DEFAULT_DELAY_CHECK_OPERATION
+    flow.config[CONF_DEVICE_ID] = FAKE_UUID
+    flow.config[CONF_UNIQUE_ID] = FAKE_UUID
+    flow.config[CONF_DEVICE_INDIGITALL] = ""
+    flow.config[CONF_CHECK_ALARM_PANEL] = True
+
+    with patch(PATCH_SESSION, return_value=MagicMock()):
+        hub = flow._create_client()
+
+    assert hub is not None
+    assert hub.country == "ES"
+    assert hub.check_alarm is True
 
 
 async def test_create_client_raises_value_error_when_password_none(hass):
@@ -941,7 +1011,7 @@ async def test_full_flow_creates_entry(hass):
 
 async def test_full_flow_2fa_creates_entry(hass):
     """Complete 2FA flow: credentials -> phone -> otp -> options -> mappings."""
-    mock_hub = _hub_factory()
+    mock_hub = _hub_factory(two_fa=True)
     flow_id = await _get_to_otp_step(hass, mock_hub)
 
     with _patches(mock_hub):
@@ -1009,21 +1079,80 @@ async def test_full_flow_select_installation_creates_entry(hass):
 
 
 # ===================================================================
+# TestSessionReuse (~2 tests)
+# ===================================================================
+
+
+async def test_existing_session_reused_no_new_login(hass):
+    """When a session already exists for this username, reuse it without login."""
+    existing_hub = _hub_factory()
+    existing_hub.config = {
+        CONF_DEVICE_ID: "existing-device-id",
+        CONF_UNIQUE_ID: "existing-unique-id",
+        CONF_DEVICE_INDIGITALL: "existing-indigitall",
+    }
+    # Pre-set the token so finish_setup doesn't try to login again
+    existing_hub.get_authentication_token = MagicMock(return_value=FAKE_JWT)
+
+    # Simulate an already-running session
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN]["sessions"] = {
+        "test@example.com": {"hub": existing_hub, "ref_count": 1}
+    }
+
+    with _patches(existing_hub):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT_CREDENTIALS
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options"
+    # Should NOT have called login — session was reused
+    existing_hub.login.assert_not_awaited()
+
+
+async def test_existing_session_copies_device_ids(hass):
+    """Reused session should copy device_id from existing hub into new entry."""
+    existing_hub = _hub_factory()
+    existing_hub.config = {
+        CONF_DEVICE_ID: "existing-device-id",
+        CONF_UNIQUE_ID: "existing-unique-id",
+        CONF_DEVICE_INDIGITALL: "existing-indigitall",
+    }
+    existing_hub.get_authentication_token = MagicMock(return_value=FAKE_JWT)
+
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN]["sessions"] = {
+        "test@example.com": {"hub": existing_hub, "ref_count": 1}
+    }
+
+    result = await _complete_full_flow(hass, existing_hub)
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DEVICE_ID] == "existing-device-id"
+    assert result["data"][CONF_UNIQUE_ID] == "existing-unique-id"
+    assert result["data"][CONF_DEVICE_INDIGITALL] == "existing-indigitall"
+
+
+# ===================================================================
 # TestPeriAutoDetection (~2 tests)
 # ===================================================================
 
 
-async def test_peri_detected_from_alarm_partitions(hass):
-    """When alarm_partitions contain peri states, CONF_HAS_PERI should be True."""
+async def test_peri_detected_from_service_attributes(hass):
+    """When a service has a PERI attribute, CONF_HAS_PERI should be True."""
     mock_hub = _hub_factory()
 
-    async def _get_services_with_peri(installation):
-        installation.alarm_partitions = [
-            {"id": "1", "enterStates": ["T", "A", "E"], "leaveStates": ["D"]}
+    async def _get_services_with_peri_attr(installation):
+        installation.alarm_partitions = []
+        svc = MagicMock()
+        svc.attributes = [
+            Attribute(name="ARM", value="CONECTAR"),
+            Attribute(name="PERI", value="PERIMETRAL"),
         ]
-        return []
+        return [svc]
 
-    mock_hub.get_services = AsyncMock(side_effect=_get_services_with_peri)
+    mock_hub.get_services = AsyncMock(side_effect=_get_services_with_peri_attr)
 
     result = await _complete_full_flow(hass, mock_hub)
 
@@ -1031,8 +1160,8 @@ async def test_peri_detected_from_alarm_partitions(hass):
     assert result["data"][CONF_HAS_PERI] is True
 
 
-async def test_no_peri_when_alarm_partitions_empty(hass):
-    """When alarm_partitions are empty, CONF_HAS_PERI should be False."""
+async def test_no_peri_when_no_peri_service_attribute(hass):
+    """When no service has a PERI attribute, CONF_HAS_PERI should be False."""
     mock_hub = _hub_factory()
 
     result = await _complete_full_flow(hass, mock_hub)

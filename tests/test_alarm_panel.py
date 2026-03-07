@@ -64,7 +64,7 @@ def make_alarm(
     if config is None:
         defaults = PERI_DEFAULTS if has_peri else STD_DEFAULTS
         config = {
-            "PERI_alarm": has_peri,
+            "has_peri": has_peri,
             "map_home": defaults["map_home"],
             "map_away": defaults["map_away"],
             "map_night": defaults["map_night"],

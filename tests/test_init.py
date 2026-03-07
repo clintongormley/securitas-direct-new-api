@@ -33,7 +33,6 @@ from custom_components.securitas import (
     CONF_MAP_VACATION,
     CONF_HAS_PERI,
     CONF_NOTIFY_GROUP,
-    CONF_USE_2FA,
     DOMAIN,
     PLATFORMS,
     SecuritasDirectDevice,
@@ -130,6 +129,51 @@ class TestAddDeviceInformation:
         assert result[CONF_DEVICE_ID] == "my-device-id"
         assert result[CONF_UNIQUE_ID] == "my-unique-id"
         assert result[CONF_DEVICE_INDIGITALL] == "my-indigitall"
+
+
+# ===========================================================================
+# 1b. TestSecuritasHubInit — real constructor, catches missing config keys
+# ===========================================================================
+
+
+class TestSecuritasHubInit:
+    """Verify SecuritasHub.__init__ works with config dicts from various sources."""
+
+    def test_hub_init_with_config_entry_data(self, hass):
+        """SecuritasHub.__init__ should accept make_config_entry_data() without KeyError."""
+        config = make_config_entry_data()
+        hub = SecuritasHub(config, None, MagicMock(), hass)
+        assert hub.country == "ES"
+        assert hub.check_alarm is True
+
+    def test_hub_init_with_minimal_config_flow_config(self, hass):
+        """SecuritasHub.__init__ should accept the config dict built by _create_client.
+
+        This catches the bug where async_step_user didn't set CONF_CHECK_ALARM_PANEL
+        before calling _create_client(), causing a KeyError in production.
+        """
+        from custom_components.securitas import (
+            CONF_CHECK_ALARM_PANEL,
+            DEFAULT_CHECK_ALARM_PANEL,
+            DEFAULT_DELAY_CHECK_OPERATION,
+        )
+
+        # Simulate the config dict built by async_step_user before _create_client()
+        config = OrderedDict(
+            {
+                CONF_COUNTRY: "ES",
+                CONF_USERNAME: "test@example.com",
+                CONF_PASSWORD: "test-password",
+                CONF_DELAY_CHECK_OPERATION: DEFAULT_DELAY_CHECK_OPERATION,
+                CONF_DEVICE_ID: "test-device-id",
+                CONF_UNIQUE_ID: "test-uuid",
+                CONF_DEVICE_INDIGITALL: "",
+                CONF_CHECK_ALARM_PANEL: DEFAULT_CHECK_ALARM_PANEL,
+            }
+        )
+        hub = SecuritasHub(config, None, MagicMock(), hass)
+        assert hub.country == "ES"
+        assert hub.check_alarm == DEFAULT_CHECK_ALARM_PANEL
 
 
 # ===========================================================================
@@ -242,7 +286,6 @@ class TestSecuritasHub:
                 CONF_CODE: "",
                 CONF_HAS_PERI: False,
                 CONF_CODE_ARM_REQUIRED: False,
-                CONF_USE_2FA: True,
             }
         )
         config.update(overrides)

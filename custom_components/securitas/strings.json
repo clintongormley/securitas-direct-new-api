@@ -1,5 +1,9 @@
 {
     "config": {
+        "error": {
+            "invalid_auth": "Invalid username or password",
+            "cannot_connect": "Unable to connect to Securitas Direct"
+        },
         "abort": {
             "already_configured": "Service is already configured"
         },
@@ -8,8 +12,7 @@
                 "data": {
                     "country": "Country",
                     "username": "Username",
-                    "password": "Password",
-                    "use_2FA": "Use 2FA"
+                    "password": "Password"
                 },
                 "description": "Login into Securitas Direct.",
                 "title": "Login"
