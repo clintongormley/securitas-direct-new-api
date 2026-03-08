@@ -1371,3 +1371,108 @@ class TestAsyncMigrateEntry:
 
         assert result is True
         assert entry.version == 3
+
+
+class TestPerDomainQueueSharing:
+    """Tests for per-domain ApiQueue sharing."""
+
+    async def test_same_country_shares_queue(self, hass):
+        """Two entries with same country should share one ApiQueue."""
+        data1 = make_config_entry_data(username="user1@test.com")
+        data2 = make_config_entry_data(username="user2@test.com")
+        entry1 = MockConfigEntry(domain=DOMAIN, data=data1)
+        entry2 = MockConfigEntry(domain=DOMAIN, data=data2)
+        entry1.add_to_hass(hass)
+        entry2.add_to_hass(hass)
+
+        mock_hub1 = make_securitas_hub_mock()
+        mock_hub1.session.list_installations = AsyncMock(
+            return_value=[make_installation()]
+        )
+        mock_hub2 = make_securitas_hub_mock()
+        mock_hub2.session.list_installations = AsyncMock(
+            return_value=[make_installation(number="654321")]
+        )
+
+        # Set up entry1
+        mock_cls1 = MagicMock(return_value=mock_hub1)
+        mock_cls1.__name__ = "SecuritasHub"
+        with (
+            patch("custom_components.securitas.SecuritasHub", mock_cls1),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_setup_entry(hass, entry1)
+
+        # Set up entry2
+        mock_cls2 = MagicMock(return_value=mock_hub2)
+        mock_cls2.__name__ = "SecuritasHub"
+        with (
+            patch("custom_components.securitas.SecuritasHub", mock_cls2),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_setup_entry(hass, entry2)
+
+        # Both hubs should have the same queue
+        hub1 = hass.data[DOMAIN][entry1.entry_id]["hub"]
+        hub2 = hass.data[DOMAIN][entry2.entry_id]["hub"]
+        assert hub1._api_queue is hub2._api_queue
+
+    async def test_different_country_gets_separate_queue(self, hass):
+        """Two entries with different countries should get separate queues."""
+        data_es = make_config_entry_data(username="user1@test.com", country="ES")
+        data_it = make_config_entry_data(username="user2@test.com", country="IT")
+        entry_es = MockConfigEntry(domain=DOMAIN, data=data_es)
+        entry_it = MockConfigEntry(domain=DOMAIN, data=data_it)
+        entry_es.add_to_hass(hass)
+        entry_it.add_to_hass(hass)
+
+        mock_hub_es = make_securitas_hub_mock()
+        mock_hub_es.session.list_installations = AsyncMock(
+            return_value=[make_installation()]
+        )
+        mock_hub_it = make_securitas_hub_mock()
+        mock_hub_it.session.list_installations = AsyncMock(
+            return_value=[make_installation(number="654321")]
+        )
+
+        # Set up ES entry
+        mock_cls_es = MagicMock(return_value=mock_hub_es)
+        mock_cls_es.__name__ = "SecuritasHub"
+        with (
+            patch("custom_components.securitas.SecuritasHub", mock_cls_es),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_setup_entry(hass, entry_es)
+
+        # Set up IT entry
+        mock_cls_it = MagicMock(return_value=mock_hub_it)
+        mock_cls_it.__name__ = "SecuritasHub"
+        with (
+            patch("custom_components.securitas.SecuritasHub", mock_cls_it),
+            patch("custom_components.securitas.async_get_clientsession"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_setup_entry(hass, entry_it)
+
+        hub_es = hass.data[DOMAIN][entry_es.entry_id]["hub"]
+        hub_it = hass.data[DOMAIN][entry_it.entry_id]["hub"]
+        assert hub_es._api_queue is not hub_it._api_queue

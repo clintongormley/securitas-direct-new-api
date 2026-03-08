@@ -302,6 +302,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     ) from None
                 sessions[username] = {"hub": client, "ref_count": 1}
 
+        # Share ApiQueue per domain — WAF rate-limits by IP per domain
+        domain_url = ApiDomains().get_url(config[CONF_COUNTRY])
+        api_queues = hass.data[DOMAIN].setdefault("api_queues", {})
+        if domain_url not in api_queues:
+            api_queues[domain_url] = ApiQueue(
+                foreground_interval=config[CONF_DELAY_CHECK_OPERATION],
+            )
+        client._api_queue = api_queues[domain_url]
+
         entry.async_on_unload(entry.add_update_listener(async_update_options))
 
         # Use cached installations from config flow if available,
