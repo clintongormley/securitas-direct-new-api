@@ -320,7 +320,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             all_installations: list[Installation] = (
                 cached
                 if cached is not None
-                else await client.session.list_installations()
+                else await client._api_queue.submit(
+                    client.session.list_installations,
+                    priority=ApiQueue.FOREGROUND,
+                )
             )
             target_number = entry.data.get(CONF_INSTALLATION)
             if target_number:
@@ -343,7 +346,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     client._services_cache[installation.number] = cached_services[
                         installation.number
                     ]
-                await client.get_services(installation)
+                await client.get_services(installation, priority=ApiQueue.FOREGROUND)
                 devices.append(SecuritasDirectDevice(installation))
         except SecuritasDirectError as err:
             _LOGGER.error("Unable to connect to Securitas Direct: %s", err.log_detail())
@@ -590,12 +593,20 @@ class SecuritasHub:
         """Call for the SMS challange."""
         return await self.session.send_otp(phone_index, challange)
 
-    async def get_services(self, instalation: Installation) -> list[Service]:
+    async def get_services(
+        self, instalation: Installation, priority=None
+    ) -> list[Service]:
         """Get the list of services from the installation (cached)."""
+        if priority is None:
+            priority = ApiQueue.BACKGROUND
         key = instalation.number
         if key in self._services_cache:
             return self._services_cache[key]
-        services = await self.session.get_all_services(instalation)
+        services = await self._api_queue.submit(
+            self.session.get_all_services,
+            instalation,
+            priority=priority,
+        )
         self._services_cache[key] = services
         return services
 
