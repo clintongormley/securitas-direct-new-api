@@ -165,7 +165,7 @@ The central coordinator. It owns an `ApiManager` session and is shared by all en
 - **Status polling** — `update_overview()` checks the alarm status using one of two strategies:
   - **Panel check** (default, `check_alarm_panel=True`): Sends `check_alarm()` to get a `referenceId`, waits 1 second, then calls `check_alarm_status()` to poll the panel directly
   - **General status** (`check_alarm_panel=False`): Calls `check_general_status()` which returns the last known cloud status without waking the panel
-- **API call cooldown** — `update_overview()` enforces a 5-second minimum gap between API call bursts via `_last_api_time`. This prevents the second installation's queued poll from firing immediately after an arm/disarm operation (which makes many API calls), which would trigger the Incapsula WAF rate limiter. Arm/disarm operations also update `_last_api_time` when they complete.
+- **API call cooldown** — All API calls are submitted via `ApiQueue`, which enforces a minimum gap between calls to avoid triggering the Incapsula WAF rate limiter. Foreground operations (arm/disarm) use a shorter interval; background polls use a longer one. See `ApiQueue` below.
 - **403 re-raise** — `update_overview()` re-raises 403 `SecuritasDirectError` so the calling alarm entity can set `waf_blocked`. Non-403 errors are swallowed and return an empty `CheckAlarmStatus`.
 
 ### Setup flow (`async_setup_entry`)

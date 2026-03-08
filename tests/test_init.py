@@ -495,27 +495,6 @@ class TestSecuritasHub:
         # The queue should have updated _last_api_time
         assert hub._api_queue._last_api_time > 0
 
-    async def test_update_overview_updates_last_api_time(self):
-        """update_overview updates _api_queue._last_api_time after API calls."""
-        hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
-        hub.session = AsyncMock()
-        hub.session.check_alarm = AsyncMock(return_value="ref-123")
-        hub.session.delay_check_operation = 2
-        raw_response = {
-            "res": "OK",
-            "msg": "",
-            "status": "",
-            "numinst": "123456",
-            "protomResponse": "D",
-            "protomResponseDate": "",
-        }
-        hub.session._check_alarm_status = AsyncMock(return_value=raw_response)
-        inst = make_installation()
-
-        assert hub._api_queue._last_api_time == 0
-        await hub.update_overview(inst)
-        assert hub._api_queue._last_api_time > 0
-
 
 # ===========================================================================
 # 5. TestAsyncSetupEntry
