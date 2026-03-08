@@ -815,6 +815,44 @@ class SecuritasHub:
         _LOGGER.debug("Alarm status poll timed out for %s", installation.number)
         return CheckAlarmStatus()
 
+    async def change_lock_mode(
+        self, installation: Installation, lock_state: bool, device_id: str
+    ) -> Any:
+        """Change lock mode via queue-submitted API calls."""
+        reference_id = await self._api_queue.submit(
+            self.session.change_lock_mode_request,
+            installation,
+            lock_state,
+            device_id,
+            priority=ApiQueue.FOREGROUND,
+        )
+
+        max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
+        for attempt in range(1, max_attempts + 1):
+            raw = await self._api_queue.submit(
+                self.session.check_change_lock_mode_once,
+                installation,
+                reference_id,
+                attempt,
+                device_id,
+                priority=ApiQueue.FOREGROUND,
+            )
+            if raw.get("res") != "WAIT":
+                return self.session.process_lock_mode_result(raw)
+
+        raise TimeoutError("Lock mode change timed out")
+
+    async def get_danalock_config(
+        self, installation: Installation, device_id: str
+    ) -> Any:
+        """Fetch danalock config via queue-submitted API calls."""
+        return await self._api_queue.submit(
+            self.session.get_danalock_config,
+            installation,
+            device_id,
+            priority=ApiQueue.FOREGROUND,
+        )
+
     @property
     def get_config_entry(self) -> ConfigEntry | None:
         return self.config_entry

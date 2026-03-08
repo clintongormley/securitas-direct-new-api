@@ -196,7 +196,7 @@ class SecuritasLock(lock.LockEntity):
         if not self._danalock_config_fetched:
             self._danalock_config_fetched = True
             try:
-                self._danalock_config = await self.client.session.get_danalock_config(
+                self._danalock_config = await self.client.get_danalock_config(
                     self.installation, self._device_id
                 )
                 cfg = self._danalock_config
@@ -282,9 +282,7 @@ class SecuritasLock(lock.LockEntity):
     async def async_lock(self, **kwargs):
         self.__force_state(LOCK_STATUS_LOCKING)
         try:
-            await self.client.session.change_lock_mode(
-                self.installation, True, self._device_id
-            )
+            await self.client.change_lock_mode(self.installation, True, self._device_id)
         except SecuritasDirectError as err:
             _LOGGER.error(
                 "Lock operation failed for %s device %s: %s",
@@ -299,7 +297,7 @@ class SecuritasLock(lock.LockEntity):
     async def async_unlock(self, **kwargs):
         self.__force_state(LOCK_STATUS_OPENING)
         try:
-            await self.client.session.change_lock_mode(
+            await self.client.change_lock_mode(
                 self.installation, False, self._device_id
             )
         except SecuritasDirectError as err:
