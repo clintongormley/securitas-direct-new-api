@@ -48,7 +48,6 @@ from custom_components.securitas.securitas_direct_new_api.const import (
     STD_DEFAULTS,
 )
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
-    CheckAlarmStatus,
     SStatus,
 )
 from custom_components.securitas.securitas_direct_new_api.exceptions import (
@@ -380,27 +379,28 @@ class TestSecuritasHub:
         assert hub.session.authentication_token == "new-token"
 
     async def test_update_overview_check_alarm_true(self):
-        """update_overview with check_alarm=True should use check_alarm + check_alarm_status."""
+        """update_overview with check_alarm=True should use check_alarm + _check_alarm_status."""
         hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
         hub.session = AsyncMock()
         hub.session.check_alarm = AsyncMock(return_value="ref-123")
-        expected_status = CheckAlarmStatus(
-            operation_status="OK",
-            message="",
-            status="armed",
-            InstallationNumer="123456",
-            protomResponse="T",
-            protomResponseData="",
-        )
-        hub.session.check_alarm_status = AsyncMock(return_value=expected_status)
+        hub.session.delay_check_operation = 2
+        raw_response = {
+            "res": "OK",
+            "msg": "",
+            "status": "armed",
+            "numinst": "123456",
+            "protomResponse": "T",
+            "protomResponseDate": "",
+        }
+        hub.session._check_alarm_status = AsyncMock(return_value=raw_response)
         inst = make_installation()
 
-        with patch("custom_components.securitas.asyncio.sleep", new_callable=AsyncMock):
-            result = await hub.update_overview(inst)
+        result = await hub.update_overview(inst)
 
         hub.session.check_alarm.assert_awaited_once_with(inst)
-        hub.session.check_alarm_status.assert_awaited_once()
-        assert result == expected_status
+        hub.session._check_alarm_status.assert_awaited_once()
+        assert result.protomResponse == "T"
+        assert result.status == "armed"
 
     async def test_update_overview_check_alarm_false(self):
         """update_overview with check_alarm=False should use check_general_status."""
@@ -416,20 +416,18 @@ class TestSecuritasHub:
         assert result.InstallationNumer == inst.number
 
     async def test_update_overview_reraises_403_check_alarm(self):
-        """update_overview re-raises 403 errors from check_alarm_status."""
+        """update_overview re-raises 403 errors from _check_alarm_status."""
         hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
         hub.session = AsyncMock()
         hub.session.check_alarm = AsyncMock(return_value="ref-123")
-        hub.session.check_alarm_status = AsyncMock(
+        hub.session.delay_check_operation = 2
+        hub.session._check_alarm_status = AsyncMock(
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
         )
         inst = make_installation()
 
         with pytest.raises(SecuritasDirectError) as exc_info:
-            with patch(
-                "custom_components.securitas.asyncio.sleep", new_callable=AsyncMock
-            ):
-                await hub.update_overview(inst)
+            await hub.update_overview(inst)
         assert exc_info.value.http_status == 403
 
     async def test_update_overview_reraises_403_general_status(self):
@@ -445,24 +443,22 @@ class TestSecuritasHub:
             await hub.update_overview(inst)
         assert exc_info.value.http_status == 403
         # _last_api_time should still be updated even on 403 (for cooldown)
-        assert hub._last_api_time > 0
+        assert hub._api_queue._last_api_time > 0
 
     async def test_update_overview_403_check_alarm_updates_last_api_time(self):
-        """403 on check_alarm_status still updates _last_api_time for cooldown."""
+        """403 on _check_alarm_status still updates _last_api_time for cooldown."""
         hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
         hub.session = AsyncMock()
         hub.session.check_alarm = AsyncMock(return_value="ref-123")
-        hub.session.check_alarm_status = AsyncMock(
+        hub.session.delay_check_operation = 2
+        hub.session._check_alarm_status = AsyncMock(
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
         )
         inst = make_installation()
 
         with pytest.raises(SecuritasDirectError):
-            with patch(
-                "custom_components.securitas.asyncio.sleep", new_callable=AsyncMock
-            ):
-                await hub.update_overview(inst)
-        assert hub._last_api_time > 0
+            await hub.update_overview(inst)
+        assert hub._api_queue._last_api_time > 0
 
     async def test_update_overview_swallows_non_403_error(self):
         """update_overview swallows non-403 errors and returns empty status."""
@@ -473,63 +469,52 @@ class TestSecuritasHub:
         )
         inst = make_installation()
 
-        with patch("custom_components.securitas.asyncio.sleep", new_callable=AsyncMock):
-            result = await hub.update_overview(inst)
+        result = await hub.update_overview(inst)
         # Should return empty CheckAlarmStatus, not raise
         assert not result.protomResponse
 
     async def test_update_overview_cooldown_between_calls(self):
-        """update_overview waits if called too soon after previous API call."""
+        """update_overview updates _api_queue._last_api_time after API calls."""
         hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
         hub.session = AsyncMock()
         hub.session.check_alarm = AsyncMock(return_value="ref-123")
-        status = CheckAlarmStatus(
-            operation_status="OK",
-            message="",
-            status="",
-            InstallationNumer="123456",
-            protomResponse="D",
-            protomResponseData="",
-        )
-        hub.session.check_alarm_status = AsyncMock(return_value=status)
+        hub.session.delay_check_operation = 2
+        raw_response = {
+            "res": "OK",
+            "msg": "",
+            "status": "",
+            "numinst": "123456",
+            "protomResponse": "D",
+            "protomResponseDate": "",
+        }
+        hub.session._check_alarm_status = AsyncMock(return_value=raw_response)
         inst = make_installation()
 
-        import time
-
-        # Simulate recent API call
-        hub._last_api_time = time.monotonic()
-
-        with patch(
-            "custom_components.securitas.asyncio.sleep", new_callable=AsyncMock
-        ) as mock_sleep:
-            await hub.update_overview(inst)
-
-        # asyncio.sleep should have been called for the cooldown
-        # (once for cooldown, once for poll delay)
-        assert mock_sleep.call_count >= 2
+        assert hub._api_queue._last_api_time == 0
+        await hub.update_overview(inst)
+        # The queue should have updated _last_api_time
+        assert hub._api_queue._last_api_time > 0
 
     async def test_update_overview_updates_last_api_time(self):
-        """update_overview updates _last_api_time after API calls."""
+        """update_overview updates _api_queue._last_api_time after API calls."""
         hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
         hub.session = AsyncMock()
         hub.session.check_alarm = AsyncMock(return_value="ref-123")
-        status = CheckAlarmStatus(
-            operation_status="OK",
-            message="",
-            status="",
-            InstallationNumer="123456",
-            protomResponse="D",
-            protomResponseData="",
-        )
-        hub.session.check_alarm_status = AsyncMock(return_value=status)
+        hub.session.delay_check_operation = 2
+        raw_response = {
+            "res": "OK",
+            "msg": "",
+            "status": "",
+            "numinst": "123456",
+            "protomResponse": "D",
+            "protomResponseDate": "",
+        }
+        hub.session._check_alarm_status = AsyncMock(return_value=raw_response)
         inst = make_installation()
 
-        assert hub._last_api_time == 0
-
-        with patch("custom_components.securitas.asyncio.sleep", new_callable=AsyncMock):
-            await hub.update_overview(inst)
-
-        assert hub._last_api_time > 0
+        assert hub._api_queue._last_api_time == 0
+        await hub.update_overview(inst)
+        assert hub._api_queue._last_api_time > 0
 
 
 # ===========================================================================

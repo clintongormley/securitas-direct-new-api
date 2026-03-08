@@ -2,6 +2,7 @@
 
 import asyncio
 from collections import OrderedDict
+import functools
 import json
 import logging
 from pathlib import Path
@@ -29,9 +30,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import DeviceInfo
 
+from .api_queue import ApiQueue
 from .log_filter import SensitiveDataFilter
 from .securitas_direct_new_api import (
-    ALARM_STATUS_POLL_DELAY,
     ApiDomains,
     ApiManager,
     CheckAlarmStatus,
@@ -41,7 +42,6 @@ from .securitas_direct_new_api import (
     OtpPhone,
     SecuritasDirectError,
     Service,
-    SStatus,
     generate_device_id,
     generate_uuid,
 )
@@ -292,12 +292,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     )
                     return False
                 except SecuritasDirectError as err:
+                    detail = err.log_detail()
                     _LOGGER.error(
                         "Unable to connect to Securitas Direct: %s",
-                        err.log_detail(),
+                        detail,
                     )
                     raise ConfigEntryNotReady(
-                        "Unable to connect to Securitas Direct"
+                        f"Unable to connect to Securitas Direct: {detail}"
                     ) from None
                 sessions[username] = {"hub": client, "ref_count": 1}
 
@@ -547,8 +548,10 @@ class SecuritasHub:
             log_filter=self.log_filter,
         )
         self.installations: list[Installation] = []
-        self._api_lock = asyncio.Lock()
-        self._last_api_time: float = 0
+        self._api_queue = ApiQueue(
+            foreground_interval=domain_config[CONF_DELAY_CHECK_OPERATION],
+            background_interval=5.0,
+        )
         self._lock_modes: dict[
             str, list
         ] = {}  # installation.number -> SmartLockMode list
@@ -604,62 +607,38 @@ class SecuritasHub:
         return True
 
     async def get_lock_modes(self, installation: Installation) -> list:
-        """Get lock modes for an installation, with rate-limit serialization.
-
-        Returns cached result if fetched within the last update cycle,
-        so multiple lock entities on the same installation share one API call.
-        """
+        """Get lock modes with caching, submitted via queue."""
         from .securitas_direct_new_api import SmartLockMode
 
-        _MIN_API_INTERVAL = 5
-        _CACHE_TTL = 30  # seconds — cache results within an update cycle
-
+        _CACHE_TTL = 30
         now = time.monotonic()
         cached_time = self._lock_modes_time.get(installation.number, 0)
         if now - cached_time < _CACHE_TTL and installation.number in self._lock_modes:
             return self._lock_modes[installation.number]
 
-        async with self._api_lock:
-            # Re-check cache after acquiring lock (another entity may have fetched)
-            now = time.monotonic()
-            cached_time = self._lock_modes_time.get(installation.number, 0)
-            if (
-                now - cached_time < _CACHE_TTL
-                and installation.number in self._lock_modes
-            ):
-                return self._lock_modes[installation.number]
+        try:
+            modes: list[SmartLockMode] = await self._api_queue.submit(
+                self.session.get_lock_current_mode,
+                installation,
+                priority=ApiQueue.BACKGROUND,
+            )
+        except SecuritasDirectError as err:
+            _LOGGER.warning(
+                "Error fetching lock modes for %s: %s",
+                installation.number,
+                err.log_detail(),
+            )
+            modes = []
 
-            elapsed = now - self._last_api_time
-            if elapsed < _MIN_API_INTERVAL:
-                await asyncio.sleep(_MIN_API_INTERVAL - elapsed)
+        self._lock_modes[installation.number] = modes
+        self._lock_modes_time[installation.number] = time.monotonic()
+        return modes
 
-            try:
-                modes: list[SmartLockMode] = await self.session.get_lock_current_mode(
-                    installation
-                )
-            except SecuritasDirectError as err:
-                _LOGGER.warning(
-                    "Error fetching lock modes for %s: %s",
-                    installation.number,
-                    err.log_detail(),
-                )
-                modes = []
-            finally:
-                self._last_api_time = time.monotonic()
-
-            self._lock_modes[installation.number] = modes
-            self._lock_modes_time[installation.number] = time.monotonic()
-            return modes
-
-    async def _cached_api_call(self, cache_key: str, coro_fn, *args):
-        """Execute an API call with rate-limit serialization and caching.
-
-        coro_fn is called (with *args) only when the cache misses, so no
-        coroutine is created — and therefore never leaked — on a cache hit.
-        """
-        _MIN_API_INTERVAL = 5
+    async def _cached_api_call(self, cache_key: str, coro_fn, *args, priority=None):
+        """Execute an API call with caching, submitted via queue."""
+        if priority is None:
+            priority = ApiQueue.BACKGROUND
         _CACHE_TTL = 30
-
         now = time.monotonic()
         if (
             now - self._api_cache_time.get(cache_key, 0) < _CACHE_TTL
@@ -667,26 +646,12 @@ class SecuritasHub:
         ):
             return self._api_cache[cache_key]
 
-        async with self._api_lock:
-            now = time.monotonic()
-            if (
-                now - self._api_cache_time.get(cache_key, 0) < _CACHE_TTL
-                and cache_key in self._api_cache
-            ):
-                return self._api_cache[cache_key]
+        result = await self._api_queue.submit(coro_fn, *args, priority=priority)
 
-            elapsed = now - self._last_api_time
-            if elapsed < _MIN_API_INTERVAL:
-                await asyncio.sleep(_MIN_API_INTERVAL - elapsed)
-
-            try:
-                result = await coro_fn(*args)
-            finally:
-                self._last_api_time = time.monotonic()
-
+        if result is not None:
             self._api_cache[cache_key] = result
             self._api_cache_time[cache_key] = time.monotonic()
-            return result
+        return result
 
     async def get_sentinel(self, installation: Installation, service: Service) -> Any:
         """Get sentinel data with rate-limit serialization and caching."""
@@ -698,61 +663,148 @@ class SecuritasHub:
             service,
         )
 
+    async def get_air_quality(self, installation: Installation, zone: str) -> Any:
+        """Get air quality data with rate-limit serialization and caching."""
+        cache_key = f"air_quality_{installation.number}_{zone}"
+        return await self._cached_api_call(
+            cache_key,
+            self.session.get_air_quality_data,
+            installation,
+            zone,
+        )
+
+    async def arm_alarm(
+        self, installation: Installation, command: str, **force_params: str
+    ) -> Any:
+        """Arm the alarm via queue-submitted API calls."""
+        reference_id = await self._api_queue.submit(
+            functools.partial(
+                self.session.arm_request, installation, command, **force_params
+            ),
+            priority=ApiQueue.FOREGROUND,
+        )
+
+        max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
+        for attempt in range(1, max_attempts + 1):
+            raw = await self._api_queue.submit(
+                self.session.check_arm_status_once,
+                installation,
+                reference_id,
+                command,
+                attempt,
+                priority=ApiQueue.FOREGROUND,
+            )
+            if raw.get("res") != "WAIT":
+                return await self.session.process_arm_result(raw, installation)
+
+        raise TimeoutError("Arm status poll timed out")
+
+    async def disarm_alarm(self, installation: Installation, command: str) -> Any:
+        """Disarm the alarm via queue-submitted API calls."""
+        reference_id = await self._api_queue.submit(
+            self.session.disarm_request,
+            installation,
+            command,
+            priority=ApiQueue.FOREGROUND,
+        )
+
+        max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
+        for attempt in range(1, max_attempts + 1):
+            raw = await self._api_queue.submit(
+                self.session.check_disarm_status_once,
+                installation,
+                reference_id,
+                command,
+                attempt,
+                priority=ApiQueue.FOREGROUND,
+            )
+            if raw.get("res") != "WAIT":
+                return self.session.process_disarm_result(raw)
+
+        raise TimeoutError("Disarm status poll timed out")
+
     async def update_overview(self, installation: Installation) -> CheckAlarmStatus:
-        """Update the overview.
-
-        Uses a lock to serialize API calls across installations, preventing
-        concurrent request bursts that trigger the Securitas WAF.
-        """
-        _MIN_API_INTERVAL = 5  # seconds between API call bursts
-        async with self._api_lock:
-            elapsed = time.monotonic() - self._last_api_time
-            if elapsed < _MIN_API_INTERVAL:
-                await asyncio.sleep(_MIN_API_INTERVAL - elapsed)
-
-            if self.check_alarm is not True:
-                status: SStatus = SStatus()
-                try:
-                    status = await self.session.check_general_status(installation)
-                except SecuritasDirectError as err:
-                    _LOGGER.warning(
-                        "Error checking general status for %s: %s",
-                        installation.number,
-                        err.log_detail(),
-                    )
-                    if getattr(err, "http_status", None) == 403:
-                        raise
-                finally:
-                    self._last_api_time = time.monotonic()
-
-                return CheckAlarmStatus(
-                    status.status or "",
-                    "",
-                    status.status or "",
-                    installation.number,
-                    status.status or "",
-                    status.timestampUpdate or "",
-                )
-
-            alarm_status = CheckAlarmStatus()
+        """Update the overview via individual queue-submitted API calls."""
+        if self.check_alarm is not True:
             try:
-                reference_id: str = await self.session.check_alarm(installation)
-                await asyncio.sleep(ALARM_STATUS_POLL_DELAY)
-                alarm_status = await self.session.check_alarm_status(
-                    installation, reference_id
+                status = await self._api_queue.submit(
+                    self.session.check_general_status,
+                    installation,
+                    priority=ApiQueue.BACKGROUND,
                 )
             except SecuritasDirectError as err:
-                _LOGGER.error(
-                    "Error checking alarm status for %s: %s",
+                _LOGGER.warning(
+                    "Error checking general status for %s: %s",
                     installation.number,
                     err.log_detail(),
                 )
                 if getattr(err, "http_status", None) == 403:
                     raise
-            finally:
-                self._last_api_time = time.monotonic()
+                return CheckAlarmStatus()
+            return CheckAlarmStatus(
+                status.status or "",
+                "",
+                status.status or "",
+                installation.number,
+                status.status or "",
+                status.timestampUpdate or "",
+            )
 
-            return alarm_status
+        # check_alarm path: each step is a separate queue submission
+        try:
+            reference_id = await self._api_queue.submit(
+                self.session.check_alarm,
+                installation,
+                priority=ApiQueue.BACKGROUND,
+            )
+        except SecuritasDirectError as err:
+            _LOGGER.error(
+                "Error checking alarm status for %s: %s",
+                installation.number,
+                err.log_detail(),
+            )
+            if getattr(err, "http_status", None) == 403:
+                raise
+            return CheckAlarmStatus()
+
+        # Poll — each retry is a separate queue submission
+        max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
+        for attempt in range(1, max_attempts + 1):
+            try:
+                raw = await self._api_queue.submit(
+                    self.session._check_alarm_status,
+                    installation,
+                    reference_id,
+                    attempt,
+                    priority=ApiQueue.BACKGROUND,
+                )
+            except SecuritasDirectError as err:
+                _LOGGER.error(
+                    "Error polling alarm status for %s: %s",
+                    installation.number,
+                    err.log_detail(),
+                )
+                if getattr(err, "http_status", None) == 403:
+                    raise
+                return CheckAlarmStatus()
+
+            if raw.get("res") != "WAIT":
+                proto = raw.get("protomResponse")
+                if not proto:
+                    _LOGGER.debug("Empty protomResponse for %s", installation.number)
+                    return CheckAlarmStatus()
+                self.session.protom_response = proto
+                return CheckAlarmStatus(
+                    raw["res"],
+                    raw["msg"],
+                    raw["status"],
+                    raw["numinst"],
+                    raw["protomResponse"],
+                    raw["protomResponseDate"],
+                )
+
+        _LOGGER.debug("Alarm status poll timed out for %s", installation.number)
+        return CheckAlarmStatus()
 
     @property
     def get_config_entry(self) -> ConfigEntry | None:
