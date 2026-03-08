@@ -78,6 +78,7 @@ DEFAULT_CHECK_ALARM_PANEL = True
 DEFAULT_DELAY_CHECK_OPERATION = 3
 DEFAULT_CODE = ""
 DEFAULT_COUNTRY = "ES"
+API_CACHE_TTL = 60  # seconds — sensor data changes hourly at most
 
 COUNTRY_CODES: list[str] = ["AR", "BR", "CL", "ES", "FR", "GB", "IE", "IT", "PT"]
 
@@ -653,7 +654,7 @@ class SecuritasHub:
         """Get lock modes with caching, submitted via queue."""
         from .securitas_direct_new_api import SmartLockMode
 
-        _CACHE_TTL = 30
+        _CACHE_TTL = API_CACHE_TTL
         now = time.monotonic()
         cached_time = self._lock_modes_time.get(installation.number, 0)
         if now - cached_time < _CACHE_TTL and installation.number in self._lock_modes:
@@ -689,7 +690,7 @@ class SecuritasHub:
         """
         if priority is None:
             priority = ApiQueue.BACKGROUND
-        _CACHE_TTL = 30
+        _CACHE_TTL = API_CACHE_TTL
         now = time.monotonic()
         if (
             now - self._api_cache_time.get(cache_key, 0) < _CACHE_TTL
