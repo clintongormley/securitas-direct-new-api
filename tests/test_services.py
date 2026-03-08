@@ -527,6 +527,68 @@ class TestGetSentinelDataEdgeCases:
         assert result == Sentinel("", "", 0, 0)
 
 
+class TestGetAirQualityData:
+    """Tests for get_air_quality_data (xSAirQuality API)."""
+
+    async def test_returns_air_quality_from_hours(
+        self, authed_api, mock_execute, installation
+    ):
+        """Parses hours[-1].value as numeric air quality."""
+        from tests.mock_graphql import graphql_air_quality
+
+        mock_execute.return_value = graphql_air_quality(
+            hour_value="114", status_current=1
+        )
+
+        result = await authed_api.get_air_quality_data(installation, "1")
+
+        assert result is not None
+        assert result.value == 114
+        assert result.status_current == 1
+
+    async def test_returns_none_on_errors(self, authed_api, mock_execute, installation):
+        """Returns None when response has errors."""
+        mock_execute.return_value = {"errors": [{"message": "fail"}]}
+
+        result = await authed_api.get_air_quality_data(installation, "1")
+
+        assert result is None
+
+    async def test_returns_none_when_no_hours(
+        self, authed_api, mock_execute, installation
+    ):
+        """Returns None when hours list is empty."""
+        mock_execute.return_value = {
+            "data": {
+                "xSAirQuality": {
+                    "res": "OK",
+                    "data": {
+                        "status": {"current": 1},
+                        "hours": [],
+                    },
+                }
+            }
+        }
+
+        result = await authed_api.get_air_quality_data(installation, "1")
+
+        assert result is None
+
+    async def test_returns_none_when_xsairquality_null(
+        self, authed_api, mock_execute, installation
+    ):
+        """Returns None when xSAirQuality is null."""
+        mock_execute.return_value = {
+            "data": {
+                "xSAirQuality": None,
+            }
+        }
+
+        result = await authed_api.get_air_quality_data(installation, "1")
+
+        assert result is None
+
+
 class TestGetAllServicesEdgeCases:
     async def test_null_xssrv_returns_empty_list(
         self, authed_api, mock_execute, installation
@@ -607,3 +669,131 @@ class TestDataclassFields:
     def test_smart_lock_mode_device_id_defaults_empty(self):
         mode = SmartLockMode(res="OK", lockStatus="2")
         assert mode.deviceId == ""
+
+
+# ── Raw request + single-poll methods for ApiQueue ───────────────────────────
+
+
+class TestRawRequestMethods:
+    """Tests for raw request + single-poll methods used by ApiQueue."""
+
+    async def test_arm_request_returns_reference_id(self, authed_api, installation):
+        authed_api._execute_request = AsyncMock(
+            return_value={
+                "data": {
+                    "xSArmPanel": {
+                        "res": "OK",
+                        "msg": "processed",
+                        "referenceId": "ref-123",
+                    }
+                }
+            }
+        )
+        ref = await authed_api.arm_request(installation, "ARM1")
+        assert ref == "ref-123"
+
+    async def test_arm_request_error_raises(self, authed_api, installation):
+        authed_api._execute_request = AsyncMock(
+            return_value={
+                "data": {
+                    "xSArmPanel": {
+                        "res": "ERROR",
+                        "msg": "failed",
+                        "referenceId": None,
+                    }
+                }
+            }
+        )
+        with pytest.raises(SecuritasDirectError):
+            await authed_api.arm_request(installation, "ARM1")
+
+    async def test_disarm_request_returns_reference_id(self, authed_api, installation):
+        authed_api._execute_request = AsyncMock(
+            return_value={
+                "data": {
+                    "xSDisarmPanel": {
+                        "res": "OK",
+                        "msg": "processed",
+                        "referenceId": "ref-456",
+                    }
+                }
+            }
+        )
+        ref = await authed_api.disarm_request(installation, "DARM1")
+        assert ref == "ref-456"
+
+    async def test_check_arm_status_once_delegates(self, authed_api, installation):
+        authed_api._execute_request = AsyncMock(
+            return_value={
+                "data": {
+                    "xSArmStatus": {
+                        "res": "WAIT",
+                        "msg": "processing",
+                        "status": None,
+                        "protomResponse": None,
+                        "protomResponseDate": None,
+                        "numinst": "123",
+                        "requestId": None,
+                        "error": None,
+                    }
+                }
+            }
+        )
+        raw = await authed_api.check_arm_status_once(installation, "ref-123", "ARM1", 1)
+        assert raw["res"] == "WAIT"
+
+    async def test_check_disarm_status_once_delegates(self, authed_api, installation):
+        authed_api._execute_request = AsyncMock(
+            return_value={
+                "data": {
+                    "xSDisarmStatus": {
+                        "res": "WAIT",
+                        "msg": "processing",
+                        "status": None,
+                        "protomResponse": None,
+                        "protomResponseDate": None,
+                        "numinst": "123",
+                        "requestId": None,
+                        "error": None,
+                    }
+                }
+            }
+        )
+        raw = await authed_api.check_disarm_status_once(
+            installation, "ref-456", "DARM1", 1
+        )
+        assert raw["res"] == "WAIT"
+
+    async def test_change_lock_mode_request_returns_reference_id(
+        self, authed_api, installation
+    ):
+        authed_api._execute_request = AsyncMock(
+            return_value={
+                "data": {
+                    "xSChangeSmartlockMode": {
+                        "res": "OK",
+                        "msg": "ok",
+                        "referenceId": "ref-lock",
+                    }
+                }
+            }
+        )
+        ref = await authed_api.change_lock_mode_request(installation, True, "01")
+        assert ref == "ref-lock"
+
+    async def test_get_danalock_config_request_returns_reference_id(
+        self, authed_api, installation
+    ):
+        authed_api._execute_request = AsyncMock(
+            return_value={
+                "data": {
+                    "xSGetDanalockConfig": {
+                        "res": "OK",
+                        "msg": "ok",
+                        "referenceId": "ref-cfg",
+                    }
+                }
+            }
+        )
+        ref = await authed_api.get_danalock_config_request(installation, "01")
+        assert ref == "ref-cfg"

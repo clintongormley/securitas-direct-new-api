@@ -22,6 +22,7 @@ from .dataTypes import (
     CheckAlarmStatus,
     DanalockAutolock,
     DanalockConfig,
+    AirQuality,
     DanalockFeatures,
     DisarmStatus,
     Installation,
@@ -200,8 +201,9 @@ class ApiManager:
                     http_status: int = response.status
                     response_text: str = await response.text()
             except ClientConnectorError as err:
+                os_err = err.os_error or err.strerror or "unknown"
                 raise SecuritasDirectError(
-                    f"Connection error with URL {self.api_url}",
+                    f"Connection error with URL {self.api_url}: {os_err}",
                     None,
                     headers,
                     content,
@@ -861,6 +863,51 @@ class ApiManager:
             str(air_quality_code) if air_quality_code is not None else "",
             int(target_device["status"]["humidity"]),
             int(target_device["status"]["temperature"]),
+            zone=target_device.get("zone", ""),
+        )
+
+    async def get_air_quality_data(
+        self, installation: Installation, zone: str
+    ) -> AirQuality | None:
+        """Get air quality data from xSAirQuality API."""
+        content = {
+            "operationName": "AirQuality",
+            "variables": {
+                "numinst": installation.number,
+                "zone": zone,
+            },
+            "query": "query AirQuality($numinst: String!, $zone: String!) {\n  xSAirQuality(numinst: $numinst, zone: $zone) {\n    res\n    data {\n      status {\n        current\n        avg6h\n        avg24h\n        avg7d\n        avg4w\n      }\n      hours {\n        id\n        value\n      }\n    }\n  }\n}",
+        }
+
+        await self._check_authentication_token()
+        await self._check_capabilities_token(installation)
+        response = await self._execute_request(content, "AirQuality", installation)
+
+        if "errors" in response:
+            return None
+
+        air_quality = response.get("data", {}).get("xSAirQuality")
+        if air_quality is None:
+            return None
+
+        aq_data = air_quality.get("data")
+        if aq_data is None:
+            return None
+
+        # Use hours[-1].value for the most recent hourly reading
+        hours = aq_data.get("hours", [])
+        if not hours:
+            return None
+
+        try:
+            value = int(hours[-1].get("value", 0))
+        except (ValueError, TypeError):
+            return None
+
+        status = aq_data.get("status", {})
+        return AirQuality(
+            value=value,
+            status_current=int(status.get("current", 0)),
         )
 
     async def check_general_status(self, installation: Installation) -> SStatus:
@@ -1464,4 +1511,180 @@ class ApiManager:
             periodicBitExtension=raw_data.get("periodicBitExtension", ""),
             autoLockTime=raw_data.get("autoLockTime", ""),
             features=features,
+        )
+
+    # ── Raw request + single-poll methods (for ApiQueue) ─────────────────
+
+    async def arm_request(
+        self,
+        installation: Installation,
+        command: str,
+        force_arming_remote_id: str | None = None,
+        suid: str | None = None,
+    ) -> str:
+        """Send arm request and return the referenceId (no polling)."""
+        variables: dict[str, Any] = {
+            "request": command,
+            "numinst": installation.number,
+            "panel": installation.panel,
+            "currentStatus": self.protom_response,
+            "armAndLock": False,
+        }
+        if force_arming_remote_id is not None:
+            variables["forceArmingRemoteId"] = force_arming_remote_id
+        if suid is not None:
+            variables["suid"] = suid
+
+        content = {
+            "operationName": "xSArmPanel",
+            "variables": variables,
+            "query": (
+                "mutation xSArmPanel($numinst: String!, $request: ArmCodeRequest!,"
+                " $panel: String!, $currentStatus: String, $suid: String,"
+                " $forceArmingRemoteId: String, $armAndLock: Boolean) {\n"
+                "  xSArmPanel(numinst: $numinst, request: $request, panel: $panel,"
+                " currentStatus: $currentStatus, suid: $suid,"
+                " forceArmingRemoteId: $forceArmingRemoteId,"
+                " armAndLock: $armAndLock) {\n"
+                "    res\n    msg\n    referenceId\n  }\n}\n"
+            ),
+        }
+        await self._check_authentication_token()
+        await self._check_capabilities_token(installation)
+        response = await self._execute_request(content, "xSArmPanel", installation)
+        arm_data = self._extract_response_data(response, "xSArmPanel")
+        if arm_data["res"] != "OK":
+            raise SecuritasDirectError(arm_data["msg"], response)
+        return arm_data["referenceId"]
+
+    async def check_arm_status_once(
+        self,
+        installation: Installation,
+        reference_id: str,
+        command: str,
+        counter: int,
+        force_arming_remote_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Single poll call for arm status (no loop)."""
+        return await self._check_arm_status(
+            installation, reference_id, command, counter, force_arming_remote_id
+        )
+
+    async def disarm_request(
+        self,
+        installation: Installation,
+        command: str,
+    ) -> str:
+        """Send disarm request and return the referenceId (no polling)."""
+        content = {
+            "operationName": "xSDisarmPanel",
+            "variables": {
+                "request": command,
+                "numinst": installation.number,
+                "panel": installation.panel,
+                "currentStatus": self.protom_response,
+            },
+            "query": "mutation xSDisarmPanel($numinst: String!, $request: DisarmCodeRequest!, $panel: String!) {\n  xSDisarmPanel(numinst: $numinst, request: $request, panel: $panel) {\n    res\n    msg\n    referenceId\n  }\n}\n",
+        }
+        await self._check_authentication_token()
+        await self._check_capabilities_token(installation)
+        response = await self._execute_request(content, "xSDisarmPanel", installation)
+        disarm_data = self._extract_response_data(response, "xSDisarmPanel")
+        if "res" in disarm_data and disarm_data["res"] != "OK":
+            raise SecuritasDirectError(disarm_data["msg"], response)
+        if "referenceId" not in disarm_data or "res" not in disarm_data:
+            raise SecuritasDirectError("No referenceId in response", response)
+        return disarm_data["referenceId"]
+
+    async def check_disarm_status_once(
+        self,
+        installation: Installation,
+        reference_id: str,
+        command: str,
+        counter: int,
+    ) -> dict[str, Any]:
+        """Single poll call for disarm status (no loop)."""
+        return await self._check_disarm_status(
+            installation, reference_id, command, counter
+        )
+
+    async def change_lock_mode_request(
+        self,
+        installation: Installation,
+        lock: bool,
+        device_id: str = SMARTLOCK_DEVICE_ID,
+    ) -> str:
+        """Send change lock mode request and return the referenceId (no polling)."""
+        content = {
+            "operationName": "xSChangeSmartlockMode",
+            "variables": {
+                "numinst": installation.number,
+                "panel": installation.panel,
+                "deviceType": SMARTLOCK_DEVICE_TYPE,
+                "deviceId": device_id,
+                "lock": lock,
+            },
+            "query": "mutation xSChangeSmartlockMode($numinst: String!, $panel: String!, $deviceId: String!, $deviceType: String!, $lock: Boolean!) {\n  xSChangeSmartlockMode(\n    numinst: $numinst\n    panel: $panel\n    deviceId: $deviceId\n    deviceType: $deviceType\n    lock: $lock\n  ) {\n    res\n    msg\n    referenceId\n  }\n}",
+        }
+        await self._check_authentication_token()
+        await self._check_capabilities_token(installation)
+        response = await self._execute_request(
+            content, "xSChangeSmartlockMode", installation
+        )
+        lock_data = self._extract_response_data(response, "xSChangeSmartlockMode")
+        if "res" in lock_data and lock_data["res"] != "OK":
+            raise SecuritasDirectError(lock_data["msg"], response)
+        if "referenceId" not in lock_data or "res" not in lock_data:
+            raise SecuritasDirectError("No referenceId in response", response)
+        return lock_data["referenceId"]
+
+    async def check_change_lock_mode_once(
+        self,
+        installation: Installation,
+        reference_id: str,
+        counter: int,
+        device_id: str = SMARTLOCK_DEVICE_ID,
+    ) -> dict[str, Any]:
+        """Single poll call for change lock mode status (no loop)."""
+        return await self._check_change_lock_mode(
+            installation, reference_id, counter, device_id
+        )
+
+    async def get_danalock_config_request(
+        self,
+        installation: Installation,
+        device_id: str = SMARTLOCK_DEVICE_ID,
+    ) -> str:
+        """Send Danalock config request and return the referenceId (no polling)."""
+        content = {
+            "operationName": "xSGetDanalockConfig",
+            "variables": {
+                "numinst": installation.number,
+                "panel": installation.panel,
+                "deviceType": SMARTLOCK_DEVICE_TYPE,
+                "deviceId": device_id,
+            },
+            "query": "query xSGetDanalockConfig($numinst: String!, $panel: String!, $deviceId: String!, $deviceType: String) {\n  xSGetDanalockConfig(\n    numinst: $numinst\n    panel: $panel\n    deviceId: $deviceId\n    deviceType: $deviceType\n  ) {\n    res\n    msg\n    referenceId\n  }\n}",
+        }
+        await self._check_authentication_token()
+        await self._check_capabilities_token(installation)
+        response = await self._execute_request(
+            content, "xSGetDanalockConfig", installation
+        )
+        config_data = self._extract_response_data(response, "xSGetDanalockConfig")
+        if config_data.get("res") != "OK" or "referenceId" not in config_data:
+            raise SecuritasDirectError(
+                "Could not initiate Danalock config request", response
+            )
+        return config_data["referenceId"]
+
+    async def check_danalock_config_once(
+        self,
+        installation: Installation,
+        reference_id: str,
+        counter: int,
+    ) -> dict[str, Any]:
+        """Single poll call for Danalock config status (no loop)."""
+        return await self._check_danalock_config_status(
+            installation, reference_id, counter
         )
