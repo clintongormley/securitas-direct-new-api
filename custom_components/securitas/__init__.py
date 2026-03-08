@@ -655,7 +655,15 @@ class SecuritasHub:
         return modes
 
     async def _cached_api_call(self, cache_key: str, coro_fn, *args, priority=None):
-        """Execute an API call with caching, submitted via queue."""
+        """Execute an API call with caching, submitted via queue.
+
+        The cache is checked twice: once before queuing (fast path) and once
+        inside the queue-submitted wrapper (after serialization).  This
+        prevents duplicate API calls when multiple entities concurrently
+        request the same cached data — they all miss the cache, queue up,
+        but only the first actually calls the API; the rest see the freshly
+        populated cache.
+        """
         if priority is None:
             priority = ApiQueue.BACKGROUND
         _CACHE_TTL = 30
@@ -666,7 +674,25 @@ class SecuritasHub:
         ):
             return self._api_cache[cache_key]
 
-        result = await self._api_queue.submit(coro_fn, *args, priority=priority)
+        _sentinel = object()
+
+        async def _call_with_cache_recheck(*call_args):
+            # Re-check cache after queue serialization — another caller
+            # may have populated it while we were waiting.
+            now_inner = time.monotonic()
+            if (
+                now_inner - self._api_cache_time.get(cache_key, 0) < _CACHE_TTL
+                and cache_key in self._api_cache
+            ):
+                return _sentinel  # signal: used cache, no API call made
+            return await coro_fn(*call_args)
+
+        result = await self._api_queue.submit(
+            _call_with_cache_recheck, *args, priority=priority
+        )
+
+        if result is _sentinel:
+            return self._api_cache[cache_key]
 
         if result is not None:
             self._api_cache[cache_key] = result
