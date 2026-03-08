@@ -12,7 +12,7 @@ import time
 _LOGGER = logging.getLogger(__name__)
 
 # Default intervals
-DEFAULT_FOREGROUND_INTERVAL: float = 2.0
+DEFAULT_FOREGROUND_INTERVAL: float = 3.0
 DEFAULT_BACKGROUND_INTERVAL: float = 5.0
 
 
@@ -84,9 +84,11 @@ class ApiQueue:
                     if elapsed < interval:
                         delay = interval - elapsed
                         _LOGGER.debug(
-                            "ApiQueue throttling %.1fs (%s)",
+                            "ApiQueue(%s) throttling %.1fs (%s) for %s",
+                            id(self),
                             delay,
                             "fg" if priority == self.FOREGROUND else "bg",
+                            getattr(coro_fn, "__name__", coro_fn),
                         )
                         await asyncio.sleep(delay)
 

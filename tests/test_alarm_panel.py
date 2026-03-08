@@ -79,6 +79,8 @@ def make_alarm(
     client = MagicMock()
     client.config = config
     client.session = AsyncMock()
+    client.arm_alarm = AsyncMock()
+    client.disarm_alarm = AsyncMock()
 
     hass = MagicMock()
     hass.async_create_task = MagicMock()
@@ -423,7 +425,7 @@ class TestAsyncAlarmDisarm:
         alarm._state = AlarmControlPanelState.ARMED_AWAY
         alarm._last_proto_code = "T"  # resolver needs armed proto to issue disarm
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(
                 operation_status="OK",
                 message="",
@@ -436,7 +438,7 @@ class TestAsyncAlarmDisarm:
 
         await alarm.async_alarm_disarm("1234")
 
-        alarm.client.session.disarm_alarm.assert_called_once_with(
+        alarm.client.disarm_alarm.assert_called_once_with(
             alarm.installation, STATE_TO_COMMAND[SecuritasState.DISARMED]
         )
         assert alarm._state == AlarmControlPanelState.DISARMED
@@ -445,12 +447,12 @@ class TestAsyncAlarmDisarm:
         """Wrong code raises ServiceValidationError without calling disarm_alarm."""
         alarm = make_alarm(code="1234")
         alarm._state = AlarmControlPanelState.ARMED_AWAY
-        alarm.client.session.disarm_alarm = AsyncMock()
+        alarm.client.disarm_alarm = AsyncMock()
 
         with pytest.raises(ServiceValidationError):
             await alarm.async_alarm_disarm("0000")
 
-        alarm.client.session.disarm_alarm.assert_not_called()
+        alarm.client.disarm_alarm.assert_not_called()
         assert alarm._state == AlarmControlPanelState.ARMED_AWAY
 
     async def test_disarm_error_notifies(self):
@@ -460,7 +462,7 @@ class TestAsyncAlarmDisarm:
         alarm._last_proto_code = "T"  # resolver needs armed proto to issue disarm
         alarm._notify_error = MagicMock()
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("API down")
         )
 
@@ -476,7 +478,7 @@ class TestAsyncAlarmDisarm:
         alarm._state = AlarmControlPanelState.ARMED_AWAY
         alarm._last_proto_code = "A"  # total_peri = peri armed
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(
                 operation_status="OK",
                 message="",
@@ -489,7 +491,7 @@ class TestAsyncAlarmDisarm:
 
         await alarm.async_alarm_disarm()
 
-        alarm.client.session.disarm_alarm.assert_called_once_with(
+        alarm.client.disarm_alarm.assert_called_once_with(
             alarm.installation, "DARM1DARMPERI"
         )
 
@@ -503,7 +505,7 @@ class TestAsyncAlarmDisarm:
         alarm._state = AlarmControlPanelState.ARMED_AWAY
         alarm._last_proto_code = "T"  # total = no peri currently
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(
                 operation_status="OK",
                 message="",
@@ -516,9 +518,7 @@ class TestAsyncAlarmDisarm:
 
         await alarm.async_alarm_disarm()
 
-        alarm.client.session.disarm_alarm.assert_called_once_with(
-            alarm.installation, "DARM1"
-        )
+        alarm.client.disarm_alarm.assert_called_once_with(alarm.installation, "DARM1")
 
 
 # ===========================================================================
@@ -535,7 +535,7 @@ class TestSetArmState:
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.DISARMED
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -545,12 +545,12 @@ class TestSetArmState:
                 protomResponseData="",
             )
         )
-        alarm.client.session.disarm_alarm = AsyncMock()
+        alarm.client.disarm_alarm = AsyncMock()
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_AWAY)
 
-        alarm.client.session.disarm_alarm.assert_not_called()
-        alarm.client.session.arm_alarm.assert_called_once()
+        alarm.client.disarm_alarm.assert_not_called()
+        alarm.client.arm_alarm.assert_called_once()
         assert alarm._state == AlarmControlPanelState.ARMED_AWAY
 
     async def test_arm_from_armed_disarms_first(self):
@@ -560,10 +560,10 @@ class TestSetArmState:
         alarm._last_status = AlarmControlPanelState.ARMED_HOME
         alarm._last_proto_code = "P"  # partial_day = currently armed home
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(protomResponse="D", operation_status="OK")
         )
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -576,10 +576,8 @@ class TestSetArmState:
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_AWAY)
 
-        alarm.client.session.disarm_alarm.assert_called_once_with(
-            alarm.installation, "DARM1"
-        )
-        alarm.client.session.arm_alarm.assert_called_once()
+        alarm.client.disarm_alarm.assert_called_once_with(alarm.installation, "DARM1")
+        alarm.client.arm_alarm.assert_called_once()
         assert alarm._state == AlarmControlPanelState.ARMED_AWAY
 
     async def test_arm_error_returns_early(self):
@@ -587,9 +585,7 @@ class TestSetArmState:
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.DISARMED
 
-        alarm.client.session.arm_alarm = AsyncMock(
-            side_effect=SecuritasDirectError("timeout")
-        )
+        alarm.client.arm_alarm = AsyncMock(side_effect=SecuritasDirectError("timeout"))
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_AWAY)
 
@@ -603,10 +599,10 @@ class TestSetArmState:
         alarm._state = AlarmControlPanelState.ARMED_HOME
         alarm._last_status = AlarmControlPanelState.ARMED_HOME
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("connection lost")
         )
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -619,7 +615,7 @@ class TestSetArmState:
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_AWAY)
 
-        alarm.client.session.arm_alarm.assert_called_once()
+        alarm.client.arm_alarm.assert_called_once()
         assert alarm._state == AlarmControlPanelState.ARMED_AWAY
 
     async def test_unmapped_mode_raises_error(self):
@@ -635,11 +631,11 @@ class TestSetArmState:
         alarm = make_alarm(config=config)
         alarm._state = AlarmControlPanelState.DISARMED
         alarm._notify_error = MagicMock()
-        alarm.client.session.arm_alarm = AsyncMock()
+        alarm.client.arm_alarm = AsyncMock()
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_CUSTOM_BYPASS)
 
-        alarm.client.session.arm_alarm.assert_not_called()
+        alarm.client.arm_alarm.assert_not_called()
         alarm._notify_error.assert_called_once()
 
 
@@ -815,7 +811,7 @@ class TestForceState:
             observed_states.append(alarm._state)
             return await original_disarm(*args, **kwargs)
 
-        alarm.client.session.disarm_alarm = capture_state
+        alarm.client.disarm_alarm = capture_state
 
         await alarm.async_alarm_disarm()
 
@@ -846,7 +842,7 @@ class TestForceState:
             observed_states.append(alarm._state)
             return await original_arm(*args, **kwargs)
 
-        alarm.client.session.arm_alarm = capture_state
+        alarm.client.arm_alarm = capture_state
 
         await alarm.async_alarm_arm_away()
 
@@ -876,7 +872,7 @@ class TestForceState:
             observed_flags.append(alarm._operation_in_progress)
             return await original_disarm(*args, **kwargs)
 
-        alarm.client.session.disarm_alarm = capture_flag
+        alarm.client.disarm_alarm = capture_flag
 
         assert alarm._operation_in_progress is False
         await alarm.async_alarm_disarm()
@@ -907,7 +903,7 @@ class TestForceState:
             observed_flags.append(alarm._operation_in_progress)
             return await original_arm(*args, **kwargs)
 
-        alarm.client.session.arm_alarm = capture_flag
+        alarm.client.arm_alarm = capture_flag
 
         assert alarm._operation_in_progress is False
         await alarm.async_alarm_arm_away()
@@ -922,7 +918,7 @@ class TestForceState:
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.ARMED_AWAY
         alarm._last_proto_code = "T"  # resolver needs armed proto
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("API error")
         )
 
@@ -933,7 +929,7 @@ class TestForceState:
     async def test_operation_in_progress_cleared_after_arm_error(self):
         """_operation_in_progress is cleared even when arm raises SecuritasDirectError."""
         alarm = make_alarm()
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("API error")
         )
 
@@ -948,7 +944,7 @@ class TestForceState:
         alarm._last_proto_code = "T"
         alarm._notify_error = MagicMock()
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
         )
 
@@ -967,7 +963,7 @@ class TestForceState:
         alarm._state = AlarmControlPanelState.DISARMED
         alarm._notify_error = MagicMock()
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
         )
 
@@ -987,7 +983,7 @@ class TestForceState:
         alarm._last_proto_code = "T"
         alarm._attr_extra_state_attributes["waf_blocked"] = True
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(
                 operation_status="OK",
                 message="",
@@ -1008,7 +1004,7 @@ class TestForceState:
         alarm._state = AlarmControlPanelState.DISARMED
         alarm._attr_extra_state_attributes["waf_blocked"] = True
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -1022,91 +1018,6 @@ class TestForceState:
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_AWAY)
 
         assert "waf_blocked" not in alarm._attr_extra_state_attributes
-
-    async def test_disarm_403_updates_client_last_api_time(self):
-        """Disarm (even on 403) updates client._last_api_time for cooldown."""
-        alarm = make_alarm()
-        alarm._state = AlarmControlPanelState.ARMED_AWAY
-        alarm._last_proto_code = "T"
-        alarm.client._last_api_time = 0
-
-        alarm.client.session.disarm_alarm = AsyncMock(
-            side_effect=SecuritasDirectError("HTTP 403", http_status=403)
-        )
-
-        await alarm.async_alarm_disarm()
-
-        assert alarm.client._last_api_time > 0
-
-    async def test_arm_403_updates_client_last_api_time(self):
-        """Arm (even on 403) updates client._last_api_time for cooldown."""
-        alarm = make_alarm()
-        alarm.client._last_api_time = 0
-
-        alarm.client.session.arm_alarm = AsyncMock(
-            side_effect=SecuritasDirectError("HTTP 403", http_status=403)
-        )
-
-        await alarm.set_arm_state(AlarmControlPanelState.ARMED_AWAY)
-
-        assert alarm.client._last_api_time > 0
-
-
-# ===========================================================================
-# get_arm_state
-# ===========================================================================
-
-
-@pytest.mark.asyncio
-class TestGetArmState:
-    """Tests for get_arm_state()."""
-
-    async def test_calls_check_alarm_then_check_alarm_status(self):
-        """get_arm_state calls check_alarm then check_alarm_status."""
-        alarm = make_alarm()
-        alarm.client.session.check_alarm = AsyncMock(return_value="ref-abc")
-        expected_status = CheckAlarmStatus(
-            operation_status="OK",
-            message="Panel armed",
-            status="",
-            InstallationNumer="123456",
-            protomResponse="T",
-            protomResponseData="",
-        )
-        alarm.client.session.check_alarm_status = AsyncMock(
-            return_value=expected_status
-        )
-
-        with patch("custom_components.securitas.alarm_control_panel.asyncio.sleep"):
-            await alarm.get_arm_state()
-
-        alarm.client.session.check_alarm.assert_called_once_with(alarm.installation)
-        alarm.client.session.check_alarm_status.assert_called_once_with(
-            alarm.installation, "ref-abc"
-        )
-
-    async def test_returns_alarm_status(self):
-        """get_arm_state returns the CheckAlarmStatus from the API."""
-        alarm = make_alarm()
-        alarm.client.session.check_alarm = AsyncMock(return_value="ref-xyz")
-        expected_status = CheckAlarmStatus(
-            operation_status="OK",
-            message="Disarmed",
-            status="",
-            InstallationNumer="123456",
-            protomResponse="D",
-            protomResponseData="some-data",
-        )
-        alarm.client.session.check_alarm_status = AsyncMock(
-            return_value=expected_status
-        )
-
-        with patch("custom_components.securitas.alarm_control_panel.asyncio.sleep"):
-            result = await alarm.get_arm_state()
-
-        assert result is expected_status
-        assert result.protomResponse == "D"
-        assert result.message == "Disarmed"
 
 
 # ===========================================================================
@@ -1377,7 +1288,7 @@ class TestArmMethods:
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.DISARMED
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -1390,9 +1301,9 @@ class TestArmMethods:
 
         await alarm.async_alarm_arm_home()
 
-        alarm.client.session.arm_alarm.assert_called_once()
+        alarm.client.arm_alarm.assert_called_once()
         # Verify the command corresponds to ARMED_HOME mapping
-        call_args = alarm.client.session.arm_alarm.call_args
+        call_args = alarm.client.arm_alarm.call_args
         assert call_args[0][1] == alarm._command_map[AlarmControlPanelState.ARMED_HOME]
         assert alarm._state == AlarmControlPanelState.ARMED_HOME
 
@@ -1401,7 +1312,7 @@ class TestArmMethods:
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.DISARMED
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -1414,8 +1325,8 @@ class TestArmMethods:
 
         await alarm.async_alarm_arm_night()
 
-        alarm.client.session.arm_alarm.assert_called_once()
-        call_args = alarm.client.session.arm_alarm.call_args
+        alarm.client.arm_alarm.assert_called_once()
+        call_args = alarm.client.arm_alarm.call_args
         assert call_args[0][1] == alarm._command_map[AlarmControlPanelState.ARMED_NIGHT]
         assert alarm._state == AlarmControlPanelState.ARMED_NIGHT
 
@@ -1424,7 +1335,7 @@ class TestArmMethods:
         alarm = make_alarm(has_peri=True)  # PERI config maps custom bypass
         alarm._state = AlarmControlPanelState.DISARMED
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -1437,8 +1348,8 @@ class TestArmMethods:
 
         await alarm.async_alarm_arm_custom_bypass()
 
-        alarm.client.session.arm_alarm.assert_called_once()
-        call_args = alarm.client.session.arm_alarm.call_args
+        alarm.client.arm_alarm.assert_called_once()
+        call_args = alarm.client.arm_alarm.call_args
         assert (
             call_args[0][1]
             == alarm._command_map[AlarmControlPanelState.ARMED_CUSTOM_BYPASS]
@@ -1459,7 +1370,7 @@ class TestArmMethods:
         alarm = make_alarm(config=config)
         alarm._state = AlarmControlPanelState.DISARMED
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -1472,8 +1383,8 @@ class TestArmMethods:
 
         await alarm.async_alarm_arm_vacation()
 
-        alarm.client.session.arm_alarm.assert_called_once()
-        call_args = alarm.client.session.arm_alarm.call_args
+        alarm.client.arm_alarm.assert_called_once()
+        call_args = alarm.client.arm_alarm.call_args
         assert (
             call_args[0][1] == alarm._command_map[AlarmControlPanelState.ARMED_VACATION]
         )
@@ -1501,7 +1412,7 @@ class TestArmMethods:
             observed_states.append(alarm._state)
             return await original_arm(*args, **kwargs)
 
-        alarm.client.session.arm_alarm = capture_state
+        alarm.client.arm_alarm = capture_state
 
         await alarm.async_alarm_arm_home()
 
@@ -1533,7 +1444,7 @@ class TestForceArmContext:
         alarm._last_status = AlarmControlPanelState.DISARMED
 
         exc = self._make_arming_exception()
-        alarm.client.session.arm_alarm = AsyncMock(side_effect=exc)
+        alarm.client.arm_alarm = AsyncMock(side_effect=exc)
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_HOME)
 
@@ -1562,7 +1473,7 @@ class TestForceArmContext:
         alarm._attr_extra_state_attributes["force_arm_available"] = True
         alarm._attr_extra_state_attributes["arm_exceptions"] = ["Door"]
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -1576,7 +1487,7 @@ class TestForceArmContext:
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_HOME)
 
         # Force params should NOT have been passed (widget doesn't force)
-        call_kwargs = alarm.client.session.arm_alarm.call_args[1]
+        call_kwargs = alarm.client.arm_alarm.call_args[1]
         assert "force_arming_remote_id" not in call_kwargs
         assert "suid" not in call_kwargs
 
@@ -1650,7 +1561,7 @@ class TestForceArmContext:
         alarm._state = AlarmControlPanelState.DISARMED
         alarm._force_context = None
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -1673,7 +1584,7 @@ class TestForceArmContext:
         alarm._last_status = AlarmControlPanelState.DISARMED
 
         exc = self._make_arming_exception()
-        alarm.client.session.arm_alarm = AsyncMock(side_effect=exc)
+        alarm.client.arm_alarm = AsyncMock(side_effect=exc)
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_HOME)
 
@@ -1688,7 +1599,7 @@ class TestForceArmContext:
         alarm._last_status = AlarmControlPanelState.DISARMED
 
         exc = self._make_arming_exception()
-        alarm.client.session.arm_alarm = AsyncMock(side_effect=exc)
+        alarm.client.arm_alarm = AsyncMock(side_effect=exc)
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_HOME)
 
@@ -1702,7 +1613,7 @@ class TestForceArmContext:
         alarm._last_status = AlarmControlPanelState.DISARMED
 
         exc = self._make_arming_exception()
-        alarm.client.session.arm_alarm = AsyncMock(side_effect=exc)
+        alarm.client.arm_alarm = AsyncMock(side_effect=exc)
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_HOME)
 
@@ -1723,7 +1634,7 @@ class TestForceArmContext:
         alarm._attr_extra_state_attributes["force_arm_available"] = True
         alarm._attr_extra_state_attributes["arm_exceptions"] = ["Window"]
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -1737,7 +1648,7 @@ class TestForceArmContext:
         await alarm.async_force_arm()
 
         # Should have called arm_alarm with force params
-        call_kwargs = alarm.client.session.arm_alarm.call_args[1]
+        call_kwargs = alarm.client.arm_alarm.call_args[1]
         assert call_kwargs["force_arming_remote_id"] == "ref-exc-456"
         assert call_kwargs["suid"] == "suid-456"
         assert alarm._state == AlarmControlPanelState.ARMED_AWAY
@@ -1752,11 +1663,11 @@ class TestForceArmContext:
         alarm._state = AlarmControlPanelState.DISARMED
         alarm._force_context = None
 
-        alarm.client.session.arm_alarm = AsyncMock()
+        alarm.client.arm_alarm = AsyncMock()
 
         await alarm.async_force_arm()
 
-        alarm.client.session.arm_alarm.assert_not_called()
+        alarm.client.arm_alarm.assert_not_called()
         assert alarm._state == AlarmControlPanelState.DISARMED
 
     def test_mobile_action_force_arm_dispatches_task(self):
@@ -1916,7 +1827,7 @@ class TestCompoundArmCommands:
                 protomResponseData="",
             )
 
-        alarm.client.session.arm_alarm = track_arm
+        alarm.client.arm_alarm = track_arm
 
         await alarm.async_alarm_arm_night()
 
@@ -1930,7 +1841,7 @@ class TestCompoundArmCommands:
         alarm = make_alarm(config=_night_peri_config())
         alarm._state = AlarmControlPanelState.DISARMED
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -1943,7 +1854,7 @@ class TestCompoundArmCommands:
 
         await alarm.async_alarm_arm_night()
 
-        alarm.client.session.arm_alarm.assert_called_once_with(
+        alarm.client.arm_alarm.assert_called_once_with(
             alarm.installation, "ARMNIGHT1PERI1"
         )
         assert len(alarm._resolver.unsupported) == 0
@@ -1969,7 +1880,7 @@ class TestCompoundArmCommands:
                 protomResponseData="",
             )
 
-        alarm.client.session.arm_alarm = track_arm
+        alarm.client.arm_alarm = track_arm
 
         await alarm.async_alarm_arm_night()
 
@@ -2001,7 +1912,7 @@ class TestCompoundArmCommands:
                 protomResponseData="",
             )
 
-        alarm.client.session.arm_alarm = track_arm
+        alarm.client.arm_alarm = track_arm
 
         await alarm.set_arm_state(
             AlarmControlPanelState.ARMED_NIGHT,
@@ -2041,7 +1952,7 @@ class TestCompoundArmCommands:
                 )
             raise SecuritasDirectError("PERI1 failed")
 
-        alarm.client.session.arm_alarm = arm_side_effect
+        alarm.client.arm_alarm = arm_side_effect
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_NIGHT)
 
@@ -2059,14 +1970,14 @@ class TestCompoundArmCommands:
         alarm._last_status = AlarmControlPanelState.DISARMED
         alarm._notify_error = MagicMock()
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("API error", http_status=400)
         )
 
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_NIGHT)
 
         # Tried compound ARMNIGHT1PERI1 then ARMNIGHT1 (first sub-cmd of ARMNIGHT1+PERI1)
-        assert alarm.client.session.arm_alarm.call_count == 2
+        assert alarm.client.arm_alarm.call_count == 2
         assert "ARMNIGHT1PERI1" in alarm._resolver.unsupported
         alarm._notify_error.assert_called_once()
         assert alarm._state == AlarmControlPanelState.DISARMED
@@ -2076,7 +1987,7 @@ class TestCompoundArmCommands:
         alarm = make_alarm(has_peri=True)
         alarm._state = AlarmControlPanelState.DISARMED
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -2089,8 +2000,8 @@ class TestCompoundArmCommands:
 
         await alarm.async_alarm_arm_night()
 
-        alarm.client.session.arm_alarm.assert_called_once()
-        assert alarm.client.session.arm_alarm.call_args[0][1] == "ARMNIGHT1"
+        alarm.client.arm_alarm.assert_called_once()
+        assert alarm.client.arm_alarm.call_args[0][1] == "ARMNIGHT1"
 
     async def test_409_does_not_trigger_fallback(self):
         """409 (server busy) should re-raise, not try alternatives."""
@@ -2099,7 +2010,7 @@ class TestCompoundArmCommands:
         alarm._last_status = AlarmControlPanelState.DISARMED
         alarm._notify_error = MagicMock()
 
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             side_effect=SecuritasDirectError(
                 "alarm-manager.alarm_process_error", http_status=409
             )
@@ -2108,7 +2019,7 @@ class TestCompoundArmCommands:
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_NIGHT)
 
         # Should only try ARMNIGHT1PERI1 once — NOT fall back to multi-step
-        alarm.client.session.arm_alarm.assert_called_once_with(
+        alarm.client.arm_alarm.assert_called_once_with(
             alarm.installation, "ARMNIGHT1PERI1"
         )
         assert "ARMNIGHT1PERI1" not in alarm._resolver.unsupported
@@ -2137,7 +2048,7 @@ class TestCompoundArmCommands:
                 protomResponseData="",
             )
 
-        alarm.client.session.arm_alarm = arm_side_effect
+        alarm.client.arm_alarm = arm_side_effect
 
         await alarm.async_alarm_arm_night()
 
@@ -2170,7 +2081,7 @@ class TestCompoundArmCommands:
                 protomResponseData="",
             )
 
-        alarm.client.session.arm_alarm = track_arm
+        alarm.client.arm_alarm = track_arm
 
         await alarm.async_alarm_arm_away()
 
@@ -2208,7 +2119,7 @@ class TestCompoundArmCommands:
                 protomResponseData="",
             )
 
-        alarm.client.session.arm_alarm = track_arm
+        alarm.client.arm_alarm = track_arm
 
         await alarm.async_alarm_arm_home()
 
@@ -2232,7 +2143,7 @@ class TestDynamicDisarm:
         alarm._last_proto_code = "C"  # partial_night_peri = peri armed
         alarm._state = AlarmControlPanelState.ARMED_NIGHT
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(
                 operation_status="OK",
                 message="",
@@ -2245,7 +2156,7 @@ class TestDynamicDisarm:
 
         await alarm.async_alarm_disarm()
 
-        alarm.client.session.disarm_alarm.assert_called_once_with(
+        alarm.client.disarm_alarm.assert_called_once_with(
             alarm.installation, "DARM1DARMPERI"
         )
         assert alarm._state == AlarmControlPanelState.DISARMED
@@ -2271,7 +2182,7 @@ class TestDynamicDisarm:
                 protomResponseData="",
             )
 
-        alarm.client.session.disarm_alarm = disarm_side_effect
+        alarm.client.disarm_alarm = disarm_side_effect
 
         await alarm.async_alarm_disarm()
 
@@ -2288,7 +2199,7 @@ class TestDynamicDisarm:
         alarm._last_proto_code = "Q"  # partial_night = no peri
         alarm._state = AlarmControlPanelState.ARMED_NIGHT
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(
                 operation_status="OK",
                 message="",
@@ -2301,9 +2212,7 @@ class TestDynamicDisarm:
 
         await alarm.async_alarm_disarm()
 
-        alarm.client.session.disarm_alarm.assert_called_once_with(
-            alarm.installation, "DARM1"
-        )
+        alarm.client.disarm_alarm.assert_called_once_with(alarm.installation, "DARM1")
 
     async def test_no_peri_config_uses_darm1(self):
         """Without peri config, always sends DARM1."""
@@ -2312,15 +2221,13 @@ class TestDynamicDisarm:
         alarm._last_proto_code = "T"  # resolver needs armed proto
         alarm._notify_error = MagicMock()
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("API down")
         )
 
         await alarm.async_alarm_disarm()
 
-        alarm.client.session.disarm_alarm.assert_called_once_with(
-            alarm.installation, "DARM1"
-        )
+        alarm.client.disarm_alarm.assert_called_once_with(alarm.installation, "DARM1")
 
     async def test_unsupported_combined_skips_to_darm1(self):
         """With combined disarm marked unsupported, peri armed goes to DARM1."""
@@ -2329,7 +2236,7 @@ class TestDynamicDisarm:
         alarm._state = AlarmControlPanelState.ARMED_CUSTOM_BYPASS
         alarm._resolver.mark_unsupported("DARMPERI")
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(
                 operation_status="OK",
                 message="",
@@ -2342,9 +2249,7 @@ class TestDynamicDisarm:
 
         await alarm.async_alarm_disarm()
 
-        alarm.client.session.disarm_alarm.assert_called_once_with(
-            alarm.installation, "DARM1"
-        )
+        alarm.client.disarm_alarm.assert_called_once_with(alarm.installation, "DARM1")
 
     async def test_both_disarm_attempts_fail(self):
         """When both DARM1DARMPERI and DARM1 fail, error is reported."""
@@ -2354,13 +2259,13 @@ class TestDynamicDisarm:
         alarm._last_status = AlarmControlPanelState.ARMED_HOME
         alarm._notify_error = MagicMock()
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("permanent failure", http_status=400)
         )
 
         await alarm.async_alarm_disarm()
 
-        assert alarm.client.session.disarm_alarm.call_count == 2
+        assert alarm.client.disarm_alarm.call_count == 2
         alarm._notify_error.assert_called_once()
         assert alarm._state == AlarmControlPanelState.ARMED_HOME
 
@@ -2372,7 +2277,7 @@ class TestDynamicDisarm:
         alarm._last_status = AlarmControlPanelState.ARMED_AWAY
         alarm._notify_error = MagicMock()
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError(
                 "alarm-manager.alarm_process_error", http_status=409
             )
@@ -2381,7 +2286,7 @@ class TestDynamicDisarm:
         await alarm.async_alarm_disarm()
 
         # Should only try DARM1DARMPERI once — NOT fall back to DARM1
-        alarm.client.session.disarm_alarm.assert_called_once_with(
+        alarm.client.disarm_alarm.assert_called_once_with(
             alarm.installation, "DARM1DARMPERI"
         )
         # Error notification should show clean message, not full args dump
@@ -2398,7 +2303,7 @@ class TestDynamicDisarm:
         alarm._last_proto_code = "T"  # resolver needs armed proto
         alarm._notify_error = MagicMock()
 
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError(
                 "API error message",
                 {"response": "data"},
@@ -2429,8 +2334,8 @@ class TestDynamicDisarm:
                 raise SecuritasDirectError("404 not found", http_status=400)
             return DisarmStatus(protomResponse="D", operation_status="OK")
 
-        alarm.client.session.disarm_alarm = track_disarm
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = track_disarm
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(
                 operation_status="OK",
                 message="",
@@ -2447,8 +2352,8 @@ class TestDynamicDisarm:
         assert disarm_calls == ["DARM1DARMPERI", "DARM1"]
         assert "DARM1DARMPERI" in alarm._resolver.unsupported
         # Then arm total+peri — tries ARMINTEXT1 first
-        assert alarm.client.session.arm_alarm.call_count == 1
-        assert alarm.client.session.arm_alarm.call_args[0][1] == "ARMINTEXT1"
+        assert alarm.client.arm_alarm.call_count == 1
+        assert alarm.client.arm_alarm.call_args[0][1] == "ARMINTEXT1"
 
 
 # ===========================================================================
@@ -2464,26 +2369,24 @@ class TestExecuteTransition:
         """Disarm from total (no peri) sends DARM1."""
         alarm = make_alarm(has_peri=False)
         alarm._last_proto_code = "T"
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(protomResponse="D", operation_status="OK")
         )
         await alarm._execute_transition(AlarmState(InteriorMode.OFF, PerimeterMode.OFF))
-        alarm.client.session.disarm_alarm.assert_called_once_with(
-            alarm.installation, "DARM1"
-        )
+        alarm.client.disarm_alarm.assert_called_once_with(alarm.installation, "DARM1")
 
     async def test_disarm_compound_fallback_to_darm1(self):
         """Disarm from total_peri falls back from DARM1DARMPERI to DARM1."""
         alarm = make_alarm(has_peri=True)
         alarm._last_proto_code = "A"
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=[
                 SecuritasDirectError("unsupported", http_status=400),
                 DisarmStatus(protomResponse="D", operation_status="OK"),
             ]
         )
         await alarm._execute_transition(AlarmState(InteriorMode.OFF, PerimeterMode.OFF))
-        calls = alarm.client.session.disarm_alarm.call_args_list
+        calls = alarm.client.disarm_alarm.call_args_list
         assert calls[0].args == (alarm.installation, "DARM1DARMPERI")
         assert calls[1].args == (alarm.installation, "DARM1")
 
@@ -2491,7 +2394,7 @@ class TestExecuteTransition:
         """When DARM1DARMPERI fails, it is added to unsupported set."""
         alarm = make_alarm(has_peri=True)
         alarm._last_proto_code = "A"
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=[
                 SecuritasDirectError("unsupported", http_status=400),
                 DisarmStatus(protomResponse="D", operation_status="OK"),
@@ -2504,7 +2407,7 @@ class TestExecuteTransition:
         """409 error re-raises without marking command as unsupported."""
         alarm = make_alarm(has_peri=True)
         alarm._last_proto_code = "A"
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("busy", http_status=409)
         )
         with pytest.raises(SecuritasDirectError, match="busy"):
@@ -2517,7 +2420,7 @@ class TestExecuteTransition:
         """403 WAF block re-raises immediately without marking command unsupported."""
         alarm = make_alarm(has_peri=True)
         alarm._last_proto_code = "A"
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError(
                 "HTTP 403 from Securitas API", http_status=403
             )
@@ -2527,7 +2430,7 @@ class TestExecuteTransition:
                 AlarmState(InteriorMode.OFF, PerimeterMode.OFF)
             )
         # Only tried first command, didn't fall back
-        alarm.client.session.disarm_alarm.assert_called_once_with(
+        alarm.client.disarm_alarm.assert_called_once_with(
             alarm.installation, "DARM1DARMPERI"
         )
         assert "DARM1DARMPERI" not in alarm._resolver.unsupported
@@ -2536,7 +2439,7 @@ class TestExecuteTransition:
         """TECHNICAL_ERROR (no http_status) re-raises immediately, no fallback."""
         alarm = make_alarm(has_peri=True)
         alarm._last_proto_code = "A"
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("Disarm command failed: TECHNICAL_ERROR"),
         )
         with pytest.raises(SecuritasDirectError, match="TECHNICAL_ERROR"):
@@ -2544,7 +2447,7 @@ class TestExecuteTransition:
                 AlarmState(InteriorMode.OFF, PerimeterMode.OFF)
             )
         # Only tried first command, didn't fall back to DARM1
-        alarm.client.session.disarm_alarm.assert_called_once_with(
+        alarm.client.disarm_alarm.assert_called_once_with(
             alarm.installation, "DARM1DARMPERI"
         )
         # Not marked as unsupported — error was transient
@@ -2554,7 +2457,7 @@ class TestExecuteTransition:
         """When all command alternatives fail, raises the last error."""
         alarm = make_alarm(has_peri=True)
         alarm._last_proto_code = "A"
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("fail", http_status=400)
         )
         with pytest.raises(SecuritasDirectError):
@@ -2566,21 +2469,17 @@ class TestExecuteTransition:
         """Mode change (day -> night) disarms first, then arms new mode."""
         alarm = make_alarm(has_peri=False)
         alarm._last_proto_code = "P"
-        alarm.client.session.disarm_alarm = AsyncMock(
+        alarm.client.disarm_alarm = AsyncMock(
             return_value=DisarmStatus(protomResponse="D", operation_status="OK")
         )
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             return_value=ArmStatus(protomResponse="Q", operation_status="OK")
         )
         await alarm._execute_transition(
             AlarmState(InteriorMode.NIGHT, PerimeterMode.OFF)
         )
-        alarm.client.session.disarm_alarm.assert_called_once_with(
-            alarm.installation, "DARM1"
-        )
-        alarm.client.session.arm_alarm.assert_called_once_with(
-            alarm.installation, "ARMNIGHT1"
-        )
+        alarm.client.disarm_alarm.assert_called_once_with(alarm.installation, "DARM1")
+        alarm.client.arm_alarm.assert_called_once_with(alarm.installation, "ARMNIGHT1")
 
     async def test_arm_total_peri_multi_step(self):
         """Arm total+peri falls back to multi-step when compounds unsupported."""
@@ -2588,7 +2487,7 @@ class TestExecuteTransition:
         alarm._last_proto_code = "D"
         alarm._resolver.mark_unsupported("ARMINTEXT1")
         alarm._resolver.mark_unsupported("ARM1PERI1")
-        alarm.client.session.arm_alarm = AsyncMock(
+        alarm.client.arm_alarm = AsyncMock(
             side_effect=[
                 ArmStatus(protomResponse="T", operation_status="OK"),
                 ArmStatus(protomResponse="A", operation_status="OK"),
@@ -2597,7 +2496,7 @@ class TestExecuteTransition:
         await alarm._execute_transition(
             AlarmState(InteriorMode.TOTAL, PerimeterMode.ON)
         )
-        calls = alarm.client.session.arm_alarm.call_args_list
+        calls = alarm.client.arm_alarm.call_args_list
         assert calls[0].args == (alarm.installation, "ARM1")
         assert calls[1].args == (alarm.installation, "PERI1")
 
@@ -2961,7 +2860,7 @@ class TestForceArmWorkflow:
             protomResponseData="",
         )
         # First call raises ArmingExceptionError, second succeeds
-        alarm.client.session.arm_alarm = AsyncMock(side_effect=[exc, success_result])
+        alarm.client.arm_alarm = AsyncMock(side_effect=[exc, success_result])
 
         # Step 1: initial arm attempt fails
         alarm._state = AlarmControlPanelState.ARMING
@@ -2992,7 +2891,7 @@ class TestForceArmWorkflow:
         await alarm.async_force_arm()
 
         # arm_alarm should be called with force params
-        force_call_kwargs = alarm.client.session.arm_alarm.call_args[1]
+        force_call_kwargs = alarm.client.arm_alarm.call_args[1]
         assert force_call_kwargs["force_arming_remote_id"] == "ref-force-123"
         assert force_call_kwargs["suid"] == "suid-force-123"
 
@@ -3029,7 +2928,7 @@ class TestForceArmWorkflow:
             "suid-cancel-123",
             [{"status": "0", "deviceType": "MG", "alias": "Kitchen Door"}],
         )
-        alarm.client.session.arm_alarm = AsyncMock(side_effect=exc)
+        alarm.client.arm_alarm = AsyncMock(side_effect=exc)
 
         # Step 1: initial arm fails
         alarm._state = AlarmControlPanelState.ARMING
@@ -3085,7 +2984,7 @@ class TestForceArmWorkflow:
         )
 
         # Step 1: initial arm fails
-        alarm.client.session.arm_alarm = AsyncMock(side_effect=exc)
+        alarm.client.arm_alarm = AsyncMock(side_effect=exc)
         alarm._state = AlarmControlPanelState.ARMING
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_HOME)
 
@@ -3111,11 +3010,11 @@ class TestForceArmWorkflow:
         assert alarm._attr_extra_state_attributes.get("force_arm_available") is True
 
         # Step 3: force arm succeeds
-        alarm.client.session.arm_alarm = AsyncMock(return_value=success_result)
+        alarm.client.arm_alarm = AsyncMock(return_value=success_result)
         await alarm.async_force_arm()
 
         # arm_alarm should have been called with force params
-        call_kwargs = alarm.client.session.arm_alarm.call_args[1]
+        call_kwargs = alarm.client.arm_alarm.call_args[1]
         assert call_kwargs["force_arming_remote_id"] == "ref-refresh-123"
         assert call_kwargs["suid"] == "suid-refresh-123"
 

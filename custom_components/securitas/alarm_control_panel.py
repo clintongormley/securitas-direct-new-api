@@ -1,11 +1,9 @@
 """Support for Securitas Direct (AKA Verisure EU) alarm control panels."""
 
-import asyncio
 import datetime
 import re
 from datetime import timedelta
 import logging
-import time
 from typing import Any
 
 import homeassistant.components.alarm_control_panel as alarm
@@ -35,7 +33,6 @@ from . import (
     SecuritasHub,
 )
 from .securitas_direct_new_api import (
-    ALARM_STATUS_POLL_DELAY,
     ArmingExceptionError,
     ArmStatus,
     CheckAlarmStatus,
@@ -219,15 +216,6 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
     def name(self) -> str:  # type: ignore[override]
         """Return the name of the device."""
         return self.installation.alias
-
-    async def get_arm_state(self) -> CheckAlarmStatus:
-        """Get alarm state."""
-        reference_id: str = await self.client.session.check_alarm(self.installation)
-        await asyncio.sleep(ALARM_STATUS_POLL_DELAY)
-        alarm_status: CheckAlarmStatus = await self.client.session.check_alarm_status(
-            self.installation, reference_id
-        )
-        return alarm_status
 
     async def async_added_to_hass(self) -> None:
         """Register mobile notification action listener when added to HA."""
@@ -465,9 +453,9 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
     ) -> ArmStatus | DisarmStatus:
         """Send a single arm or disarm command to the API."""
         if command.startswith("D"):
-            return await self.client.session.disarm_alarm(self.installation, command)
+            return await self.client.disarm_alarm(self.installation, command)
         else:
-            return await self.client.session.arm_alarm(
+            return await self.client.arm_alarm(
                 self.installation, command, **force_params
             )
 
@@ -529,7 +517,6 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             self.async_write_ha_state()
         finally:
             self._operation_in_progress = False
-            self.client._last_api_time = time.monotonic()
 
     async def set_arm_state(
         self,
@@ -592,7 +579,6 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             self.async_write_ha_state()
         finally:
             self._operation_in_progress = False
-            self.client._last_api_time = time.monotonic()
 
     def _set_force_context(self, exc: ArmingExceptionError, mode: str) -> None:
         """Store force-arm context from an arming exception."""

@@ -130,14 +130,15 @@ class Sentinel:
     air_quality: str
     humidity: int
     temperature: int
+    zone: str = ""
 
 
 @dataclass
 class AirQuality:
-    """Air Quality."""
+    """Air Quality from xSAirQuality API."""
 
     value: int
-    message: str
+    status_current: int = 0
 
 
 @dataclass

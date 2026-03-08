@@ -72,9 +72,10 @@ CONF_INSTALLATION = "installation"
 
 DEFAULT_USE_2FA = True
 DEFAULT_SCAN_INTERVAL = 120
+DEFAULT_SCAN_INTERVAL_ES = 300
 DEFAULT_CODE_ARM_REQUIRED = False
 DEFAULT_CHECK_ALARM_PANEL = True
-DEFAULT_DELAY_CHECK_OPERATION = 2
+DEFAULT_DELAY_CHECK_OPERATION = 3
 DEFAULT_CODE = ""
 DEFAULT_COUNTRY = "ES"
 
@@ -189,9 +190,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     config[CONF_CHECK_ALARM_PANEL] = entry.data.get(
         CONF_CHECK_ALARM_PANEL, DEFAULT_CHECK_ALARM_PANEL
     )
-    config[CONF_SCAN_INTERVAL] = entry.data.get(
-        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+    default_scan = (
+        DEFAULT_SCAN_INTERVAL_ES
+        if config[CONF_COUNTRY] == "ES"
+        else DEFAULT_SCAN_INTERVAL
     )
+    config[CONF_SCAN_INTERVAL] = entry.data.get(CONF_SCAN_INTERVAL, default_scan)
     config[CONF_DELAY_CHECK_OPERATION] = entry.data.get(
         CONF_DELAY_CHECK_OPERATION, DEFAULT_DELAY_CHECK_OPERATION
     )
@@ -308,6 +312,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if domain_url not in api_queues:
             api_queues[domain_url] = ApiQueue(
                 foreground_interval=config[CONF_DELAY_CHECK_OPERATION],
+            )
+            _LOGGER.debug(
+                "Created new ApiQueue %s for domain %s",
+                id(api_queues[domain_url]),
+                domain_url,
+            )
+        else:
+            _LOGGER.debug(
+                "Reusing ApiQueue %s for domain %s",
+                id(api_queues[domain_url]),
+                domain_url,
             )
         client._api_queue = api_queues[domain_url]
 

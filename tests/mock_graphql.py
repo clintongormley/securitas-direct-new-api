@@ -505,34 +505,23 @@ def graphql_sentinel(
 
 def graphql_air_quality(
     *,
-    current: int = 42,
-    message: str = "Good",
+    hour_value: str = "114",
+    hour_id: str = "18:00",
+    status_current: int = 1,
 ) -> dict:
-    """AirQualityGraph response."""
+    """xSAirQuality response."""
     return {
         "data": {
-            "xSAirQ": {
+            "xSAirQuality": {
                 "res": "OK",
-                "msg": "",
-                "graphData": {
+                "data": {
                     "status": {
-                        "current": current,
-                        "currentMsg": message,
-                        "avg6h": 40,
-                        "avg6hMsg": "Good",
-                        "avg24h": 38,
-                        "avg24hMsg": "Good",
-                        "avg7d": 35,
-                        "avg7dMsg": "Good",
-                        "avg4w": 33,
-                        "avg4wMsg": "Good",
+                        "current": status_current,
                     },
-                    "daysTotal": 7,
-                    "days": [],
-                    "hoursTotal": 24,
-                    "hours": [],
-                    "weeksTotal": 4,
-                    "weeks": [],
+                    "hours": [
+                        {"id": "17:00", "value": "110"},
+                        {"id": hour_id, "value": hour_value},
+                    ],
                 },
             }
         }
