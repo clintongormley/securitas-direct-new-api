@@ -20,7 +20,7 @@ from homeassistant.helpers.entity_platform import (
     AddEntitiesCallback,
     async_get_current_platform,
 )
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.exceptions import ServiceValidationError
 
 from . import (
@@ -90,8 +90,19 @@ async def async_setup_entry(
                 hass=hass,
             )
         )
-    async_add_entities(alarms, True)
+    async_add_entities(alarms, False)
     hass.data[DOMAIN]["alarm_entities"] = {a.installation.number: a for a in alarms}
+
+    # Schedule initial update shortly after setup to populate values
+    # without blocking entity registration.
+    if alarms:
+
+        @callback
+        def _initial_update(_now) -> None:
+            for entity in alarms:
+                entity.async_schedule_update_ha_state(force_refresh=True)
+
+        async_call_later(hass, 5, _initial_update)
 
     platform = async_get_current_platform()
     platform.async_register_entity_service(

@@ -7,10 +7,10 @@ import homeassistant.components.lock as lock
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_SCAN_INTERVAL
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 
 from . import (
     DEFAULT_SCAN_INTERVAL,
@@ -95,7 +95,16 @@ async def async_setup_entry(
         _LOGGER.debug("No Securitas Direct %s services found", DOORLOCK_SERVICE)
         return
 
-    async_add_entities(locks, True)
+    async_add_entities(locks, False)
+
+    # Schedule initial update shortly after setup to populate values
+    # without blocking entity registration.
+    @callback
+    def _initial_update(_now) -> None:
+        for entity in locks:
+            entity.async_schedule_update_ha_state(force_refresh=True)
+
+    async_call_later(hass, 10, _initial_update)
 
 
 class SecuritasLock(lock.LockEntity):
