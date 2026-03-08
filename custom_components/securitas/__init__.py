@@ -313,16 +313,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             api_queues[domain_url] = ApiQueue(
                 foreground_interval=config[CONF_DELAY_CHECK_OPERATION],
             )
-            _LOGGER.debug(
-                "Created new ApiQueue %s for domain %s",
+            _LOGGER.info(
+                "Created ApiQueue %s for domain %s (country=%s, entry=%s)",
                 id(api_queues[domain_url]),
                 domain_url,
+                config[CONF_COUNTRY],
+                entry.entry_id,
             )
         else:
-            _LOGGER.debug(
-                "Reusing ApiQueue %s for domain %s",
+            _LOGGER.info(
+                "Reusing ApiQueue %s for domain %s (country=%s, entry=%s)",
                 id(api_queues[domain_url]),
                 domain_url,
+                config[CONF_COUNTRY],
+                entry.entry_id,
             )
         client._api_queue = api_queues[domain_url]
 
@@ -356,11 +360,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             devices: list[SecuritasDirectDevice] = []
             for installation in entry_installations:
                 if cached_services and installation.number in cached_services:
-                    # Pre-populate the hub's services cache — get_services()
-                    # called by platforms will return immediately.
+                    # Pre-populate from config flow cache
                     client._services_cache[installation.number] = cached_services[
                         installation.number
                     ]
+                elif installation.number not in client._services_cache:
+                    # HA restart: fetch directly (bypass queue — we just logged
+                    # in, no WAF risk yet) so platforms don't block on queue.
+                    client._services_cache[installation.number] = (
+                        await client.session.get_all_services(installation)
+                    )
                 devices.append(SecuritasDirectDevice(installation))
         except SecuritasDirectError as err:
             _LOGGER.error("Unable to connect to Securitas Direct: %s", err.log_detail())

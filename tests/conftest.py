@@ -257,6 +257,7 @@ def make_securitas_hub_mock(**overrides) -> MagicMock:
     hub.send_sms_code = AsyncMock()
     hub.refresh_token = AsyncMock()
     hub.send_opt = AsyncMock()
+    hub._services_cache = {}
     hub.get_services = AsyncMock(return_value=[])
     hub.logout = AsyncMock(return_value=True)
     hub.update_overview = AsyncMock()
