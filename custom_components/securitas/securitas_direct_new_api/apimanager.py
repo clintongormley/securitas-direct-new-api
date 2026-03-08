@@ -1087,6 +1087,88 @@ class ApiManager:
             raw_data["error"],
         )
 
+    async def process_arm_result(
+        self,
+        raw_data: dict[str, Any],
+        installation: Installation,
+    ) -> ArmStatus:
+        """Process raw arm poll result into ArmStatus.
+
+        Raises ArmingExceptionError for NON_BLOCKING errors with allowForcing,
+        SecuritasDirectError for other errors.
+        """
+        error = raw_data.get("error")
+        if raw_data.get("res") == "ERROR":
+            if (
+                error
+                and error.get("type") == "NON_BLOCKING"
+                and error.get("allowForcing")
+            ):
+                error_ref = error.get("referenceId", "")
+                error_suid = error.get("suid", "")
+                exceptions = await self._get_exceptions(
+                    installation, error_ref, error_suid
+                )
+                raise ArmingExceptionError(error_ref, error_suid, exceptions)
+            error_info = error or {}
+            if error_info.get("type") != "NON_BLOCKING":
+                raise SecuritasDirectError(
+                    f"Arm command failed: {raw_data.get('msg', 'unknown error')}",
+                )
+
+        self.protom_response = raw_data["protomResponse"]
+        return ArmStatus(
+            raw_data["res"],
+            raw_data["msg"],
+            raw_data["status"],
+            raw_data["numinst"],
+            raw_data["protomResponse"],
+            raw_data["protomResponseDate"],
+            raw_data["requestId"],
+            raw_data["error"],
+        )
+
+    def process_disarm_result(
+        self,
+        raw_data: dict[str, Any],
+    ) -> DisarmStatus:
+        """Process raw disarm poll result into DisarmStatus.
+
+        Raises SecuritasDirectError for errors.
+        """
+        if raw_data.get("res") == "ERROR":
+            error_info = raw_data.get("error") or {}
+            if error_info.get("type") != "NON_BLOCKING":
+                raise SecuritasDirectError(
+                    f"Disarm command failed: {raw_data.get('msg', 'unknown error')}",
+                )
+
+        if raw_data.get("protomResponse"):
+            self.protom_response = raw_data["protomResponse"]
+        return DisarmStatus(
+            raw_data.get("error"),
+            raw_data.get("msg", ""),
+            raw_data.get("numinst", ""),
+            raw_data.get("protomResponse", ""),
+            raw_data.get("protomResponseDate", ""),
+            raw_data.get("requestId", ""),
+            raw_data.get("res", ""),
+            raw_data.get("status", ""),
+        )
+
+    def process_lock_mode_result(
+        self,
+        raw_data: dict[str, Any],
+    ) -> SmartLockModeStatus:
+        """Process raw lock mode poll result into SmartLockModeStatus."""
+        self.protom_response = raw_data["protomResponse"]
+        return SmartLockModeStatus(
+            raw_data["res"],
+            raw_data["msg"],
+            raw_data["protomResponse"],
+            raw_data["status"],
+        )
+
     async def _check_arm_status(
         self,
         installation: Installation,

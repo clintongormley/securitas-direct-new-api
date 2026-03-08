@@ -6,13 +6,17 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
+    ArmStatus,
     Attribute,
+    DisarmStatus,
     Installation,
     Sentinel,
     Service,
     SmartLockMode,
+    SmartLockModeStatus,
 )
 from custom_components.securitas.securitas_direct_new_api.exceptions import (
+    ArmingExceptionError,
     SecuritasDirectError,
 )
 
@@ -797,3 +801,109 @@ class TestRawRequestMethods:
         )
         ref = await authed_api.get_danalock_config_request(installation, "01")
         assert ref == "ref-cfg"
+
+
+# ── Result-processing helpers ────────────────────────────────────────────────
+
+
+class TestResultProcessing:
+    """Tests for result-processing helpers."""
+
+    async def test_process_arm_result_success(self, authed_api, installation):
+        raw = {
+            "res": "OK",
+            "msg": "armed",
+            "status": "ARMED",
+            "protomResponse": "P",
+            "protomResponseDate": "2026-01-01",
+            "numinst": "123",
+            "requestId": "req1",
+            "error": None,
+        }
+        result = await authed_api.process_arm_result(raw, installation)
+        assert isinstance(result, ArmStatus)
+        assert result.protomResponse == "P"
+        assert authed_api.protom_response == "P"
+
+    async def test_process_arm_result_error_raises(self, authed_api, installation):
+        raw = {
+            "res": "ERROR",
+            "msg": "fault",
+            "status": None,
+            "protomResponse": None,
+            "protomResponseDate": None,
+            "numinst": "123",
+            "requestId": None,
+            "error": {"type": "BLOCKING", "description": "fault"},
+        }
+        with pytest.raises(SecuritasDirectError):
+            await authed_api.process_arm_result(raw, installation)
+
+    async def test_process_arm_result_non_blocking_raises_arming_exception(
+        self, authed_api, installation
+    ):
+        raw = {
+            "res": "ERROR",
+            "msg": "exception",
+            "status": None,
+            "protomResponse": None,
+            "protomResponseDate": None,
+            "numinst": "123",
+            "requestId": None,
+            "error": {
+                "type": "NON_BLOCKING",
+                "allowForcing": True,
+                "referenceId": "ref-err",
+                "suid": "suid-1",
+            },
+        }
+        authed_api._get_exceptions = AsyncMock(
+            return_value=[{"alias": "Window", "status": "OPEN", "deviceType": "SENSOR"}]
+        )
+        with pytest.raises(ArmingExceptionError) as exc_info:
+            await authed_api.process_arm_result(raw, installation)
+        assert exc_info.value.reference_id == "ref-err"
+        assert exc_info.value.suid == "suid-1"
+        assert len(exc_info.value.exceptions) == 1
+
+    async def test_process_disarm_result_success(self, authed_api, installation):
+        raw = {
+            "res": "OK",
+            "msg": "disarmed",
+            "status": "DISARMED",
+            "protomResponse": "D",
+            "protomResponseDate": "2026-01-01",
+            "numinst": "123",
+            "requestId": "req2",
+            "error": None,
+        }
+        result = authed_api.process_disarm_result(raw)
+        assert isinstance(result, DisarmStatus)
+        assert result.protomResponse == "D"
+        assert authed_api.protom_response == "D"
+
+    async def test_process_disarm_result_error_raises(self, authed_api, installation):
+        raw = {
+            "res": "ERROR",
+            "msg": "fail",
+            "status": None,
+            "protomResponse": None,
+            "protomResponseDate": None,
+            "numinst": "123",
+            "requestId": None,
+            "error": {"type": "BLOCKING"},
+        }
+        with pytest.raises(SecuritasDirectError):
+            authed_api.process_disarm_result(raw)
+
+    async def test_process_lock_mode_result_success(self, authed_api, installation):
+        raw = {
+            "res": "OK",
+            "msg": "locked",
+            "protomResponse": "L",
+            "status": "LOCKED",
+        }
+        result = authed_api.process_lock_mode_result(raw)
+        assert isinstance(result, SmartLockModeStatus)
+        assert result.protomResponse == "L"
+        assert authed_api.protom_response == "L"
