@@ -607,20 +607,6 @@ class TestAsyncSetupEntry:
         ):
             await async_setup_entry(hass, entry)
 
-    async def test_setup_securitas_error_during_get_services(self, hass, mock_hub):
-        """SecuritasDirectError during get_services should raise ConfigEntryNotReady."""
-        mock_hub.get_services = AsyncMock(
-            side_effect=SecuritasDirectError("service error")
-        )
-        entry = MockConfigEntry(domain=DOMAIN, data=make_config_entry_data())
-        entry.add_to_hass(hass)
-
-        with (
-            _patch_hub(mock_hub),
-            patch("custom_components.securitas.async_get_clientsession"),
-            pytest.raises(ConfigEntryNotReady),
-        ):
-            await async_setup_entry(hass, entry)
 
     async def test_setup_missing_device_id_raises_not_ready(self, hass):
         """Missing CONF_DEVICE_ID should raise ConfigEntryNotReady."""

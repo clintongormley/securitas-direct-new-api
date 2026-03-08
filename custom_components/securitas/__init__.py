@@ -357,11 +357,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for installation in entry_installations:
                 if cached_services and installation.number in cached_services:
                     # Pre-populate the hub's services cache — get_services()
-                    # will return immediately without an API call.
+                    # called by platforms will return immediately.
                     client._services_cache[installation.number] = cached_services[
                         installation.number
                     ]
-                await client.get_services(installation, priority=ApiQueue.FOREGROUND)
                 devices.append(SecuritasDirectDevice(installation))
         except SecuritasDirectError as err:
             _LOGGER.error("Unable to connect to Securitas Direct: %s", err.log_detail())
