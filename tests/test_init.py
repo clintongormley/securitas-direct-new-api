@@ -36,6 +36,7 @@ from custom_components.securitas import (
     PLATFORMS,
     SecuritasDirectDevice,
     SecuritasHub,
+    _build_config_dict,
     _notify_error,
     add_device_information,
     async_migrate_entry,
@@ -751,6 +752,230 @@ class TestAsyncSetupEntry:
         mock_add_js.assert_called_once()
         js_url = mock_add_js.call_args[0][1]
         assert js_url.startswith("/securitas_panel/securitas-alarm-card.js?v=")
+
+
+# ===========================================================================
+# 5b. TestBuildConfigDict
+# ===========================================================================
+
+
+class TestBuildConfigDict:
+    """Tests for _build_config_dict() helper."""
+
+    def test_builds_config_from_entry_data(self):
+        """Should build config dict with all expected keys."""
+        data = make_config_entry_data()
+        entry = MockConfigEntry(domain=DOMAIN, data=data)
+        config, need_sign_in = _build_config_dict(entry)
+        assert config[CONF_USERNAME] == data[CONF_USERNAME]
+        assert config[CONF_PASSWORD] == data[CONF_PASSWORD]
+        assert config[CONF_COUNTRY] == data.get(CONF_COUNTRY)
+        assert need_sign_in is False
+
+    def test_need_sign_in_when_device_id_missing(self):
+        """Should set need_sign_in=True when CONF_DEVICE_ID is missing."""
+        data = make_config_entry_data()
+        del data[CONF_DEVICE_ID]
+        entry = MockConfigEntry(domain=DOMAIN, data=data)
+        _, need_sign_in = _build_config_dict(entry)
+        assert need_sign_in is True
+
+    def test_need_sign_in_when_unique_id_missing(self):
+        """Should set need_sign_in=True when CONF_UNIQUE_ID is missing."""
+        data = make_config_entry_data()
+        del data[CONF_UNIQUE_ID]
+        entry = MockConfigEntry(domain=DOMAIN, data=data)
+        _, need_sign_in = _build_config_dict(entry)
+        assert need_sign_in is True
+
+    def test_need_sign_in_when_indigitall_missing(self):
+        """Should set need_sign_in=True when CONF_DEVICE_INDIGITALL is missing."""
+        data = make_config_entry_data()
+        del data[CONF_DEVICE_INDIGITALL]
+        entry = MockConfigEntry(domain=DOMAIN, data=data)
+        _, need_sign_in = _build_config_dict(entry)
+        assert need_sign_in is True
+
+    def test_options_override_data(self):
+        """Options should override data values."""
+        data = make_config_entry_data(code="1111")
+        entry = MockConfigEntry(
+            domain=DOMAIN, data=data, options={CONF_CODE: "9999"}
+        )
+        config, _ = _build_config_dict(entry)
+        assert config[CONF_CODE] == "9999"
+
+    def test_mapping_config_included(self):
+        """Map config keys should be in the returned config."""
+        data = make_config_entry_data()
+        entry = MockConfigEntry(domain=DOMAIN, data=data)
+        config, _ = _build_config_dict(entry)
+        assert CONF_MAP_HOME in config
+        assert CONF_MAP_AWAY in config
+        assert CONF_MAP_NIGHT in config
+        assert CONF_MAP_CUSTOM in config
+        assert CONF_MAP_VACATION in config
+
+
+# ===========================================================================
+# 5c. TestMaxPollAttempts
+# ===========================================================================
+
+
+class TestMaxPollAttempts:
+    """Tests for SecuritasHub._max_poll_attempts()."""
+
+    def _make_hub(self, delay=2):
+        config = OrderedDict({
+            CONF_USERNAME: "test@example.com",
+            CONF_PASSWORD: "test-password",
+            CONF_COUNTRY: "ES",
+            CONF_DEVICE_ID: "test-device-id",
+            CONF_UNIQUE_ID: "test-uuid",
+            CONF_DEVICE_INDIGITALL: "test-indigitall",
+            CONF_DELAY_CHECK_OPERATION: delay,
+            CONF_SCAN_INTERVAL: 120,
+            CONF_CODE: "",
+            CONF_HAS_PERI: False,
+            CONF_CODE_ARM_REQUIRED: False,
+        })
+        return SecuritasHub(config, MagicMock(), MagicMock(), MagicMock())
+
+    def test_default_timeout(self):
+        """Default timeout of 30s with delay=2 should return 15."""
+        hub = self._make_hub(delay=2)
+        assert hub._max_poll_attempts() == 15
+
+    def test_custom_timeout(self):
+        """Custom timeout of 60s with delay=2 should return 30."""
+        hub = self._make_hub(delay=2)
+        assert hub._max_poll_attempts(timeout_seconds=60) == 30
+
+    def test_minimum_10(self):
+        """Should return at least 10 even with large delay."""
+        hub = self._make_hub(delay=100)
+        assert hub._max_poll_attempts() == 10
+
+    def test_zero_delay(self):
+        """Zero delay should not cause division by zero (uses max(1, delay))."""
+        hub = self._make_hub(delay=0)
+        result = hub._max_poll_attempts(timeout_seconds=30)
+        assert result == 30
+
+
+# ===========================================================================
+# 5d. TestValidateAndStoreImage
+# ===========================================================================
+
+
+class TestValidateAndStoreImage:
+    """Tests for SecuritasHub._validate_and_store_image()."""
+
+    def _make_hub(self):
+        config = OrderedDict({
+            CONF_USERNAME: "test@example.com",
+            CONF_PASSWORD: "test-password",
+            CONF_COUNTRY: "ES",
+            CONF_DEVICE_ID: "test-device-id",
+            CONF_UNIQUE_ID: "test-uuid",
+            CONF_DEVICE_INDIGITALL: "test-indigitall",
+            CONF_DELAY_CHECK_OPERATION: 2,
+            CONF_SCAN_INTERVAL: 120,
+            CONF_CODE: "",
+            CONF_HAS_PERI: False,
+            CONF_CODE_ARM_REQUIRED: False,
+        })
+        return SecuritasHub(config, MagicMock(), MagicMock(), MagicMock())
+
+    def test_none_thumbnail_returns_none(self):
+        """None thumbnail should return None."""
+        hub = self._make_hub()
+        inst = make_installation()
+        result = hub._validate_and_store_image(None, inst, MagicMock())
+        assert result is None
+
+    def test_none_image_returns_none(self):
+        """Thumbnail with None image should return None."""
+        hub = self._make_hub()
+        inst = make_installation()
+        thumbnail = MagicMock()
+        thumbnail.image = None
+        result = hub._validate_and_store_image(thumbnail, inst, MagicMock())
+        assert result is None
+
+    def test_valid_jpeg_stored(self):
+        """Valid JPEG data should be stored and returned."""
+        import base64
+        hub = self._make_hub()
+        inst = make_installation(number="123")
+        camera = MagicMock()
+        camera.zone_id = "Z1"
+        camera.name = "Camera1"
+        jpeg_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+        thumbnail = MagicMock()
+        thumbnail.image = base64.b64encode(jpeg_bytes).decode()
+        thumbnail.timestamp = "2024-01-01T00:00:00"
+        result = hub._validate_and_store_image(thumbnail, inst, camera)
+        assert result == jpeg_bytes
+        assert hub.camera_images["123_Z1"] == jpeg_bytes
+        assert hub.camera_timestamps["123_Z1"] == "2024-01-01T00:00:00"
+
+    def test_invalid_jpeg_returns_none(self):
+        """Non-JPEG data should return None."""
+        import base64
+        hub = self._make_hub()
+        inst = make_installation(number="123")
+        camera = MagicMock()
+        camera.zone_id = "Z1"
+        camera.name = "Camera1"
+        thumbnail = MagicMock()
+        thumbnail.image = base64.b64encode(b"NOT_JPEG_DATA").decode()
+        result = hub._validate_and_store_image(
+            thumbnail, inst, camera, log_warnings=False
+        )
+        assert result is None
+        assert "123_Z1" not in hub.camera_images
+
+
+# ===========================================================================
+# 5e. TestScheduleInitialUpdates
+# ===========================================================================
+
+
+class TestScheduleInitialUpdates:
+    """Tests for schedule_initial_updates() in entity.py."""
+
+    def test_empty_entities_no_op(self, hass):
+        """Empty entities list should not schedule anything."""
+        from custom_components.securitas.entity import schedule_initial_updates
+        # Should not raise
+        schedule_initial_updates(hass, [])
+
+    def test_schedules_callback(self, hass):
+        """Non-empty entities should schedule a callback via async_call_later."""
+        from custom_components.securitas.entity import schedule_initial_updates
+        entity = MagicMock()
+        with patch(
+            "custom_components.securitas.entity.async_call_later"
+        ) as mock_call_later:
+            schedule_initial_updates(hass, [entity], delay=10)
+        mock_call_later.assert_called_once()
+        assert mock_call_later.call_args[0][1] == 10
+
+    def test_callback_refreshes_entities(self, hass):
+        """The scheduled callback should call async_schedule_update_ha_state on each entity."""
+        from custom_components.securitas.entity import schedule_initial_updates
+        entity1 = MagicMock()
+        entity2 = MagicMock()
+        with patch(
+            "custom_components.securitas.entity.async_call_later"
+        ) as mock_call_later:
+            schedule_initial_updates(hass, [entity1, entity2])
+        # Extract the callback and invoke it
+        cb = mock_call_later.call_args[0][2]
+        cb(None)
+        entity1.async_schedule_update_ha_state.assert_called_once_with(force_refresh=True)
+        entity2.async_schedule_update_ha_state.assert_called_once_with(force_refresh=True)
 
 
 # ===========================================================================

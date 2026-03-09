@@ -172,9 +172,12 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Establish connection with Securitas Direct."""
-    need_sign_in: bool = False
+def _build_config_dict(entry: ConfigEntry) -> tuple[dict, bool]:
+    """Build config dict from entry.data + entry.options.
+
+    Returns the config dict and a flag indicating whether sign-in is needed
+    (True if any device ID fields are missing from entry.data).
+    """
 
     def _opt(key, default=None):
         """Read from options first, then data, then default."""
@@ -197,6 +200,178 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     config[CONF_NOTIFY_GROUP] = _opt(CONF_NOTIFY_GROUP, "")
     config = add_device_information(config)
 
+    # Read mapping config (options override data)
+    config[CONF_MAP_HOME] = _opt(CONF_MAP_HOME)
+    config[CONF_MAP_AWAY] = _opt(CONF_MAP_AWAY)
+    config[CONF_MAP_NIGHT] = _opt(CONF_MAP_NIGHT)
+    config[CONF_MAP_CUSTOM] = _opt(CONF_MAP_CUSTOM)
+    config[CONF_MAP_VACATION] = _opt(CONF_MAP_VACATION)
+
+    need_sign_in = False
+    if CONF_DEVICE_ID in entry.data:
+        config[CONF_DEVICE_ID] = entry.data[CONF_DEVICE_ID]
+    else:
+        need_sign_in = True
+    if CONF_UNIQUE_ID in entry.data:
+        config[CONF_UNIQUE_ID] = entry.data[CONF_UNIQUE_ID]
+    else:
+        need_sign_in = True
+    if CONF_DEVICE_INDIGITALL in entry.data:
+        config[CONF_DEVICE_INDIGITALL] = entry.data[CONF_DEVICE_INDIGITALL]
+    else:
+        need_sign_in = True
+
+    return config, need_sign_in
+
+
+async def _get_or_create_session(
+    hass: HomeAssistant, config: dict, entry: ConfigEntry
+) -> "SecuritasHub":
+    """Get or create a shared SecuritasHub session with reference counting.
+
+    Multiple config entries for the same username share a single
+    SecuritasHub / ApiManager session to avoid duplicate logins
+    and WAF rate-limit blocks.  A per-username lock prevents concurrent
+    async_setup_entry calls from creating duplicate hubs.
+    """
+    username = config[CONF_USERNAME]
+    sessions = hass.data[DOMAIN].setdefault("sessions", {})
+    setup_locks = hass.data[DOMAIN].setdefault("setup_locks", {})
+    if username not in setup_locks:
+        setup_locks[username] = asyncio.Lock()
+
+    async with setup_locks[username]:
+        if username in sessions:
+            # Reuse existing session
+            client: SecuritasHub = sessions[username]["hub"]
+            sessions[username]["ref_count"] += 1
+        else:
+            # Create new session and log in
+            client = SecuritasHub(
+                config, entry, async_get_clientsession(hass), hass
+            )
+            try:
+                await client.login()
+            except Login2FAError:
+                msg = (
+                    "Securitas Direct need a 2FA SMS code."
+                    "Please login again with your phone"
+                )
+                _notify_error(hass, "2fa_error", "Securitas Direct", msg)
+                raise
+            except LoginError as err:
+                _notify_error(hass, "login_error", "Securitas Direct", str(err))
+                _LOGGER.error(
+                    "Could not log in to Securitas: %s",
+                    err.log_detail(),
+                )
+                raise
+            except SecuritasDirectError as err:
+                detail = err.log_detail()
+                _LOGGER.error(
+                    "Unable to connect to Securitas Direct: %s",
+                    detail,
+                )
+                raise ConfigEntryNotReady(
+                    f"Unable to connect to Securitas Direct: {detail}"
+                ) from None
+            sessions[username] = {"hub": client, "ref_count": 1}
+
+    return client
+
+
+def _get_or_create_api_queue(
+    hass: HomeAssistant,
+    session: "SecuritasHub",
+    config: dict,
+    entry: ConfigEntry,
+) -> None:
+    """Create or reuse an ApiQueue for the session's API domain.
+
+    WAF rate-limits by IP per domain, so entries sharing a domain share a queue.
+    Sets session.api_queue as a side effect.
+    """
+    domain_url = ApiDomains().get_url(config[CONF_COUNTRY])
+    api_queues = hass.data[DOMAIN].setdefault("api_queues", {})
+    if domain_url not in api_queues:
+        api_queues[domain_url] = ApiQueue(
+            interval=config[CONF_DELAY_CHECK_OPERATION],
+        )
+        _LOGGER.info(
+            "Created ApiQueue %s for domain %s (country=%s, entry=%s)",
+            id(api_queues[domain_url]),
+            domain_url,
+            config[CONF_COUNTRY],
+            entry.entry_id,
+        )
+    else:
+        _LOGGER.info(
+            "Reusing ApiQueue %s for domain %s (country=%s, entry=%s)",
+            id(api_queues[domain_url]),
+            domain_url,
+            config[CONF_COUNTRY],
+            entry.entry_id,
+        )
+    session.api_queue = api_queues[domain_url]
+
+
+async def _fetch_and_cache_installations(
+    hass: HomeAssistant,
+    hub: "SecuritasHub",
+    config: dict,
+    entry: ConfigEntry,
+) -> list["SecuritasDirectDevice"]:
+    """Fetch installations and services, populating caches.
+
+    Uses cached data from the config flow when available, otherwise
+    fetches from the API (e.g. on HA restart).
+
+    Returns a list of SecuritasDirectDevice wrappers for this entry's
+    installations.
+    """
+    cached = hass.data[DOMAIN].pop("installations", None)
+    all_installations: list[Installation] = (
+        cached
+        if cached is not None
+        else await hub.api_queue.submit(
+            hub.session.list_installations,
+            priority=ApiQueue.FOREGROUND,
+        )
+    )
+    target_number = entry.data.get(CONF_INSTALLATION)
+    if target_number:
+        entry_installations = [
+            inst for inst in all_installations if inst.number == target_number
+        ]
+    else:
+        # Legacy entries without CONF_INSTALLATION get all
+        entry_installations = all_installations
+
+    # Use cached services from config flow if available,
+    # otherwise fetch from API (e.g. on HA restart).
+    cached_services = hass.data[DOMAIN].pop("cached_services", None)
+
+    devices: list[SecuritasDirectDevice] = []
+    for installation in entry_installations:
+        if cached_services and installation.number in cached_services:
+            # Pre-populate from config flow cache
+            hub.services_cache[installation.number] = cached_services[
+                installation.number
+            ]
+        elif installation.number not in hub.services_cache:
+            # HA restart: fetch directly (bypass queue — we just logged
+            # in, no WAF risk yet) so platforms don't block on queue.
+            hub.services_cache[
+                installation.number
+            ] = await hub.session.get_all_services(installation)
+        devices.append(SecuritasDirectDevice(installation))
+    return devices
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Establish connection with Securitas Direct."""
+    config, need_sign_in = _build_config_dict(entry)
+
     # Register card static path + Lovelace resource early so the card
     # is available even when login fails (ConfigEntryNotReady).
     if hass.http and not hass.data.get(DOMAIN, {}).get("card_registered"):
@@ -211,26 +386,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         await _register_card_resource(hass)
         hass.data.setdefault(DOMAIN, {})["card_registered"] = True
-
-    # Read mapping config (options override data)
-    config[CONF_MAP_HOME] = _opt(CONF_MAP_HOME)
-    config[CONF_MAP_AWAY] = _opt(CONF_MAP_AWAY)
-    config[CONF_MAP_NIGHT] = _opt(CONF_MAP_NIGHT)
-    config[CONF_MAP_CUSTOM] = _opt(CONF_MAP_CUSTOM)
-    config[CONF_MAP_VACATION] = _opt(CONF_MAP_VACATION)
-
-    if CONF_DEVICE_ID in entry.data:
-        config[CONF_DEVICE_ID] = entry.data[CONF_DEVICE_ID]
-    else:
-        need_sign_in = True
-    if CONF_UNIQUE_ID in entry.data:
-        config[CONF_UNIQUE_ID] = entry.data[CONF_UNIQUE_ID]
-    else:
-        need_sign_in = True
-    if CONF_DEVICE_INDIGITALL in entry.data:
-        config[CONF_DEVICE_INDIGITALL] = entry.data[CONF_DEVICE_INDIGITALL]
-    else:
-        need_sign_in = True
 
     hass.data.setdefault(DOMAIN, {})
 
@@ -250,121 +405,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][CONF_ENTRY_ID] = entry.entry_id
     if not need_sign_in:
-        # --- Shared session with reference counting ---
-        # Multiple config entries for the same username share a single
-        # SecuritasHub / ApiManager session to avoid duplicate logins
-        # and WAF rate-limit blocks.
-        # A per-username lock prevents concurrent async_setup_entry calls
-        # from creating duplicate hubs (login() yields, so without a lock
-        # the second entry wouldn't find the first's session yet).
-        username = config[CONF_USERNAME]
-        sessions = hass.data[DOMAIN].setdefault("sessions", {})
-        setup_locks = hass.data[DOMAIN].setdefault("setup_locks", {})
-        if username not in setup_locks:
-            setup_locks[username] = asyncio.Lock()
+        try:
+            client = await _get_or_create_session(hass, config, entry)
+        except Login2FAError:
+            return False
+        except LoginError:
+            return False
 
-        async with setup_locks[username]:
-            if username in sessions:
-                # Reuse existing session
-                client: SecuritasHub = sessions[username]["hub"]
-                sessions[username]["ref_count"] += 1
-            else:
-                # Create new session and log in
-                client = SecuritasHub(
-                    config, entry, async_get_clientsession(hass), hass
-                )
-                try:
-                    await client.login()
-                except Login2FAError:
-                    msg = (
-                        "Securitas Direct need a 2FA SMS code."
-                        "Please login again with your phone"
-                    )
-                    _notify_error(hass, "2fa_error", "Securitas Direct", msg)
-                    return False
-                except LoginError as err:
-                    _notify_error(hass, "login_error", "Securitas Direct", str(err))
-                    _LOGGER.error(
-                        "Could not log in to Securitas: %s",
-                        err.log_detail(),
-                    )
-                    return False
-                except SecuritasDirectError as err:
-                    detail = err.log_detail()
-                    _LOGGER.error(
-                        "Unable to connect to Securitas Direct: %s",
-                        detail,
-                    )
-                    raise ConfigEntryNotReady(
-                        f"Unable to connect to Securitas Direct: {detail}"
-                    ) from None
-                sessions[username] = {"hub": client, "ref_count": 1}
-
-        # Share ApiQueue per domain — WAF rate-limits by IP per domain
-        domain_url = ApiDomains().get_url(config[CONF_COUNTRY])
-        api_queues = hass.data[DOMAIN].setdefault("api_queues", {})
-        if domain_url not in api_queues:
-            api_queues[domain_url] = ApiQueue(
-                interval=config[CONF_DELAY_CHECK_OPERATION],
-            )
-            _LOGGER.info(
-                "Created ApiQueue %s for domain %s (country=%s, entry=%s)",
-                id(api_queues[domain_url]),
-                domain_url,
-                config[CONF_COUNTRY],
-                entry.entry_id,
-            )
-        else:
-            _LOGGER.info(
-                "Reusing ApiQueue %s for domain %s (country=%s, entry=%s)",
-                id(api_queues[domain_url]),
-                domain_url,
-                config[CONF_COUNTRY],
-                entry.entry_id,
-            )
-        client.api_queue = api_queues[domain_url]
+        _get_or_create_api_queue(hass, client, config, entry)
 
         entry.async_on_unload(entry.add_update_listener(async_update_options))
 
-        # Use cached installations from config flow if available,
-        # otherwise fetch (e.g. on HA restart).
         try:
-            cached = hass.data[DOMAIN].pop("installations", None)
-            all_installations: list[Installation] = (
-                cached
-                if cached is not None
-                else await client.api_queue.submit(
-                    client.session.list_installations,
-                    priority=ApiQueue.FOREGROUND,
-                )
-            )
-            target_number = entry.data.get(CONF_INSTALLATION)
-            if target_number:
-                entry_installations = [
-                    inst for inst in all_installations if inst.number == target_number
-                ]
-            else:
-                # Legacy entries without CONF_INSTALLATION get all
-                entry_installations = all_installations
-
-            # Use cached services from config flow if available,
-            # otherwise fetch from API (e.g. on HA restart).
-            cached_services = hass.data[DOMAIN].pop("cached_services", None)
-
-            devices: list[SecuritasDirectDevice] = []
-            for installation in entry_installations:
-                if cached_services and installation.number in cached_services:
-                    # Pre-populate from config flow cache
-                    client.services_cache[installation.number] = cached_services[
-                        installation.number
-                    ]
-                elif installation.number not in client.services_cache:
-                    # HA restart: fetch directly (bypass queue — we just logged
-                    # in, no WAF risk yet) so platforms don't block on queue.
-                    client.services_cache[
-                        installation.number
-                    ] = await client.session.get_all_services(installation)
-                devices.append(SecuritasDirectDevice(installation))
+            devices = await _fetch_and_cache_installations(hass, client, config, entry)
         except SecuritasDirectError as err:
             _LOGGER.error("Unable to connect to Securitas Direct: %s", err.log_detail())
             raise ConfigEntryNotReady("Unable to connect to Securitas Direct") from None
@@ -390,10 +443,47 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
 
-async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Discover cameras and locks in the background after setup."""
+async def _discover_cameras(
+    hass: HomeAssistant,
+    hub: "SecuritasHub",
+    installation: Installation,
+    entry_data: dict,
+) -> None:
+    """Discover camera devices for an installation and add entities."""
     from .button import SecuritasCaptureButton
     from .camera import SecuritasCamera
+
+    try:
+        cameras = await hub.get_camera_devices(installation)
+    except Exception:  # pylint: disable=broad-exception-caught  # background discovery must not crash
+        _LOGGER.warning("Failed to get camera devices for %s", installation.number)
+        cameras = []
+
+    if cameras:
+        camera_add = entry_data.get("camera_add_entities")
+        button_add = entry_data.get("button_add_entities")
+        if camera_add:
+            camera_add(
+                [SecuritasCamera(hub, installation, cam) for cam in cameras],
+                False,
+            )
+        if button_add:
+            button_add(
+                [
+                    SecuritasCaptureButton(hub, installation, cam)
+                    for cam in cameras
+                ],
+                True,
+            )
+
+
+async def _discover_locks(
+    hass: HomeAssistant,
+    hub: "SecuritasHub",
+    installation: Installation,
+    entry_data: dict,
+) -> None:
+    """Discover lock devices for an installation and add entities."""
     from .lock import (
         DOORLOCK_SERVICE,
         LOCK_STATUS_UNKNOWN,
@@ -402,6 +492,51 @@ async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> No
     from .securitas_direct_new_api import SmartLockMode
     from .securitas_direct_new_api.apimanager import SMARTLOCK_DEVICE_ID
 
+    try:
+        services = await hub.get_services(installation)
+    except Exception:  # pylint: disable=broad-exception-caught  # background discovery must not crash
+        _LOGGER.warning("Failed to get services for %s", installation.number)
+        return
+
+    has_doorlock = any(s.request == DOORLOCK_SERVICE for s in services)
+    if not has_doorlock:
+        return
+
+    try:
+        lock_modes: list[SmartLockMode] = await hub.get_lock_modes(installation)
+    except Exception:  # pylint: disable=broad-exception-caught  # background discovery must not crash
+        _LOGGER.warning("Failed to get lock modes for %s", installation.number)
+        lock_modes = []
+
+    if not lock_modes:
+        lock_modes = [
+            SmartLockMode(
+                res=None,
+                lockStatus=LOCK_STATUS_UNKNOWN,
+                deviceId=SMARTLOCK_DEVICE_ID,
+            )
+        ]
+
+    lock_add = entry_data.get("lock_add_entities")
+    if lock_add:
+        locks = [
+            SecuritasLock(
+                installation,
+                client=hub,
+                hass=hass,
+                device_id=mode.deviceId or SMARTLOCK_DEVICE_ID,
+                initial_status=mode.lockStatus,
+            )
+            for mode in lock_modes
+        ]
+        lock_add(locks, False)
+        # Schedule initial lock update
+        for lock_entity in locks:
+            lock_entity.async_schedule_update_ha_state(force_refresh=True)
+
+
+async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Discover cameras and locks in the background after setup."""
     entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if entry_data is None:
         return
@@ -411,73 +546,8 @@ async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> No
 
     for device in devices:
         installation = device.installation
-
-        # ── Camera discovery ──
-        try:
-            cameras = await client.get_camera_devices(installation)
-        except Exception:  # pylint: disable=broad-exception-caught  # background discovery must not crash
-            _LOGGER.warning("Failed to get camera devices for %s", installation.number)
-            cameras = []
-
-        if cameras:
-            camera_add = entry_data.get("camera_add_entities")
-            button_add = entry_data.get("button_add_entities")
-            if camera_add:
-                camera_add(
-                    [SecuritasCamera(client, installation, cam) for cam in cameras],
-                    False,
-                )
-            if button_add:
-                button_add(
-                    [
-                        SecuritasCaptureButton(client, installation, cam)
-                        for cam in cameras
-                    ],
-                    True,
-                )
-
-        # ── Lock discovery ──
-        try:
-            services = await client.get_services(installation)
-        except Exception:  # pylint: disable=broad-exception-caught  # background discovery must not crash
-            _LOGGER.warning("Failed to get services for %s", installation.number)
-            continue
-
-        has_doorlock = any(s.request == DOORLOCK_SERVICE for s in services)
-        if not has_doorlock:
-            continue
-
-        try:
-            lock_modes: list[SmartLockMode] = await client.get_lock_modes(installation)
-        except Exception:  # pylint: disable=broad-exception-caught  # background discovery must not crash
-            _LOGGER.warning("Failed to get lock modes for %s", installation.number)
-            lock_modes = []
-
-        if not lock_modes:
-            lock_modes = [
-                SmartLockMode(
-                    res=None,
-                    lockStatus=LOCK_STATUS_UNKNOWN,
-                    deviceId=SMARTLOCK_DEVICE_ID,
-                )
-            ]
-
-        lock_add = entry_data.get("lock_add_entities")
-        if lock_add:
-            locks = [
-                SecuritasLock(
-                    installation,
-                    client=client,
-                    hass=hass,
-                    device_id=mode.deviceId or SMARTLOCK_DEVICE_ID,
-                    initial_status=mode.lockStatus,
-                )
-                for mode in lock_modes
-            ]
-            lock_add(locks, False)
-            # Schedule initial lock update
-            for lock_entity in locks:
-                lock_entity.async_schedule_update_ha_state(force_refresh=True)
+        await _discover_cameras(hass, client, installation, entry_data)
+        await _discover_locks(hass, client, installation, entry_data)
 
 
 async def _register_card_resource(hass: HomeAssistant) -> None:
@@ -768,7 +838,7 @@ class SecuritasHub:
         )
 
         # Poll for completion — continue while "processing" (image not yet ready)
-        max_attempts = max(10, round(60 / max(1, self.session.delay_check_operation)))
+        max_attempts = self._max_poll_attempts(timeout_seconds=60)
         try:
             for attempt in range(1, max_attempts + 1):
                 raw = await self._api_queue.submit(
@@ -810,26 +880,14 @@ class SecuritasHub:
                 device.name,
             )
 
-        if thumbnail is None or thumbnail.image is None:
-            return None
-
-        image_bytes = base64.b64decode(thumbnail.image)
-        if not image_bytes.startswith(b"\xff\xd8"):
-            _LOGGER.warning(
-                "Thumbnail for %s is not JPEG data (got %d bytes starting with %r)",
-                device.name,
-                len(image_bytes),
-                image_bytes[:40],
-            )
-            return None
-        key = f"{installation.number}_{device.zone_id}"
-        self.camera_images[key] = image_bytes
-        if thumbnail.timestamp:
-            self.camera_timestamps[key] = thumbnail.timestamp
-
-        async_dispatcher_send(
-            self.hass, SIGNAL_CAMERA_UPDATE, installation.number, device.zone_id
+        image_bytes = self._validate_and_store_image(
+            thumbnail, installation, device, log_warnings=True
         )
+
+        if image_bytes is not None:
+            async_dispatcher_send(
+                self.hass, SIGNAL_CAMERA_UPDATE, installation.number, device.zone_id
+            )
         return image_bytes
 
     async def fetch_latest_thumbnail(
@@ -850,22 +908,44 @@ class SecuritasHub:
                 camera_device.name,
             )
             return
+
+        image_bytes = self._validate_and_store_image(
+            thumbnail, installation, camera_device, log_warnings=False
+        )
+        if image_bytes is not None:
+            async_dispatcher_send(
+                self.hass,
+                SIGNAL_CAMERA_UPDATE,
+                installation.number,
+                camera_device.zone_id,
+            )
+
+    def _validate_and_store_image(
+        self,
+        thumbnail,
+        installation: Installation,
+        camera_device,
+        *,
+        log_warnings: bool = True,
+    ) -> bytes | None:
+        """Decode, validate JPEG, and cache a thumbnail image."""
         if thumbnail is None or thumbnail.image is None:
-            return
+            return None
         image_bytes = base64.b64decode(thumbnail.image)
         if not image_bytes.startswith(b"\xff\xd8"):
-            return
+            if log_warnings:
+                _LOGGER.warning(
+                    "Thumbnail for %s is not JPEG data (got %d bytes starting with %r)",
+                    camera_device.name,
+                    len(image_bytes),
+                    image_bytes[:40],
+                )
+            return None
         key = f"{installation.number}_{camera_device.zone_id}"
         self.camera_images[key] = image_bytes
         if thumbnail.timestamp:
             self.camera_timestamps[key] = thumbnail.timestamp
-
-        async_dispatcher_send(
-            self.hass,
-            SIGNAL_CAMERA_UPDATE,
-            installation.number,
-            camera_device.zone_id,
-        )
+        return image_bytes
 
     def get_camera_image(self, installation_number: str, zone_id: str) -> bytes | None:
         """Return the last captured image for a camera."""
@@ -876,6 +956,10 @@ class SecuritasHub:
     ) -> str | None:
         """Return the timestamp of the last captured image."""
         return self.camera_timestamps.get(f"{installation_number}_{zone_id}")
+
+    def _max_poll_attempts(self, timeout_seconds: int = 30) -> int:
+        """Calculate max polling attempts for a given timeout."""
+        return max(10, round(timeout_seconds / max(1, self.session.delay_check_operation)))
 
     def get_authentication_token(self) -> str | None:
         """Get the authentication token."""
@@ -997,7 +1081,7 @@ class SecuritasHub:
             priority=ApiQueue.FOREGROUND,
         )
 
-        max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
+        max_attempts = self._max_poll_attempts(timeout_seconds=30)
         for attempt in range(1, max_attempts + 1):
             raw = await self._api_queue.submit(
                 self.session.check_arm_status,
@@ -1021,7 +1105,7 @@ class SecuritasHub:
             priority=ApiQueue.FOREGROUND,
         )
 
-        max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
+        max_attempts = self._max_poll_attempts(timeout_seconds=30)
         for attempt in range(1, max_attempts + 1):
             raw = await self._api_queue.submit(
                 self.session.check_disarm_status,
@@ -1081,7 +1165,7 @@ class SecuritasHub:
             priority=ApiQueue.FOREGROUND,
         )
 
-        max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
+        max_attempts = self._max_poll_attempts(timeout_seconds=30)
         for attempt in range(1, max_attempts + 1):
             raw = await self._api_queue.submit(
                 self.session.check_change_lock_mode,
