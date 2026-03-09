@@ -95,7 +95,7 @@ After setup, you can change most settings via **Settings → Integrations → Se
 
 ## Alarm State Mappings
 
-Securitas Direct supports several alarm modes, but Home Assistant's alarm panel only has five buttons: **Home**, **Away**, **Night**, **Custom Bypass**, and **Vacation**. This integration lets you choose which Securitas mode each button activates.
+Securitas Direct supports several alarm modes, but Home Assistant's alarm panel only has five buttons: **Home**, **Away**, **Night**, **Vacation**, and **Custom Bypass**. This integration lets you choose which Securitas mode each button activates.
 
 ![Alarm State Mapping](./docs/images/state-mappings.png)
 
@@ -112,7 +112,7 @@ Securitas Direct supports several alarm modes, but Home Assistant's alarm panel 
 | Total + Perimeter         | All interior + external sensors       |
 | Not Used                  | Hides the button from the alarm panel |
 
-The available modes depend on whether **Perimetral alarm** is enabled. Standard installations only see the non-perimeter modes; perimeter installations see all modes.
+The available modes depend on whether a **Perimetral alarm** has been detected. Standard installations only see the non-perimeter modes; perimeter installations see all modes.
 
 > **Note:** Your country may only support a single Partial mode, rather than a Partial Day and a Partial Night. In this case, use just Partial Day.
 
@@ -159,8 +159,9 @@ To see which status code the alarm is reporting, [enable debug logging](#reporti
 When you arm the alarm and a sensor is in a fault state (e.g. a window is open), Securitas may block the arm and report a non-blocking exception. The integration handles this as follows:
 
 1. The alarm panel reverts to its previous state.
-2. A **persistent notification** appears in Home Assistant listing the affected sensors.
-3. If a **Notify service** is configured, a **mobile notification** is sent with two action buttons: **Force Arm** and **Cancel**.
+2. The [custom alarm card](#custom-alarm-card) shows a warning listing the problematic sensors, with **Force Arm** and **Cancel** buttons.
+3. A **persistent notification** appears in Home Assistant listing the affected sensors.
+4. If a **Notify service** is configured, a **mobile notification** is sent with two action buttons: **Force Arm** and **Cancel**.
 
 ### Resolving the exception
 
