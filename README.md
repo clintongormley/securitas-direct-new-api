@@ -28,7 +28,7 @@ A Home Assistant custom integration for [Securitas Direct](https://www.securitas
 - **Per-installation config entries** — The integration now creates one config entry per installation instead of one per account. If your account has multiple installations, you add each one separately via the setup wizard (which now includes an installation picker step). Accounts with multiple installations previously had all installations bundled into a single config entry — this is no longer supported.
 - **Perimeter alarm auto-detection** — The "Perimetral alarm" checkbox has been replaced by automatic detection from the installation's service attributes. Your existing perimeter setting is preserved during migration.
 - **Scan interval and API delay moved to Advanced section** — These options are now in a collapsible "Advanced" section in the options flow. The "Delay to check arming and disarming operations" has been renamed to "Delay between API requests" and now applies to all API calls (not just arm/disarm polling).
-- **WiFi diagnostic sensor added** — A new `wifi_connected` diagnostic sensor is created per installation. It is disabled by default.
+- **WiFi diagnostic sensor added** — A new `wifi_connected` sensor is created per installation, showing the panel's WiFi connection status.
 
 ## Supported Countries
 
