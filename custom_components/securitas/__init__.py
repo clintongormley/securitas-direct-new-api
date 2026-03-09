@@ -592,6 +592,7 @@ class SecuritasHub:
         self._api_cache: dict[str, Any] = {}  # generic cache: key -> result
         self._api_cache_time: dict[str, float] = {}  # generic cache: key -> timestamp
         self.camera_images: dict[str, bytes] = {}
+        self.camera_timestamps: dict[str, str] = {}
         self._camera_devices_cache: dict[str, list[CameraDevice]] = {}
 
     async def login(self):
@@ -653,6 +654,17 @@ class SecuritasHub:
     ) -> bytes | None:
         """Request a new image capture and fetch the result."""
         device = camera_device
+
+        # Get the baseline thumbnail idSignal so we can detect when it changes
+        baseline = await self._api_queue.submit(
+            self.session.get_thumbnail,
+            installation,
+            device.name,
+            device.zone_id,
+            priority=ApiQueue.FOREGROUND,
+        )
+        baseline_id = baseline.id_signal
+
         reference_id = await self._api_queue.submit(
             self.session.request_images,
             installation,
@@ -660,7 +672,7 @@ class SecuritasHub:
             priority=ApiQueue.FOREGROUND,
         )
 
-        # Poll for completion (follows change_lock_mode pattern)
+        # Poll for completion — continue while "processing" (image not yet ready)
         max_attempts = max(10, round(60 / max(1, self.session.delay_check_operation)))
         try:
             for attempt in range(1, max_attempts + 1):
@@ -672,7 +684,8 @@ class SecuritasHub:
                     attempt,
                     priority=ApiQueue.FOREGROUND,
                 )
-                if raw.get("res") != "WAIT":
+                msg = raw.get("msg", "")
+                if "processing" not in msg and raw.get("res") != "WAIT":
                     break
             else:
                 raise TimeoutError("Image request poll timed out")
@@ -682,29 +695,92 @@ class SecuritasHub:
                 device.name,
             )
 
-        # Fetch the thumbnail
-        thumbnail = await self._api_queue.submit(
-            self.session.get_thumbnail,
-            installation,
-            device.name,
-            device.zone_id,
-            priority=ApiQueue.FOREGROUND,
-        )
-        if thumbnail.image is None:
+        # Poll the thumbnail until idSignal changes (CDN propagation delay)
+        thumbnail = None
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                await asyncio.sleep(5)
+            thumbnail = await self._api_queue.submit(
+                self.session.get_thumbnail,
+                installation,
+                device.name,
+                device.zone_id,
+                priority=ApiQueue.FOREGROUND,
+            )
+            if thumbnail.id_signal != baseline_id:
+                break
+        else:
+            _LOGGER.warning(
+                "Thumbnail idSignal did not change for %s after capture",
+                device.name,
+            )
+
+        if thumbnail is None or thumbnail.image is None:
             return None
 
         image_bytes = base64.b64decode(thumbnail.image)
+        if not image_bytes.startswith(b"\xff\xd8"):
+            _LOGGER.warning(
+                "Thumbnail for %s is not JPEG data (got %d bytes starting with %r)",
+                device.name,
+                len(image_bytes),
+                image_bytes[:40],
+            )
+            return None
         key = f"{installation.number}_{device.zone_id}"
         self.camera_images[key] = image_bytes
+        if thumbnail.timestamp:
+            self.camera_timestamps[key] = thumbnail.timestamp
 
         async_dispatcher_send(
             self.hass, SIGNAL_CAMERA_UPDATE, installation.number, device.zone_id
         )
         return image_bytes
 
+    async def fetch_latest_thumbnail(
+        self, installation: Installation, camera_device: CameraDevice
+    ) -> None:
+        """Fetch the current thumbnail from the API and store it."""
+        try:
+            thumbnail = await self._api_queue.submit(
+                self.session.get_thumbnail,
+                installation,
+                camera_device.name,
+                camera_device.zone_id,
+                priority=ApiQueue.BACKGROUND,
+            )
+        except Exception:
+            _LOGGER.debug(
+                "Could not fetch thumbnail for %s on startup",
+                camera_device.name,
+            )
+            return
+        if thumbnail is None or thumbnail.image is None:
+            return
+        image_bytes = base64.b64decode(thumbnail.image)
+        if not image_bytes.startswith(b"\xff\xd8"):
+            return
+        key = f"{installation.number}_{camera_device.zone_id}"
+        self.camera_images[key] = image_bytes
+        if thumbnail.timestamp:
+            self.camera_timestamps[key] = thumbnail.timestamp
+
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_CAMERA_UPDATE,
+            installation.number,
+            camera_device.zone_id,
+        )
+
     def get_camera_image(self, installation_number: str, zone_id: str) -> bytes | None:
         """Return the last captured image for a camera."""
         return self.camera_images.get(f"{installation_number}_{zone_id}")
+
+    def get_camera_timestamp(
+        self, installation_number: str, zone_id: str
+    ) -> str | None:
+        """Return the timestamp of the last captured image."""
+        return self.camera_timestamps.get(f"{installation_number}_{zone_id}")
 
     def get_authentication_token(self) -> str | None:
         """Get the authentication token."""

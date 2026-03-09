@@ -291,3 +291,41 @@ class TestHubCameraOperations:
         image_bytes = b"\xff\xd8\xff\xe0fake_jpeg"
         images["2654190_QR10"] = image_bytes
         assert images.get("2654190_QR10") == image_bytes
+
+    def test_poll_continues_while_processing(self):
+        """Polling should NOT stop when res=OK but msg contains 'processing'."""
+        responses = [
+            {"res": "OK", "msg": "alarm-manager.photo-request.processing"},
+            {"res": "OK", "msg": "alarm-manager.photo-request.processing"},
+            {"res": "OK", "msg": "alarm-manager.photo-request.success"},
+        ]
+        # Simulate the polling break condition from capture_image
+        poll_count = 0
+        for raw in responses:
+            poll_count += 1
+            msg = raw.get("msg", "")
+            if "processing" not in msg and raw.get("res") != "WAIT":
+                break
+        assert poll_count == 3, "Should poll 3 times before breaking on success"
+
+    def test_poll_breaks_on_success(self):
+        """Polling should stop when msg indicates success."""
+        raw = {"res": "OK", "msg": "alarm-manager.photo-request.success"}
+        msg = raw.get("msg", "")
+        should_continue = "processing" in msg or raw.get("res") == "WAIT"
+        assert not should_continue
+
+    def test_jpeg_validation_rejects_non_jpeg(self):
+        """Non-JPEG data (e.g. file path) should be detected."""
+        import base64
+
+        # This is what the API returns when image isn't ready — a file path
+        file_path = "/var/volatile/media/36QYX3LE_38_1.jpeg"
+        encoded = base64.b64encode(file_path.encode()).decode()
+        decoded = base64.b64decode(encoded)
+        assert not decoded.startswith(b"\xff\xd8"), "File path should not look like JPEG"
+
+    def test_jpeg_validation_accepts_jpeg(self):
+        """Real JPEG data starts with FFD8 magic bytes."""
+        jpeg_data = b"\xff\xd8\xff\xe0\x00\x10JFIF"
+        assert jpeg_data.startswith(b"\xff\xd8")

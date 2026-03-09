@@ -1,6 +1,8 @@
 """Securitas Direct camera platform."""
 
 import logging
+from pathlib import Path
+from typing import Any
 
 from homeassistant.components.camera import Camera
 from homeassistant.config_entries import ConfigEntry
@@ -14,6 +16,8 @@ from .securitas_direct_new_api import Installation
 from .securitas_direct_new_api.dataTypes import CameraDevice
 
 _LOGGER = logging.getLogger(__name__)
+
+_PLACEHOLDER_IMAGE = (Path(__file__).parent / "placeholder.jpg").read_bytes()
 
 
 async def async_setup_entry(
@@ -70,14 +74,30 @@ class SecuritasCamera(Camera):
         self._attr_unique_id = f"{installation.number}_camera_{camera_device.zone_id}"
         self._attr_name = f"{installation.alias} {camera_device.name}"
         self._attr_device_info = _device_info(installation)
+        self._initial_fetch_done = False
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Return the last captured image."""
-        return self._client.get_camera_image(
+        """Return the last captured image, or a placeholder if none exists."""
+        # Lazy-fetch the latest thumbnail on first request from the frontend
+        if not self._initial_fetch_done:
+            self._initial_fetch_done = True
+            await self._client.fetch_latest_thumbnail(
+                self._installation, self._camera_device
+            )
+        image = self._client.get_camera_image(
             self._installation.number, self._camera_device.zone_id
         )
+        return image if image is not None else _PLACEHOLDER_IMAGE
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        timestamp = self._client.get_camera_timestamp(
+            self._installation.number, self._camera_device.zone_id
+        )
+        return {"image_timestamp": timestamp}
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to camera update signal."""
@@ -95,4 +115,7 @@ class SecuritasCamera(Camera):
             or zone_id != self._camera_device.zone_id
         ):
             return
+        # Rotate the access token so the frontend knows the image changed
+        # and re-fetches from the proxy endpoint.
+        self.async_update_token()
         self.async_write_ha_state()
