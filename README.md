@@ -4,6 +4,7 @@ A Home Assistant custom integration for [Securitas Direct](https://www.securitas
 
 ## Features
 
+- **Multiple installations** — accounts with multiple installations (e.g. home + office) are fully supported. Each installation gets its own config entry and entities, with a shared API session to minimize login requests.
 - **Alarm control panel** — arm, disarm, and monitor your alarm from Home Assistant.
 - **Configurable alarm state mappings** — map each HA alarm button (Home, Away, Night, Vacation, Custom) to any Securitas alarm mode.
 - **Force arming** — when arming is blocked by an exception (e.g. an open window), the integration notifies you and lets you force-arm via mobile notification, the `securitas.force_arm` service, or the custom alarm card.
@@ -20,9 +21,11 @@ A Home Assistant custom integration for [Securitas Direct](https://www.securitas
 
 > **Warning:** This release includes breaking changes. Please read before upgrading.
 
+**You will need to delete your existing installations and to re-add them after upgrading.**
+
 - **"Check alarm panel" option removed** — The integration now always uses the lightweight server-side status check for periodic polling. The more expensive panel query is still used for arm/disarm operations and the manual refresh button. If you had automations or scripts referencing this option, they will need to be updated.
 - **"Use 2FA" checkbox removed** — 2FA is now handled automatically during setup. If your account requires 2FA, you will be prompted; if not, the step is skipped.
-- **Config entry migration** — Existing config entries are automatically migrated to the new per-installation format (v2). If you had multiple installations on one account, each now has its own config entry. The migration is automatic, but you should verify your entities after upgrading.
+- **Per-installation config entries** — The integration now creates one config entry per installation instead of one per account. If your account has multiple installations, you add each one separately via the setup wizard (which now includes an installation picker step). Accounts with multiple installations previously had all installations bundled into a single config entry — this is no longer supported.
 - **Perimeter alarm auto-detection** — The "Perimetral alarm" checkbox has been replaced by automatic detection from the installation's service attributes. Your existing perimeter setting is preserved during migration.
 - **Scan interval and API delay moved to Advanced section** — These options are now in a collapsible "Advanced" section in the options flow. The "Delay to check arming and disarming operations" has been renamed to "Delay between API requests" and now applies to all API calls (not just arm/disarm polling).
 - **WiFi diagnostic sensor added** — A new `wifi_connected` diagnostic sensor is created per installation. It is disabled by default.
@@ -65,20 +68,20 @@ Go to **Settings → Integrations → Add Integration** and search for **Securit
 The setup flow is a multi-step wizard:
 
 1. **Login** — Enter your country, username, and password. 2FA is handled automatically if your account requires it.
-2. **Installation** — If your account has multiple installations, pick which one to configure. Perimeter support is auto-detected from the installation's services.
+2. **Installation** — If your account has multiple installations, pick which one to configure. Repeat the setup flow to add additional installations. Perimeter support is auto-detected from the installation's services.
 3. **Options** — Set your PIN code, notification service, and optionally expand the **Advanced** section for scan interval and API delay settings.
 4. **Mappings** — Map each HA alarm button to a Securitas alarm mode.
 
-| Option                          | Default   | Description                                                                                                                                                       |
-| ------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Username                        | —         | Your Securitas Direct account username.                                                                                                                           |
-| Password                        | —         | Your Securitas Direct account password.                                                                                                                           |
-| Country Code                    | _(auto)_  | Auto-detected from your HA locale. All supported countries available in dropdown.                                                                                 |
-| PIN Code                        | _(empty)_ | Optional local PIN for the HA alarm panel. This PIN is **not** sent to Securitas — it only protects the panel in Home Assistant. Can be numeric or alphanumeric.  |
-| Require PIN to arm              | No        | When enabled, the PIN is also required to arm the alarm (not just to disarm). Has no effect if no PIN is set.                                                     |
-| Notify service                  | _(none)_  | A `notify` service to call when arming is blocked by an exception. Select a mobile app notify service to receive an actionable notification with **Force Arm** and **Cancel** buttons. |
-| Update interval _(Advanced)_    | 120s      | How often (in seconds) the integration checks the alarm status. Set to 0 to disable automatic polling.                                                            |
-| Delay between API requests _(Advanced)_ | 2s | Minimum delay between consecutive API requests. Higher values reduce the risk of WAF rate limiting.                                                               |
+| Option                                  | Default   | Description                                                                                                                                                                            |
+| --------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Username                                | —         | Your Securitas Direct account username.                                                                                                                                                |
+| Password                                | —         | Your Securitas Direct account password.                                                                                                                                                |
+| Country Code                            | _(auto)_  | Auto-detected from your HA locale. All supported countries available in dropdown.                                                                                                      |
+| PIN Code                                | _(empty)_ | Optional local PIN for the HA alarm panel. This PIN is **not** sent to Securitas — it only protects the panel in Home Assistant. Can be numeric or alphanumeric.                       |
+| Require PIN to arm                      | No        | When enabled, the PIN is also required to arm the alarm (not just to disarm). Has no effect if no PIN is set.                                                                          |
+| Notify service                          | _(none)_  | A `notify` service to call when arming is blocked by an exception. Select a mobile app notify service to receive an actionable notification with **Force Arm** and **Cancel** buttons. |
+| Update interval _(Advanced)_            | 120s      | How often (in seconds) the integration checks the alarm status. Set to 0 to disable automatic polling.                                                                                 |
+| Delay between API requests _(Advanced)_ | 2s        | Minimum delay between consecutive API requests. Higher values reduce the risk of WAF rate limiting.                                                                                    |
 
 ### Two-factor authentication
 
