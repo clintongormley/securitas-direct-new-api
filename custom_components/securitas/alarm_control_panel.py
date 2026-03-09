@@ -128,8 +128,8 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         hass: HomeAssistant,
     ) -> None:
         """Initialize the Securitas alarm panel."""
-        self._state: str = AlarmControlPanelState.DISARMED
-        self._last_status: str = AlarmControlPanelState.DISARMED
+        self._state: str | None = None
+        self._last_status: str | None = None
         self._device: str = installation.address
         self.entity_id: str = f"securitas_direct.{installation.number}"
         self._attr_unique_id: str | None = f"securitas_direct.{installation.number}"
@@ -501,6 +501,13 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             return await self.client.arm_alarm(
                 self.installation, command, **force_params
             )
+
+    def _set_refresh_failed(self, failed: bool) -> None:
+        """Track whether the last manual refresh timed out."""
+        if failed:
+            self._attr_extra_state_attributes["refresh_failed"] = True
+        else:
+            self._attr_extra_state_attributes.pop("refresh_failed", None)
 
     def _set_waf_blocked(self, blocked: bool) -> None:
         """Track WAF rate-limit state for the alarm card."""

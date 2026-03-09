@@ -584,6 +584,7 @@ class TestSetArmState:
         """Error from arm_alarm causes early return, state unchanged from arm_alarm perspective."""
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.DISARMED
+        alarm._last_status = AlarmControlPanelState.DISARMED
 
         alarm.client.arm_alarm = AsyncMock(side_effect=SecuritasDirectError("timeout"))
 
@@ -961,6 +962,7 @@ class TestForceState:
         """403 on arm sets waf_blocked, shows rate-limited but NOT generic error."""
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.DISARMED
+        alarm._last_status = AlarmControlPanelState.DISARMED
         alarm._notify_error = MagicMock()
 
         alarm.client.arm_alarm = AsyncMock(

@@ -28,19 +28,10 @@ async def async_setup_entry(
     securitas_devices: list[SecuritasDirectDevice] = entry_data["devices"]
     for device in securitas_devices:
         buttons.append(SecuritasRefreshButton(device.installation, client, hass))
-        # Camera capture buttons
-        try:
-            cameras = await client.get_camera_devices(device.installation)
-        except Exception:
-            _LOGGER.warning(
-                "Failed to get camera devices for %s", device.installation.number
-            )
-            cameras = []
-        for cam_device in cameras:
-            buttons.append(
-                SecuritasCaptureButton(client, device.installation, cam_device)
-            )
     async_add_entities(buttons, True)
+
+    # Store callback for deferred camera capture button discovery
+    entry_data["button_add_entities"] = async_add_entities
 
 
 class SecuritasRefreshButton(ButtonEntity):
@@ -66,6 +57,11 @@ class SecuritasRefreshButton(ButtonEntity):
             hw_version=installation.type,
         )
 
+    def _get_alarm_entity(self):
+        """Return the alarm entity for this installation, if available."""
+        alarm_entities = self.hass.data.get(DOMAIN, {}).get("alarm_entities", {})
+        return alarm_entities.get(self.installation.number)
+
     async def async_press(self) -> None:
         """Update alarm status when button pressed."""
         if self.hass is None:
@@ -84,6 +80,11 @@ class SecuritasRefreshButton(ButtonEntity):
                 self.installation.number,
             )
 
+            alarm_entity = self._get_alarm_entity()
+            if alarm_entity is not None:
+                alarm_entity._set_refresh_failed(False)
+                alarm_entity.async_write_ha_state()
+
             _LOGGER.info("Updating alarm panel entity for %s", self.installation.number)
             for entity_id in self.hass.states.async_entity_ids("alarm_control_panel"):
                 if "securitas" in entity_id:
@@ -93,6 +94,15 @@ class SecuritasRefreshButton(ButtonEntity):
                         {"entity_id": entity_id},
                         blocking=True,
                     )
+
+        except TimeoutError:
+            _LOGGER.warning(
+                "Refresh timed out for %s", self.installation.number
+            )
+            alarm_entity = self._get_alarm_entity()
+            if alarm_entity is not None:
+                alarm_entity._set_refresh_failed(True)
+                alarm_entity.async_write_ha_state()
 
         except SecuritasDirectError as err:
             _LOGGER.error(
@@ -115,10 +125,7 @@ class SecuritasRefreshButton(ButtonEntity):
                         ),
                     },
                 )
-                alarm_entities = self.hass.data.get(DOMAIN, {}).get(
-                    "alarm_entities", {}
-                )
-                alarm_entity = alarm_entities.get(self.installation.number)
+                alarm_entity = self._get_alarm_entity()
                 if alarm_entity is not None:
                     alarm_entity._set_waf_blocked(True)
                     alarm_entity.async_write_ha_state()
