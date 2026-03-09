@@ -364,7 +364,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 ): int,
                 vol.Optional(
                     CONF_DELAY_CHECK_OPERATION, default=DEFAULT_DELAY_CHECK_OPERATION
-                ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=15.0)),
+                ): vol.All(vol.Coerce(float), vol.Range(min=2.0, max=15.0)),
                 vol.Optional(CONF_NOTIFY_GROUP, default=""): selector(
                     {
                         "select": {
@@ -476,7 +476,7 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(CONF_SCAN_INTERVAL, default=scan_interval): int,
                 vol.Optional(
                     CONF_DELAY_CHECK_OPERATION, default=delay_check_operation
-                ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=15.0)),
+                ): vol.All(vol.Coerce(float), vol.Range(min=2.0, max=15.0)),
                 vol.Optional(CONF_NOTIFY_GROUP, default=notify_group): selector(
                     {
                         "select": {
