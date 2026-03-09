@@ -206,3 +206,26 @@ class DanalockConfig:
     periodicBitExtension: str = ""
     autoLockTime: str = ""
     features: DanalockFeatures | None = None
+
+
+@dataclass
+class CameraDevice:
+    """A camera device from xSDeviceList (type QR)."""
+
+    id: str = ""
+    code: int = 0
+    zone_id: str = ""
+    name: str = ""
+    serial_number: str | None = None
+
+
+@dataclass
+class ThumbnailResponse:
+    """Response from xSGetThumbnail."""
+
+    id_signal: str | None = None
+    device_code: str | None = None
+    device_alias: str | None = None
+    timestamp: str | None = None
+    signal_type: str | None = None
+    image: str | None = None

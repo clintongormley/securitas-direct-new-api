@@ -20,6 +20,7 @@ from .dataTypes import (  # noqa: F401
     ArmStatus,
     Attribute,
     Attributes,
+    CameraDevice,
     CheckAlarmStatus,
     DanalockConfig,
     DisarmStatus,
@@ -29,6 +30,7 @@ from .dataTypes import (  # noqa: F401
     SStatus,
     SmartLockMode,
     SmartLockModeStatus,
+    ThumbnailResponse,
 )
 from .domains import ApiDomains  # noqa: F401
 from .exceptions import (  # noqa: F401
