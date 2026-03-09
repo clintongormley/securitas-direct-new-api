@@ -71,3 +71,44 @@ class TestSecuritasCamera:
         cam = SecuritasCamera(mock_hub, installation, camera_device)
         result = await cam.async_camera_image()
         assert result is None
+
+
+class TestSecuritasCaptureButton:
+    def test_unique_id(self, mock_hub, installation, camera_device):
+        from custom_components.securitas.button import SecuritasCaptureButton
+
+        btn = SecuritasCaptureButton(mock_hub, installation, camera_device)
+        assert btn.unique_id == "2654190_capture_QR10"
+
+    def test_name(self, mock_hub, installation, camera_device):
+        from custom_components.securitas.button import SecuritasCaptureButton
+
+        btn = SecuritasCaptureButton(mock_hub, installation, camera_device)
+        assert btn.name == "Casa Capture Salon"
+
+    def test_icon(self, mock_hub, installation, camera_device):
+        from custom_components.securitas.button import SecuritasCaptureButton
+
+        btn = SecuritasCaptureButton(mock_hub, installation, camera_device)
+        assert btn.icon == "mdi:camera"
+
+    @pytest.mark.asyncio
+    async def test_press_calls_capture(self, mock_hub, installation, camera_device):
+        from custom_components.securitas.button import SecuritasCaptureButton
+
+        mock_hub.capture_image = AsyncMock(return_value=b"\xff\xd8")
+        btn = SecuritasCaptureButton(mock_hub, installation, camera_device)
+        await btn.async_press()
+        mock_hub.capture_image.assert_called_once_with(installation, camera_device)
+
+    @pytest.mark.asyncio
+    async def test_press_handles_error(self, mock_hub, installation, camera_device):
+        from custom_components.securitas.button import SecuritasCaptureButton
+        from custom_components.securitas.securitas_direct_new_api.exceptions import (
+            SecuritasDirectError,
+        )
+
+        mock_hub.capture_image = AsyncMock(side_effect=SecuritasDirectError("fail"))
+        btn = SecuritasCaptureButton(mock_hub, installation, camera_device)
+        # Should not raise
+        await btn.async_press()

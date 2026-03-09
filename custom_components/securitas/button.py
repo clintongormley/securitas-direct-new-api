@@ -15,6 +15,7 @@ from .securitas_direct_new_api import (
     Installation,
     SecuritasDirectError,
 )
+from .securitas_direct_new_api.dataTypes import CameraDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,6 +30,18 @@ async def async_setup_entry(
     securitas_devices: list[SecuritasDirectDevice] = entry_data["devices"]
     for device in securitas_devices:
         buttons.append(SecuritasRefreshButton(device.installation, client, hass))
+        # Camera capture buttons
+        try:
+            cameras = await client.get_camera_devices(device.installation)
+        except Exception:
+            _LOGGER.warning(
+                "Failed to get camera devices for %s", device.installation.number
+            )
+            cameras = []
+        for cam_device in cameras:
+            buttons.append(
+                SecuritasCaptureButton(client, device.installation, cam_device)
+            )
     async_add_entities(buttons, True)
 
 
@@ -112,3 +125,44 @@ class SecuritasRefreshButton(ButtonEntity):
                 if alarm_entity is not None:
                     alarm_entity._set_waf_blocked(True)
                     alarm_entity.async_write_ha_state()
+
+
+class SecuritasCaptureButton(ButtonEntity):
+    """Button to capture a new image from a Securitas camera."""
+
+    _attr_icon = "mdi:camera"
+
+    def __init__(
+        self,
+        client: SecuritasHub,
+        installation: Installation,
+        camera_device: CameraDevice,
+    ) -> None:
+        """Initialize the capture button."""
+        self._client = client
+        self._installation = installation
+        self._camera_device = camera_device
+        self._attr_unique_id = (
+            f"{installation.number}_capture_{camera_device.zone_id}"
+        )
+        self._attr_name = f"{installation.alias} Capture {camera_device.name}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"securitas_direct.{installation.number}")},
+            manufacturer="Securitas Direct",
+            model=installation.panel,
+            name=installation.alias,
+            hw_version=installation.type,
+        )
+
+    async def async_press(self) -> None:
+        """Request a new image capture."""
+        try:
+            await self._client.capture_image(
+                self._installation, self._camera_device
+            )
+        except SecuritasDirectError as err:
+            _LOGGER.warning(
+                "Failed to capture image from %s: %s",
+                self._camera_device.name,
+                err,
+            )
