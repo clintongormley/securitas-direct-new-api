@@ -115,7 +115,7 @@ class TestCheckAlarmStatus:
         assert isinstance(result, CheckAlarmStatus)
         assert result.operation_status == "OK"
         assert result.status == "ARMED"
-        assert result.InstallationNumer == "123456"
+        assert result.installation_number == "123456"
         assert result.protomResponse == "PROT_OK"
 
     async def test_polls_on_wait_then_returns_ok(
@@ -201,7 +201,7 @@ class TestArmAlarm:
         assert isinstance(result, ArmStatus)
         assert result.operation_status == "OK"
         assert result.status == "ARMED_TOTAL"
-        assert result.InstallationNumer == "123456"
+        assert result.installation_number == "123456"
         assert result.requestId == "req-001"
 
     async def test_non_ok_res_raises_error(

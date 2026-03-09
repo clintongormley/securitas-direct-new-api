@@ -379,7 +379,7 @@ class TestSecuritasHub:
 
         hub.session.check_general_status.assert_awaited_once_with(inst)
         assert result.protomResponse == "T"
-        assert result.InstallationNumer == inst.number
+        assert result.installation_number == inst.number
 
     async def test_update_overview_reraises_403(self):
         """update_overview re-raises 403 errors from check_general_status."""

@@ -656,7 +656,7 @@ class TestCheckAlarmStatus:
         assert isinstance(result, CheckAlarmStatus)
         assert result.operation_status == "OK"
         assert result.status == "ARM1"
-        assert result.InstallationNumer == "123456"
+        assert result.installation_number == "123456"
         assert result.protomResponse == "PROT_RESP"
 
 

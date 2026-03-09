@@ -34,10 +34,8 @@ from . import (
 )
 from .securitas_direct_new_api import (
     ArmingExceptionError,
-    ArmStatus,
-    CheckAlarmStatus,
-    DisarmStatus,
     Installation,
+    OperationStatus,
     PROTO_DISARMED,
     PROTO_TO_STATE,
     SecuritasDirectError,
@@ -85,7 +83,7 @@ async def async_setup_entry(
         alarms.append(
             SecuritasAlarm(
                 devices.installation,
-                state=CheckAlarmStatus(),
+                state=OperationStatus(),
                 client=client,
                 hass=hass,
             )
@@ -123,7 +121,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
     def __init__(
         self,
         installation: Installation,
-        state: CheckAlarmStatus,
+        state: OperationStatus,
         client: SecuritasHub,
         hass: HomeAssistant,
     ) -> None:
@@ -187,7 +185,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             client.config.get(CONF_CODE_ARM_REQUIRED, False) if self._code else False
         )
 
-        self._last_arm_result: ArmStatus | DisarmStatus | None = None
+        self._last_arm_result: OperationStatus | None = None
 
         # Force-arm context: stored when arming fails due to non-blocking
         # exceptions (e.g. open window).  Consumed on the next arm attempt to
@@ -276,7 +274,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         # starts (and possibly finishes) while update_overview is awaited,
         # the epoch will have changed and this poll result is stale.
         epoch_before = self._operation_epoch
-        alarm_status: CheckAlarmStatus = CheckAlarmStatus()
+        alarm_status: OperationStatus = OperationStatus()
         try:
             alarm_status = await self.client.update_overview(self.installation)
         except SecuritasDirectError as err:
@@ -305,7 +303,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             self.update_status_alarm(alarm_status)
             self.async_write_ha_state()
 
-    def update_status_alarm(self, status: CheckAlarmStatus | None = None) -> None:
+    def update_status_alarm(self, status: OperationStatus | None = None) -> None:
         """Update alarm status, from last alarm setting register or EST."""
         if status is not None and hasattr(status, "message"):
             self._message = status.message
@@ -371,7 +369,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         self,
         target: AlarmState,
         **force_params: str,
-    ) -> ArmStatus | DisarmStatus:
+    ) -> OperationStatus:
         """Execute a state transition, retrying once if state was stale.
 
         After executing the resolved command sequence, checks whether the
@@ -379,7 +377,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         ``_last_proto_code`` was stale), updates the proto code from the
         real response and retries with the corrected current state.
         """
-        result: ArmStatus | DisarmStatus | None = None
+        result: OperationStatus | None = None
 
         for attempt in range(2):
             current = PROTO_TO_ALARM_STATE.get(
@@ -390,7 +388,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
 
             if not steps:
                 # Resolver says we're already in the target state.
-                return DisarmStatus(protomResponse=self._last_proto_code or "D")
+                return OperationStatus(protomResponse=self._last_proto_code or "D")
 
             for step in steps:
                 result = await self._execute_step(step, **force_params)
@@ -425,7 +423,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         self,
         step: CommandStep,
         **force_params: str,
-    ) -> ArmStatus | DisarmStatus:
+    ) -> OperationStatus:
         """Execute a single command step, trying alternatives on failure."""
         last_err: SecuritasDirectError | None = None
 
@@ -438,7 +436,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
                 if "+" in command:
                     # Multi-step: split and execute sequentially
                     sub_commands = command.split("+")
-                    result: ArmStatus | DisarmStatus | None = None
+                    result: OperationStatus | None = None
                     for sub_cmd in sub_commands:
                         _LOGGER.info("Sending sub-command: %s", sub_cmd)
                         result = await self._send_single_command(
@@ -497,7 +495,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         self,
         command: str,
         **force_params: str,
-    ) -> ArmStatus | DisarmStatus:
+    ) -> OperationStatus:
         """Send a single arm or disarm command to the API."""
         if command.startswith("D"):
             return await self.client.disarm_alarm(self.installation, command)
@@ -549,11 +547,11 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             result = await self._execute_transition(target)
             self._set_waf_blocked(False)
             self.update_status_alarm(
-                CheckAlarmStatus(
+                OperationStatus(
                     operation_status=result.operation_status,
                     message=getattr(result, "message", ""),
                     status="",
-                    InstallationNumer="",
+                    installation_number="",
                     protomResponse=result.protomResponse,
                     protomResponseData="",
                 )
@@ -582,7 +580,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         """Set the arm state using the command resolver."""
         self._operation_in_progress = True
         self._operation_epoch += 1
-        self._last_arm_result = ArmStatus()
+        self._last_arm_result = OperationStatus()
 
         force_params: dict[str, str] = {}
         if force_arming_remote_id:
@@ -595,11 +593,11 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             result = await self._execute_transition(target, **force_params)
             self._set_waf_blocked(False)
             self.update_status_alarm(
-                CheckAlarmStatus(
+                OperationStatus(
                     operation_status=getattr(result, "operation_status", ""),
                     message=getattr(result, "message", ""),
                     status="",
-                    InstallationNumer="",
+                    installation_number="",
                     protomResponse=result.protomResponse,
                     protomResponseData="",
                 )
@@ -612,11 +610,11 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         except SecuritasDirectError as err:
             if self._last_arm_result.protomResponse:
                 self.update_status_alarm(
-                    CheckAlarmStatus(
+                    OperationStatus(
                         operation_status=self._last_arm_result.operation_status,
                         message="",
                         status="",
-                        InstallationNumer="",
+                        installation_number="",
                         protomResponse=self._last_arm_result.protomResponse,
                         protomResponseData="",
                     )

@@ -18,15 +18,13 @@ import jwt
 
 from .dataTypes import (
     AirQuality,
-    ArmStatus,
     Attribute,
     CameraDevice,
-    CheckAlarmStatus,
     DanalockAutolock,
     DanalockConfig,
     DanalockFeatures,
-    DisarmStatus,
     Installation,
+    OperationStatus,
     OtpPhone,
     Sentinel,
     Service,
@@ -1039,7 +1037,7 @@ class ApiManager:
         self,
         installation: Installation,
         reference_id: str,
-    ) -> CheckAlarmStatus:
+    ) -> OperationStatus:
         """Return the status of the alarm."""
 
         async def _check() -> dict[str, Any]:
@@ -1048,13 +1046,13 @@ class ApiManager:
         raw_data = await self._poll_operation(_check)
 
         self.protom_response = raw_data["protomResponse"]
-        return CheckAlarmStatus(
-            raw_data["res"],
-            raw_data["msg"],
-            raw_data["status"],
-            raw_data["numinst"],
-            raw_data["protomResponse"],
-            raw_data["protomResponseDate"],
+        return OperationStatus(
+            operation_status=raw_data["res"],
+            message=raw_data["msg"],
+            status=raw_data["status"],
+            installation_number=raw_data["numinst"],
+            protomResponse=raw_data["protomResponse"],
+            protomResponseData=raw_data["protomResponseDate"],
         )
 
     async def _check_alarm_status(
@@ -1090,7 +1088,7 @@ class ApiManager:
         command: str,
         force_arming_remote_id: str | None = None,
         suid: str | None = None,
-    ) -> ArmStatus:
+    ) -> OperationStatus:
         """Arms the alarm in the specified mode.
 
         When force_arming_remote_id and suid are provided, the arm request
@@ -1172,23 +1170,23 @@ class ApiManager:
                 )
 
         self.protom_response = raw_data["protomResponse"]
-        return ArmStatus(
-            raw_data["res"],
-            raw_data["msg"],
-            raw_data["status"],
-            raw_data["numinst"],
-            raw_data["protomResponse"],
-            raw_data["protomResponseDate"],
-            raw_data["requestId"],
-            raw_data["error"],
+        return OperationStatus(
+            operation_status=raw_data["res"],
+            message=raw_data["msg"],
+            status=raw_data["status"],
+            installation_number=raw_data["numinst"],
+            protomResponse=raw_data["protomResponse"],
+            protomResponseData=raw_data["protomResponseDate"],
+            requestId=raw_data["requestId"],
+            error=raw_data["error"],
         )
 
     async def process_arm_result(
         self,
         raw_data: dict[str, Any],
         installation: Installation,
-    ) -> ArmStatus:
-        """Process raw arm poll result into ArmStatus.
+    ) -> OperationStatus:
+        """Process raw arm poll result into OperationStatus.
 
         Raises ArmingExceptionError for NON_BLOCKING errors with allowForcing,
         SecuritasDirectError for other errors.
@@ -1213,22 +1211,22 @@ class ApiManager:
                 )
 
         self.protom_response = raw_data["protomResponse"]
-        return ArmStatus(
-            raw_data["res"],
-            raw_data["msg"],
-            raw_data["status"],
-            raw_data["numinst"],
-            raw_data["protomResponse"],
-            raw_data["protomResponseDate"],
-            raw_data["requestId"],
-            raw_data["error"],
+        return OperationStatus(
+            operation_status=raw_data["res"],
+            message=raw_data["msg"],
+            status=raw_data["status"],
+            installation_number=raw_data["numinst"],
+            protomResponse=raw_data["protomResponse"],
+            protomResponseData=raw_data["protomResponseDate"],
+            requestId=raw_data["requestId"],
+            error=raw_data["error"],
         )
 
     def process_disarm_result(
         self,
         raw_data: dict[str, Any],
-    ) -> DisarmStatus:
-        """Process raw disarm poll result into DisarmStatus.
+    ) -> OperationStatus:
+        """Process raw disarm poll result into OperationStatus.
 
         Raises SecuritasDirectError for errors.
         """
@@ -1241,15 +1239,15 @@ class ApiManager:
 
         if raw_data.get("protomResponse"):
             self.protom_response = raw_data["protomResponse"]
-        return DisarmStatus(
-            raw_data.get("error"),
-            raw_data.get("msg", ""),
-            raw_data.get("numinst", ""),
-            raw_data.get("protomResponse", ""),
-            raw_data.get("protomResponseDate", ""),
-            raw_data.get("requestId", ""),
-            raw_data.get("res", ""),
-            raw_data.get("status", ""),
+        return OperationStatus(
+            operation_status=raw_data.get("res", ""),
+            message=raw_data.get("msg", ""),
+            status=raw_data.get("status", ""),
+            numinst=raw_data.get("numinst", ""),
+            protomResponse=raw_data.get("protomResponse", ""),
+            protomResponseData=raw_data.get("protomResponseDate", ""),
+            requestId=raw_data.get("requestId", ""),
+            error=raw_data.get("error"),
         )
 
     def process_lock_mode_result(
@@ -1362,7 +1360,7 @@ class ApiManager:
 
     async def disarm_alarm(
         self, installation: Installation, command: str
-    ) -> DisarmStatus:
+    ) -> OperationStatus:
         """Disarm the alarm."""
         content = {
             "operationName": "xSDisarmPanel",
@@ -1418,15 +1416,15 @@ class ApiManager:
 
         if raw_data.get("protomResponse"):
             self.protom_response = raw_data["protomResponse"]
-        return DisarmStatus(
-            raw_data.get("error"),
-            raw_data.get("msg", ""),
-            raw_data.get("numinst", ""),
-            raw_data.get("protomResponse", ""),
-            raw_data.get("protomResponseDate", ""),
-            raw_data.get("requestId", ""),
-            raw_data.get("res", ""),
-            raw_data.get("status", ""),
+        return OperationStatus(
+            operation_status=raw_data.get("res", ""),
+            message=raw_data.get("msg", ""),
+            status=raw_data.get("status", ""),
+            numinst=raw_data.get("numinst", ""),
+            protomResponse=raw_data.get("protomResponse", ""),
+            protomResponseData=raw_data.get("protomResponseDate", ""),
+            requestId=raw_data.get("requestId", ""),
+            error=raw_data.get("error"),
         )
 
     async def _check_disarm_status(

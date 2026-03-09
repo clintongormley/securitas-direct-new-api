@@ -91,7 +91,7 @@ def make_alarm(
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="D",
             protomResponseData="",
         )
@@ -133,7 +133,7 @@ class TestUpdateStatusAlarm:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="D",
             protomResponseData="",
         )
@@ -147,7 +147,7 @@ class TestUpdateStatusAlarm:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="T",
             protomResponseData="",
         )
@@ -161,7 +161,7 @@ class TestUpdateStatusAlarm:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="P",
             protomResponseData="",
         )
@@ -175,7 +175,7 @@ class TestUpdateStatusAlarm:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="Q",
             protomResponseData="",
         )
@@ -190,7 +190,7 @@ class TestUpdateStatusAlarm:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="Z",
             protomResponseData="",
         )
@@ -206,7 +206,7 @@ class TestUpdateStatusAlarm:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="",
             protomResponseData="",
         )
@@ -227,7 +227,7 @@ class TestUpdateStatusAlarm:
             operation_status="OK",
             message="Panel ok",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="D",
             protomResponseData="some-data",
         )
@@ -251,7 +251,7 @@ class TestUpdateStatusAlarmPeri:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="A",
             protomResponseData="",
         )
@@ -265,7 +265,7 @@ class TestUpdateStatusAlarmPeri:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="E",
             protomResponseData="",
         )
@@ -285,7 +285,7 @@ class TestUpdateStatusAlarmPeri:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="C",
             protomResponseData="",
         )
@@ -302,7 +302,7 @@ class TestUpdateStatusAlarmPeri:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="Q",
             protomResponseData="",
         )
@@ -540,7 +540,7 @@ class TestSetArmState:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="T",
                 protomResponseData="",
             )
@@ -568,7 +568,7 @@ class TestSetArmState:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="T",
                 protomResponseData="",
             )
@@ -608,7 +608,7 @@ class TestSetArmState:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="T",
                 protomResponseData="",
             )
@@ -833,7 +833,7 @@ class TestForceState:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="T",
                 protomResponseData="",
             )
@@ -894,7 +894,7 @@ class TestForceState:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="T",
                 protomResponseData="",
             )
@@ -1011,7 +1011,7 @@ class TestForceState:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="T",
                 protomResponseData="",
             )
@@ -1084,7 +1084,7 @@ class TestAsyncUpdateStatus:
             operation_status="OK",
             message="Armed total",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="T",
             protomResponseData="",
         )
@@ -1103,7 +1103,7 @@ class TestAsyncUpdateStatus:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="D",
             protomResponseData="",
         )
@@ -1149,7 +1149,7 @@ class TestAsyncUpdateStatus:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="D",
             protomResponseData="",
         )
@@ -1178,7 +1178,7 @@ class TestAsyncUpdateStatus:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="D",
             protomResponseData="",
         )
@@ -1295,7 +1295,7 @@ class TestArmMethods:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="P",
                 protomResponseData="",
             )
@@ -1319,7 +1319,7 @@ class TestArmMethods:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="Q",
                 protomResponseData="",
             )
@@ -1342,7 +1342,7 @@ class TestArmMethods:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="E",
                 protomResponseData="",
             )
@@ -1377,7 +1377,7 @@ class TestArmMethods:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="T",
                 protomResponseData="",
             )
@@ -1404,7 +1404,7 @@ class TestArmMethods:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="P",
                 protomResponseData="",
             )
@@ -1480,7 +1480,7 @@ class TestForceArmContext:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="P",
                 protomResponseData="",
             )
@@ -1515,7 +1515,7 @@ class TestForceArmContext:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="D",
                 protomResponseData="",
             )
@@ -1545,7 +1545,7 @@ class TestForceArmContext:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="D",
                 protomResponseData="",
             )
@@ -1568,7 +1568,7 @@ class TestForceArmContext:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="T",
                 protomResponseData="",
             )
@@ -1641,7 +1641,7 @@ class TestForceArmContext:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="T",
                 protomResponseData="",
             )
@@ -1824,7 +1824,7 @@ class TestCompoundArmCommands:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse=proto,
                 protomResponseData="",
             )
@@ -1848,7 +1848,7 @@ class TestCompoundArmCommands:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="C",
                 protomResponseData="",
             )
@@ -1877,7 +1877,7 @@ class TestCompoundArmCommands:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse=proto,
                 protomResponseData="",
             )
@@ -1909,7 +1909,7 @@ class TestCompoundArmCommands:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="C",
                 protomResponseData="",
             )
@@ -1948,7 +1948,7 @@ class TestCompoundArmCommands:
                     operation_status="OK",
                     message="",
                     status="",
-                    InstallationNumer="123456",
+                    installation_number="123456",
                     protomResponse="Q",
                     protomResponseData="",
                 )
@@ -1994,7 +1994,7 @@ class TestCompoundArmCommands:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="Q",
                 protomResponseData="",
             )
@@ -2045,7 +2045,7 @@ class TestCompoundArmCommands:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse=proto,
                 protomResponseData="",
             )
@@ -2078,7 +2078,7 @@ class TestCompoundArmCommands:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse=proto,
                 protomResponseData="",
             )
@@ -2116,7 +2116,7 @@ class TestCompoundArmCommands:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse=proto,
                 protomResponseData="",
             )
@@ -2342,7 +2342,7 @@ class TestDynamicDisarm:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="A",
                 protomResponseData="",
             )
@@ -2576,7 +2576,7 @@ class TestLastProtoCode:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="C",
             protomResponseData="",
         )
@@ -2591,7 +2591,7 @@ class TestLastProtoCode:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="D",
             protomResponseData="",
         )
@@ -2606,7 +2606,7 @@ class TestLastProtoCode:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="",
             protomResponseData="",
         )
@@ -2626,7 +2626,7 @@ class TestLastProtoCode:
             operation_status="OK",
             message="",
             status="ARMED_TOTAL",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="ARMED_TOTAL",
             protomResponseData="",
         )
@@ -2915,7 +2915,7 @@ class TestForceArmWorkflow:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="P",
             protomResponseData="",
         )
@@ -3038,7 +3038,7 @@ class TestForceArmWorkflow:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="P",
             protomResponseData="",
         )
@@ -3057,7 +3057,7 @@ class TestForceArmWorkflow:
                 operation_status="OK",
                 message="",
                 status="",
-                InstallationNumer="123456",
+                installation_number="123456",
                 protomResponse="D",
                 protomResponseData="",
             )

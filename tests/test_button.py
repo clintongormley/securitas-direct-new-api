@@ -89,7 +89,7 @@ class TestSecuritasRefreshButtonAsyncPress:
             operation_status="OK",
             message="All good",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="D",
             protomResponseData="",
         )
@@ -112,7 +112,7 @@ class TestSecuritasRefreshButtonAsyncPress:
             operation_status="OK",
             message="",
             status="",
-            InstallationNumer="123456",
+            installation_number="123456",
             protomResponse="T",
             protomResponseData="",
         )

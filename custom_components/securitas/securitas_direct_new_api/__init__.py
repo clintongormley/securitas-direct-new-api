@@ -24,6 +24,7 @@ from .dataTypes import (  # noqa: F401
     DanalockConfig,
     DisarmStatus,
     Installation,
+    OperationStatus,
     OtpPhone,
     Service,
     SStatus,

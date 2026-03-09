@@ -28,43 +28,24 @@ class Installation:
 
 
 @dataclass
-class CheckAlarmStatus:
-    """Define an Securitas Direct Alarm Check Status Operation."""
+class OperationStatus:
+    """Result of an alarm or lock operation (arm, disarm, check)."""
 
     operation_status: str = ""
     message: str = ""
     status: str = ""
-    InstallationNumer: str = ""
-    protomResponse: str = ""
-    protomResponseData: str = ""
-
-
-@dataclass
-class ArmStatus:
-    """Define a Securitas Direct Arm Alarm Status Operation."""
-
-    operation_status: str = ""
-    message: str = ""
-    status: str = ""
-    InstallationNumer: str = ""
+    installation_number: str = ""
     protomResponse: str = ""
     protomResponseData: str = ""
     requestId: str = ""
-    error: str = ""
-
-
-@dataclass
-class DisarmStatus:
-    """Define a Securitas Direct Disarm Alarm Status Operation."""
-
     error: str | None = ""
-    message: str = ""
     numinst: str = ""
-    protomResponse: str = ""
-    protomResponseData: str = ""
-    requestId: str = ""
-    operation_status: str = ""
-    status: str = ""
+
+
+# Backward-compatible aliases (to be removed in Phase 2)
+ArmStatus = OperationStatus
+DisarmStatus = OperationStatus
+CheckAlarmStatus = OperationStatus
 
 
 class ArmType(Enum):

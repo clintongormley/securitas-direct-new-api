@@ -38,7 +38,7 @@ from .securitas_direct_new_api import (
     ApiDomains,
     ApiManager,
     CameraDevice,
-    CheckAlarmStatus,
+    OperationStatus,
     Installation,
     Login2FAError,
     LoginError,
@@ -652,7 +652,7 @@ class SecuritasHub:
         hass: HomeAssistant,
     ) -> None:
         """Initialize the Securitas hub."""
-        self.overview: CheckAlarmStatus | dict = {}
+        self.overview: OperationStatus | dict = {}
         self.xsstatus: dict[str, SStatus] = {}
         self.config = domain_config
         self.config_entry: ConfigEntry | None = config_entry
@@ -1036,7 +1036,7 @@ class SecuritasHub:
 
         raise TimeoutError("Disarm status poll timed out")
 
-    async def update_overview(self, installation: Installation) -> CheckAlarmStatus:
+    async def update_overview(self, installation: Installation) -> OperationStatus:
         """Poll alarm status via check_general_status (single API call).
 
         Periodic polling always uses xSStatus for efficiency.  The more
@@ -1057,16 +1057,16 @@ class SecuritasHub:
             )
             if getattr(err, "http_status", None) == 403:
                 raise
-            return CheckAlarmStatus()
+            return OperationStatus()
         self.xsstatus[installation.number] = status
         async_dispatcher_send(self.hass, SIGNAL_XSSTATUS_UPDATE, installation.number)
-        return CheckAlarmStatus(
-            status.status or "",
-            "",
-            status.status or "",
-            installation.number,
-            status.status or "",
-            status.timestampUpdate or "",
+        return OperationStatus(
+            operation_status=status.status or "",
+            message="",
+            status=status.status or "",
+            installation_number=installation.number,
+            protomResponse=status.status or "",
+            protomResponseData=status.timestampUpdate or "",
         )
 
     async def change_lock_mode(
