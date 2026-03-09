@@ -8,18 +8,19 @@ The integration has three layers:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Home Assistant Platform Layer                          │
-│  alarm_control_panel.py  sensor.py  lock.py  button.py  │
+│  Home Assistant Platform Layer                                    │
+│  alarm_control_panel.py  sensor.py  lock.py  button.py  camera.py │
 ├─────────────────────────────────────────────────────────┤
-│  Integration Hub Layer                                  │
-│  __init__.py  (SecuritasHub + setup)                    │
-│  config_flow.py  (ConfigFlow + OptionsFlow)             │
-├─────────────────────────────────────────────────────────┤
-│  API Client Layer                                       │
-│  securitas_direct_new_api/                              │
-│  apimanager.py  command_resolver.py  domains.py         │
-│  const.py  dataTypes.py  exceptions.py                  │
-└─────────────────────────────────────────────────────────┘
+│  Integration Hub Layer                                            │
+│  __init__.py  (SecuritasHub + setup)                              │
+│  config_flow.py  (ConfigFlow + OptionsFlow)                      │
+│  api_queue.py  (Priority-based rate limiting)                    │
+├───────────────────────────────────────────────────────────────────┤
+│  API Client Layer                                                 │
+│  securitas_direct_new_api/                                        │
+│  apimanager.py  command_resolver.py  domains.py                   │
+│  const.py  dataTypes.py  exceptions.py                            │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 Every API call goes through `ApiManager._execute_request()`, which sends GraphQL mutations/queries over HTTP to Securitas' cloud. The integration hub (`SecuritasHub`) wraps the API client and is shared by all entity platforms. Each platform creates entities for the installations discovered at startup.
@@ -128,12 +129,19 @@ If the alarm is put into a state that is not mapped to any HA button (e.g. the p
 
 Dataclasses for API responses. The most important ones:
 
-- `Installation` — Represents a physical Securitas installation (number, alias, panel type, address, capabilities JWT)
+- `Installation` — Represents a physical Securitas installation (number, alias, panel type, address, capabilities JWT, `alarm_partitions` list from services response)
 - `CheckAlarmStatus` — Alarm status response with `protomResponse` (the single-letter state code) and `protomResponseData`
 - `ArmStatus` / `DisarmStatus` — Results of arm/disarm operations
 - `Service` — A discovered service (e.g. "CONFORT" for Sentinel sensors, "DOORLOCK" for smart locks)
 - `Sentinel` — Temperature, humidity, and air quality from a Sentinel device
+- `SStatus` — General status with `wifi_connected` boolean (diagnostic)
 - `OtpPhone` — Phone number option during 2FA setup
+- `SmartLockMode` — Lock mode with `deviceId` field for multi-lock support
+- `CameraDevice` — Camera device (id, code, zone_id, name, serial_number)
+- `ThumbnailResponse` — Thumbnail data (id_signal, device_code, device_alias, timestamp, signal_type, image as base64)
+- `DanalockConfig` — Full Danalock configuration (battery threshold, auto-lock time, arm-lock policies, latch hold-back)
+- `DanalockFeatures` — Nested features (holdBackLatchTime, calibrationType, autolock)
+- `DanalockAutolock` — Autolock settings (active, timeout)
 
 ### Exceptions (`exceptions.py`)
 
@@ -162,11 +170,31 @@ The central coordinator. It owns an `ApiManager` session and is shared by all en
 **Key responsibilities:**
 - **Login delegation** — Passes credentials through to `ApiManager`
 - **Service discovery** — `get_services()` calls `ApiManager.get_all_services()` and caches the results
-- **Status polling** — `update_overview()` checks the alarm status using one of two strategies:
-  - **Panel check** (default, `check_alarm_panel=True`): Sends `check_alarm()` to get a `referenceId`, waits 1 second, then calls `check_alarm_status()` to poll the panel directly
-  - **General status** (`check_alarm_panel=False`): Calls `check_general_status()` which returns the last known cloud status without waking the panel
-- **API call cooldown** — All API calls are submitted via `ApiQueue`, which enforces a minimum gap between calls to avoid triggering the Incapsula WAF rate limiter. Foreground operations (arm/disarm) use a shorter interval; background polls use a longer one. See `ApiQueue` below.
+- **Status polling** — `update_overview()` checks the alarm status using `check_general_status()` which returns the last known cloud status without waking the panel
+- **API call cooldown** — All API calls are submitted via `ApiQueue`, which enforces a minimum gap between calls to avoid triggering the Incapsula WAF rate limiter. See [ApiQueue](#apiqueue) below.
+- **Camera management** — `get_camera_devices()` discovers cameras, `capture_image()` requests new captures and polls for completion, `fetch_latest_thumbnail()` lazy-fetches on first frontend request. Cached images stored per installation+zone with `get_camera_image()` / `get_camera_timestamp()`.
+- **Lock management** — `get_lock_modes()` discovers locks (cached with TTL), `change_lock_mode()` performs lock/unlock via queue, `get_danalock_config()` fetches Danalock-specific settings.
+- **Caching** — `_cached_api_call()` provides a generic caching wrapper with a double-check pattern (cache checked before queue submit + after serialization) to prevent duplicate API calls when multiple entities request the same data.
+- **Session sharing** — Multiple config entries for the same username share a single `SecuritasHub` instance via reference counting in `hass.data[DOMAIN]["sessions"]`. This prevents duplicate logins and reduces WAF pressure.
 - **403 re-raise** — `update_overview()` re-raises 403 `SecuritasDirectError` so the calling alarm entity can set `waf_blocked`. Non-403 errors are swallowed and return an empty `CheckAlarmStatus`.
+
+### ApiQueue (`api_queue.py`)
+
+Serializes API calls with priority-based rate limiting to avoid WAF blocks. One queue is shared per API domain (country).
+
+**Design:**
+- Two priority levels: `FOREGROUND` (arm/disarm, user actions, setup) and `BACKGROUND` (polling)
+- Both share the same minimum interval (`delay_check_operation`, default 2 seconds)
+- Foreground requests preempt queued background work — background waits while any foreground requests are pending
+- In-flight API calls are not cancelled; preemption happens between calls
+
+**Algorithm:**
+1. `submit(coro_fn, *args, priority)` accepts an async callable + args
+2. Foreground increments `_pending_foreground` and clears `_bg_event`
+3. Background waits while `_pending_foreground > 0`
+4. Lock ensures minimum gap between calls: `interval - elapsed_since_last_api_time`
+5. Execute coroutine, update `_last_api_time`
+6. Foreground decrements count, sets `_bg_event` when count reaches 0
 
 ### Setup flow (`async_setup_entry`)
 
@@ -334,17 +362,20 @@ The `_get_exceptions()` API call uses the same polling pattern as arm/disarm —
 
 ### Sensors (`sensor.py`)
 
-Three sensor types from Sentinel environmental monitoring devices:
+Four sensor types:
 
 - **SentinelTemperature** — Temperature in Celsius
 - **SentinelHumidity** — Humidity as percentage
 - **SentinelAirQuality** — Air quality index with message (e.g. "Good")
+- **WifiConnectedSensor** — Diagnostic boolean from `SStatus.wifi_connected` (updated from status checks, no separate polling)
 
-Sensors are discovered during platform setup by scanning services for ones matching the Sentinel name (language-dependent: "CONFORT" in Spanish, "COMFORTO" in Portuguese). No API calls are made during setup — entities start with unknown state. Data is populated by `async_update()` using HA's built-in polling at a 30-minute interval (see [Polling intervals](#polling-intervals)).
+Sentinel sensors are discovered during platform setup by scanning services for ones matching the Sentinel name (language-dependent: "CONFORT" in Spanish, "COMFORTO" in Portuguese). No API calls are made during setup — entities start with unknown state. Data is populated by `async_update()` using HA's built-in polling at a 30-minute interval (see [Polling intervals](#polling-intervals)).
 
 ### Smart lock (`lock.py`)
 
-`SecuritasLock` controls DOORLOCK services. Discovered during setup by matching `service.request == "DOORLOCK"`.
+`SecuritasLock` controls DOORLOCK services. Supports multiple locks per installation — each lock is identified by a `device_id` (extracted from the API response, defaults to `"01"`).
+
+**Discovery:** Locks are discovered in the background task (`_async_discover_devices`). When a DOORLOCK service is found, `get_lock_modes()` returns all known lock devices. One `SecuritasLock` entity is created per device. Unique IDs maintain backward compatibility: the first lock (device "01") uses `securitas_direct.{number}`, additional locks use `securitas_direct.{number}_lock_{device_id}`.
 
 **Lock states** (string codes from the API):
 - `"1"` = open/unlocked
@@ -354,9 +385,31 @@ Sensors are discovered during platform setup by scanning services for ones match
 
 Lock and unlock operations use `change_lock_mode(lock=True/False)` which follows the same polling pattern as arm/disarm. Status is polled via `get_lock_current_mode()` on the scan interval.
 
-### Refresh button (`button.py`)
+**Danalock configuration:** On first update, each lock lazily fetches its `DanalockConfig` via `get_danalock_config()`. This exposes battery threshold, arm-lock policies (lock before full/partial arm, unlock after disarm), auto-lock timeout, and `holdBackLatchTime` (latch hold-back for door opening) as `extra_state_attributes`. Config fetch is optional — errors are tolerated and logged.
 
-`SecuritasRefreshButton` — A simple button entity that calls `SecuritasHub.update_overview()` when pressed. Allows users to manually trigger a status refresh outside the normal polling interval. On 403 errors, it creates a "Rate limited" persistent notification and sets `waf_blocked` on the corresponding alarm entity (looked up via `hass.data[DOMAIN]["alarm_entities"]`) so the card shows the orange warning banner.
+### Camera (`camera.py`)
+
+`SecuritasCamera` shows the last captured image from a Securitas camera device. One entity per discovered camera, grouped under the installation device.
+
+**Discovery:** Cameras are discovered in the background task. `get_camera_devices()` returns devices of type "QR", and for each one a `SecuritasCamera` + `SecuritasCaptureButton` are created using stored `async_add_entities` callbacks.
+
+**Image lifecycle:**
+1. On first frontend request, `async_camera_image()` lazy-fetches the latest thumbnail via `fetch_latest_thumbnail()`
+2. Subsequent requests return the cached image (or a placeholder JPG if none exists)
+3. When `SecuritasCaptureButton` is pressed, `capture_image()` requests a new capture, polls for completion, and handles CDN propagation delay
+4. On new image availability, `SIGNAL_CAMERA_UPDATE` is dispatched, causing the camera entity to rotate its access token (so the frontend re-fetches from the proxy endpoint)
+
+**Extra state attributes:** `image_timestamp` — when the thumbnail was captured.
+
+### Buttons (`button.py`)
+
+**`SecuritasRefreshButton`** — Triggers a manual alarm status refresh via `check_alarm()` + `check_alarm_status()` (using the shared `_poll_operation` polling loop). One per installation.
+- On success: clears `refresh_failed` on the alarm entity
+- On timeout: sets `refresh_failed` on the alarm entity (card shows stale data banner)
+- On 403: creates "Rate limited" persistent notification and sets `waf_blocked` on the alarm entity
+- The alarm entity is looked up via `hass.data[DOMAIN]["alarm_entities"]`
+
+**`SecuritasCaptureButton`** — Requests a new image capture from a Securitas camera. One per camera device, discovered alongside cameras in the background task. Calls `hub.capture_image()` which requests the capture, polls for completion, and stores the resulting image.
 
 ## Configuration
 
@@ -364,23 +417,30 @@ Lock and unlock operations use `change_lock_mode(lock=True/False)` which follows
 
 **Initial setup** (`FlowHandler`):
 ```
-Step 1: User enters username, password, country, PIN, 2FA preference
-Step 2 (if 2FA): Phone list — user picks which phone to send OTP to
-Step 3 (if 2FA): OTP challenge — user enters the SMS code
-Final: Login, list installations, create config entry
+Step 1 (user): Country (auto-detected from HA), username, password
+  → Login attempt; if Login2FAError → 2FA flow
+  → Existing session for same username? Reuse it (avoids duplicate login)
+Step 2 (phone_list, if 2FA): Pick which phone to send OTP to
+Step 3 (otp_challenge, if 2FA): Enter the SMS code
+→ finish_setup(): Login, list installations, get_services per installation
+Step 4 (select_installation, if multiple): Pick which installation to configure
+  → Auto-detection of perimeter support from service attributes (PERI attribute)
+Step 5 (options): PIN, code-required-to-arm, notify service
+  → Advanced section (collapsed): scan interval, delay between API requests
+Step 6 (mappings): Map HA alarm buttons to Securitas states
+  Available options change based on perimeter support (STD_OPTIONS vs PERI_OPTIONS)
+→ Create config entry per installation
 ```
 
-Device IDs are generated during initial setup and stored in the config entry for reuse across restarts.
+Device IDs are generated during initial setup and stored in the config entry for reuse across restarts. The config flow caches authenticated sessions and installations in `hass.data[DOMAIN]` for reuse during `async_setup_entry`, avoiding duplicate login calls.
 
 **Options flow** (`SecuritasOptionsFlowHandler`):
 ```
 Step 1 (init): General settings
   - PIN code (optional, for HA-side validation only)
   - Code required to arm (bool)
-  - Perimeter alarm support (bool)
-  - Check alarm panel directly (bool)
-  - Scan interval (seconds)
-  - Delay between status checks (float, 1.0-15.0)
+  - Notify service for arming exceptions
+  - Advanced section (collapsed): scan interval, delay between API requests
 
 Step 2 (mappings): Alarm state mappings
   - Map Home button → Securitas state
@@ -390,6 +450,8 @@ Step 2 (mappings): Alarm state mappings
   - Map Custom Bypass button → Securitas state
   Available options change based on perimeter support (STD_OPTIONS vs PERI_OPTIONS)
 ```
+
+The Advanced section uses HA's `data_entry_flow.section()` with `collapsed: True` to hide rarely-changed timing fields. Section data is flattened back to top-level keys on submission for storage compatibility.
 
 Changing options triggers `async_update_options()`, which merges the new values into the config entry and reloads the integration.
 
@@ -429,14 +491,8 @@ User presses "Arm Away" in HA UI
 async_track_time_interval fires every scan_interval seconds
   → async_update_status()
     → client.update_overview(installation)
-      → check_alarm_panel == True?
-        → session.check_alarm(installation)      # Returns referenceId
-        → asyncio.sleep(1)
-        → session.check_alarm_status(ref_id)      # Polls until not "WAIT"
-        → Return CheckAlarmStatus
-      → check_alarm_panel == False?
-        → session.check_general_status(installation)  # Cloud-only, no panel wake
-        → Return CheckAlarmStatus from SStatus
+      → session.check_general_status(installation)  # Cloud-only xSStatus, no panel wake
+      → Return CheckAlarmStatus from SStatus
     → update_status_alarm(status)
       → _last_proto_code = status.protomResponse  # Track for resolver's current state
       → protomResponse "D" → DISARMED
@@ -445,11 +501,13 @@ async_track_time_interval fires every scan_interval seconds
     → async_write_ha_state()
 ```
 
+Periodic polling always uses the lightweight `xSStatus` (general status) endpoint for efficiency. The more expensive `CheckAlarm` path (protom round-trip to the panel) is used only for arm/disarm operations and the manual refresh button.
+
 ## Testing
 
 ### Overview
 
-The test suite has 632 tests achieving 95% overall coverage. Tests run on every PR via GitHub Actions with three parallel checks: Ruff lint/format, Pyright type checking, and pytest with a 90% coverage floor.
+The test suite has 737 tests achieving 90% overall coverage. Tests run on every PR via GitHub Actions with three parallel checks: Ruff lint/format, Pyright type checking, and pytest with a 90% coverage floor.
 
 ```bash
 # Run the full suite
@@ -579,13 +637,17 @@ Key design choices:
 
 | Module | Coverage | Key gaps |
 |--------|----------|----------|
-| `__init__.py` | 97% | `get_config_entry` edge case |
+| `__init__.py` | 72% | Platform setup, session sharing, lock/camera discovery |
 | `alarm_control_panel.py` | 95% | `async_setup_entry`, some HA callbacks |
-| `button.py` | 100% | — |
+| `api_queue.py` | 100% | — |
+| `button.py` | 93% | Capture button edge cases |
+| `camera.py` | 85% | Image refresh, thumbnail fetch |
 | `config_flow.py` | 99% | One unreachable branch |
-| `apimanager.py` | 97% | Rare error paths, some polling branches |
-| `lock.py` | 85% | `async_setup_entry`, some state transitions |
-| `sensor.py` | 82% | `async_setup_entry`, sensor discovery |
+| `apimanager.py` | 95% | Rare error paths, some polling branches |
+| `lock.py` | 94% | Some state transitions |
+| `sensor.py` | 88% | `async_setup_entry`, sensor discovery |
+| `command_resolver.py` | 92% | Rare fallback paths |
+| `log_filter.py` | 88% | Nested arg scanning |
 | `const.py` | 100% | — |
 | `dataTypes.py` | 100% | — |
 | `domains.py` | 100% | — |
@@ -603,18 +665,20 @@ Three parallel jobs run on every PR and push to main:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `__init__.py` | 609 | Integration setup, `SecuritasHub`, `SecuritasDirectDevice`, log filter setup |
-| `config_flow.py` | 362 | Config flow (setup + 2FA) and options flow (settings + mappings) |
-| `alarm_control_panel.py` | 772 | Alarm entity with state mapping, arm/disarm, force arm, PIN validation, WAF tracking |
-| `sensor.py` | 195 | Sentinel temperature, humidity, air quality sensors |
-| `lock.py` | 211 | Smart lock entity |
-| `button.py` | 112 | Manual refresh button with WAF notification |
+| `__init__.py` | 1109 | Integration setup, `SecuritasHub`, session sharing, `SecuritasDirectDevice`, log filter setup |
+| `config_flow.py` | 562 | Config flow (setup + 2FA + installation picker) and options flow (settings + mappings) |
+| `alarm_control_panel.py` | 848 | Alarm entity with state mapping, arm/disarm, force arm, PIN validation, WAF tracking |
+| `sensor.py` | 309 | Sentinel temperature, humidity, air quality, WiFi diagnostic sensors |
+| `lock.py` | 274 | Multi-lock entity with Danalock config attributes |
+| `camera.py` | 109 | Camera entity with lazy thumbnail fetching |
+| `button.py` | 166 | Refresh button with WAF notification, capture button |
+| `api_queue.py` | 105 | Priority-based rate-limited API queue (FOREGROUND/BACKGROUND) |
 | `constants.py` | 21 | `SentinelName` language mapping |
 | `log_filter.py` | 86 | `SensitiveDataFilter` — log sanitization for secrets |
-| `securitas_direct_new_api/apimanager.py` | 1296 | GraphQL API client with auth, polling, DRY helpers, all operations |
-| `securitas_direct_new_api/command_resolver.py` | 206 | `CommandResolver`, `AlarmState`, `CommandStep` — state transition logic |
-| `securitas_direct_new_api/const.py` | 100 | `SecuritasState`, command/protocol mappings, defaults |
-| `securitas_direct_new_api/dataTypes.py` | 168 | Response dataclasses |
+| `securitas_direct_new_api/apimanager.py` | 1897 | GraphQL API client with auth, polling, DRY helpers, all operations |
+| `securitas_direct_new_api/command_resolver.py` | 207 | `CommandResolver`, `AlarmState`, `CommandStep` — state transition logic |
+| `securitas_direct_new_api/const.py` | 106 | `SecuritasState`, command/protocol mappings, defaults |
+| `securitas_direct_new_api/dataTypes.py` | 230 | Response dataclasses (including Danalock, Camera, SStatus) |
 | `securitas_direct_new_api/domains.py` | 49 | Country-to-URL routing |
-| `securitas_direct_new_api/exceptions.py` | 53 | Exception hierarchy with `http_status` and `ArmingExceptionError` |
-| `www/securitas-alarm-card.js` | 1157 | Custom Lovelace alarm card with WAF warning banner, multi-language |
+| `securitas_direct_new_api/exceptions.py` | 84 | Exception hierarchy with `http_status` and `ArmingExceptionError` |
+| `www/securitas-alarm-card.js` | 1169 | Custom Lovelace alarm card with WAF warning banner, multi-language |
