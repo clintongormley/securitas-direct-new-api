@@ -1,7 +1,7 @@
 """Tests for button entity (SecuritasRefreshButton)."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from custom_components.securitas.button import SecuritasRefreshButton, async_setup_entry
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
@@ -96,10 +96,7 @@ class TestSecuritasRefreshButtonAsyncPress:
         button.client.session.check_alarm = AsyncMock(return_value="ref-123")
         button.client.session.check_alarm_status = AsyncMock(return_value=alarm_status)
 
-        with patch(
-            "custom_components.securitas.button.asyncio.sleep", new_callable=AsyncMock
-        ):
-            await button.async_press()
+        await button.async_press()
 
         button.client.session.check_alarm.assert_called_once_with(button.installation)
         button.client.session.check_alarm_status.assert_called_once_with(
@@ -122,10 +119,7 @@ class TestSecuritasRefreshButtonAsyncPress:
         button.client.session.check_alarm = AsyncMock(return_value="ref-456")
         button.client.session.check_alarm_status = AsyncMock(return_value=alarm_status)
 
-        with patch(
-            "custom_components.securitas.button.asyncio.sleep", new_callable=AsyncMock
-        ):
-            await button.async_press()
+        await button.async_press()
 
         button.hass.services.async_call.assert_called_once_with(
             "homeassistant",
@@ -141,11 +135,8 @@ class TestSecuritasRefreshButtonAsyncPress:
             side_effect=SecuritasDirectError("API timeout")
         )
 
-        with patch(
-            "custom_components.securitas.button.asyncio.sleep", new_callable=AsyncMock
-        ):
-            # Should not raise
-            await button.async_press()
+        # Should not raise
+        await button.async_press()
 
         # check_alarm_status should never have been called
         button.client.session.check_alarm_status.assert_not_called()
@@ -158,36 +149,11 @@ class TestSecuritasRefreshButtonAsyncPress:
             side_effect=SecuritasDirectError("status timeout")
         )
 
-        with patch(
-            "custom_components.securitas.button.asyncio.sleep", new_callable=AsyncMock
-        ):
-            # Should not raise
-            await button.async_press()
+        # Should not raise
+        await button.async_press()
 
         # No update_entity call should happen
         button.hass.services.async_call.assert_not_called()
-
-    async def test_asyncio_sleep_is_called(self):
-        """asyncio.sleep is called between check_alarm and check_alarm_status."""
-        button = make_button()
-
-        alarm_status = CheckAlarmStatus(
-            operation_status="OK",
-            message="",
-            status="",
-            InstallationNumer="123456",
-            protomResponse="D",
-            protomResponseData="",
-        )
-        button.client.session.check_alarm = AsyncMock(return_value="ref-000")
-        button.client.session.check_alarm_status = AsyncMock(return_value=alarm_status)
-
-        with patch(
-            "custom_components.securitas.button.asyncio.sleep", new_callable=AsyncMock
-        ) as mock_sleep:
-            await button.async_press()
-
-        mock_sleep.assert_called_once_with(1)
 
     async def test_403_creates_persistent_notification(self):
         """403 error creates a rate-limited persistent notification."""
@@ -196,10 +162,7 @@ class TestSecuritasRefreshButtonAsyncPress:
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
         )
 
-        with patch(
-            "custom_components.securitas.button.asyncio.sleep", new_callable=AsyncMock
-        ):
-            await button.async_press()
+        await button.async_press()
 
         button.hass.services.async_call.assert_called_once()
         call_kwargs = button.hass.services.async_call.call_args
@@ -222,10 +185,7 @@ class TestSecuritasRefreshButtonAsyncPress:
             DOMAIN: {"alarm_entities": {button.installation.number: mock_alarm}}
         }
 
-        with patch(
-            "custom_components.securitas.button.asyncio.sleep", new_callable=AsyncMock
-        ):
-            await button.async_press()
+        await button.async_press()
 
         mock_alarm._set_waf_blocked.assert_called_once_with(True)
         mock_alarm.async_write_ha_state.assert_called_once()
@@ -238,10 +198,7 @@ class TestSecuritasRefreshButtonAsyncPress:
         )
         button.hass.data = {}
 
-        with patch(
-            "custom_components.securitas.button.asyncio.sleep", new_callable=AsyncMock
-        ):
-            await button.async_press()
+        await button.async_press()
 
         # Should not crash, notification still created
         button.hass.services.async_call.assert_called_once()
@@ -253,10 +210,7 @@ class TestSecuritasRefreshButtonAsyncPress:
             side_effect=SecuritasDirectError("Network error")
         )
 
-        with patch(
-            "custom_components.securitas.button.asyncio.sleep", new_callable=AsyncMock
-        ):
-            await button.async_press()
+        await button.async_press()
 
         button.hass.services.async_call.assert_not_called()
 

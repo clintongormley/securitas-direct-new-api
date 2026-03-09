@@ -4,7 +4,6 @@ import logging
 
 from .apimanager import ApiManager, generate_device_id, generate_uuid  # noqa: F401
 from .const import (  # noqa: F401
-    ALARM_STATUS_POLL_DELAY,
     CommandType,
     PERI_DEFAULTS,
     PERI_OPTIONS,

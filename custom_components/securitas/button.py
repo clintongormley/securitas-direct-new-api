@@ -1,6 +1,5 @@
 """Support for Securitas Direct refresh button."""
 
-import asyncio
 import logging
 
 from homeassistant.components.button import ButtonEntity
@@ -11,7 +10,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DOMAIN, SecuritasDirectDevice, SecuritasHub
 from .securitas_direct_new_api import (
-    ALARM_STATUS_POLL_DELAY,
     Installation,
     SecuritasDirectError,
 )
@@ -74,7 +72,6 @@ class SecuritasRefreshButton(ButtonEntity):
             return
         try:
             reference_id = await self.client.session.check_alarm(self.installation)
-            await asyncio.sleep(ALARM_STATUS_POLL_DELAY)
             alarm_status = await self.client.session.check_alarm_status(
                 self.installation, reference_id
             )
