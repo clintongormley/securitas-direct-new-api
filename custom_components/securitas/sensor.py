@@ -6,14 +6,13 @@ from datetime import timedelta
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
+from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 
-from . import DOMAIN, SIGNAL_XSSTATUS_UPDATE, SecuritasDirectDevice, SecuritasHub
+from . import DOMAIN, SecuritasDirectDevice, SecuritasHub
 from .constants import SentinelName
 from .securitas_direct_new_api import Installation, SecuritasDirectError
 from .securitas_direct_new_api.dataTypes import AirQuality, Service
@@ -67,8 +66,6 @@ async def async_setup_entry(
             )
             sensors.append(SentinelAirQuality(fetcher, device.installation))
             sensors.append(SentinelAirQualityStatus(fetcher, device.installation))
-        # xSStatus diagnostic sensors — updated from polling data (no extra API calls)
-        sensors.append(WifiConnectedSensor(client, device.installation))
     async_add_entities(sensors, False)
 
     # Schedule initial update shortly after setup to populate values
@@ -273,37 +270,3 @@ class SentinelAirQualityStatus(SensorEntity):
                 )
                 label = code
             self._attr_native_value = label
-
-
-class WifiConnectedSensor(SensorEntity):
-    """WiFi connection status from xSStatus — updated via dispatcher, no polling."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_should_poll = False
-    _attr_icon = "mdi:wifi"
-
-    def __init__(self, client: SecuritasHub, installation: Installation) -> None:
-        self._client = client
-        self._installation = installation
-        self._attr_unique_id = f"{installation.number}_wifi_connected"
-        self._attr_name = f"{installation.alias} WiFi Connected"
-        self._attr_device_info = _device_info(installation)
-
-    async def async_added_to_hass(self) -> None:
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass, SIGNAL_XSSTATUS_UPDATE, self._handle_update
-            )
-        )
-
-    @callback
-    def _handle_update(self, installation_number: str) -> None:
-        if installation_number != self._installation.number:
-            return
-        status = self._client.xsstatus.get(self._installation.number)
-        if status and status.wifi_connected is not None:
-            self._attr_native_value = (
-                "Connected" if status.wifi_connected else "Disconnected"
-            )
-            self._attr_icon = "mdi:wifi" if status.wifi_connected else "mdi:wifi-off"
-            self.async_write_ha_state()
