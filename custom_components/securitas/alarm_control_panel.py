@@ -836,6 +836,8 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
     @property
     def alarm_state(self) -> AlarmControlPanelState | None:  # type: ignore[override]
         """Return the state of the alarm."""
+        if self._state is None:
+            return None
         try:
             return getattr(AlarmControlPanelState, self._state.upper())
         except AttributeError:

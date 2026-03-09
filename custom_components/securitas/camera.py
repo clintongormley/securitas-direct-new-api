@@ -80,7 +80,7 @@ class SecuritasCamera(Camera):
         return image if image is not None else _PLACEHOLDER_IMAGE
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:  # type: ignore[override]
         """Return extra state attributes."""
         timestamp = self._client.get_camera_timestamp(
             self._installation.number, self._camera_device.zone_id

@@ -519,7 +519,10 @@ async def _register_card_resource(hass: HomeAssistant) -> None:
             "Could not register as Lovelace resource, falling back to add_extra_js_url"
         )
     # Fallback: YAML mode or Lovelace not available
-    frontend.add_extra_js_url(hass, CARD_URL)
+    try:
+        frontend.add_extra_js_url(hass, CARD_URL)
+    except (KeyError, Exception):  # pylint: disable=broad-exception-caught
+        _LOGGER.debug("Could not register card via add_extra_js_url")
 
 
 async def _unregister_card_resource(hass: HomeAssistant) -> None:
