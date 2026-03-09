@@ -37,6 +37,7 @@ from .log_filter import SensitiveDataFilter
 from .securitas_direct_new_api import (
     ApiDomains,
     ApiManager,
+    CameraDevice,
     CheckAlarmStatus,
     Installation,
     Login2FAError,
@@ -591,7 +592,7 @@ class SecuritasHub:
         self._api_cache: dict[str, Any] = {}  # generic cache: key -> result
         self._api_cache_time: dict[str, float] = {}  # generic cache: key -> timestamp
         self.camera_images: dict[str, bytes] = {}
-        self._camera_devices_cache: dict[str, list] = {}
+        self._camera_devices_cache: dict[str, list[CameraDevice]] = {}
 
     async def login(self):
         """Login to Securitas."""
@@ -632,41 +633,62 @@ class SecuritasHub:
         self._services_cache[key] = services
         return services
 
-    async def get_camera_devices(self, installation: Installation) -> list:
+    async def get_camera_devices(
+        self, installation: Installation
+    ) -> list[CameraDevice]:
         """Get camera devices for an installation (cached)."""
         key = installation.number
         if key in self._camera_devices_cache:
             return self._camera_devices_cache[key]
-        devices = await self.session.get_device_list(installation)
+        devices = await self._api_queue.submit(
+            self.session.get_device_list,
+            installation,
+            priority=ApiQueue.BACKGROUND,
+        )
         self._camera_devices_cache[key] = devices
         return devices
 
     async def capture_image(
-        self, installation: Installation, camera_device
+        self, installation: Installation, camera_device: CameraDevice
     ) -> bytes | None:
         """Request a new image capture and fetch the result."""
-        from .securitas_direct_new_api.dataTypes import CameraDevice
+        device = camera_device
+        reference_id = await self._api_queue.submit(
+            self.session.request_images,
+            installation,
+            device.code,
+            priority=ApiQueue.FOREGROUND,
+        )
 
-        device: CameraDevice = camera_device
-        reference_id = await self.session.request_images(installation, device.code)
-
-        # Poll for completion
+        # Poll for completion (follows change_lock_mode pattern)
+        max_attempts = max(10, round(60 / max(1, self.session.delay_check_operation)))
         try:
-            await self.session._poll_operation(
-                lambda: self.session._check_request_images_status(
-                    installation, device.code, reference_id
-                ),
-                timeout=60.0,
-            )
-        except Exception:
+            for attempt in range(1, max_attempts + 1):
+                raw = await self._api_queue.submit(
+                    self.session._check_request_images_status,
+                    installation,
+                    device.code,
+                    reference_id,
+                    attempt,
+                    priority=ApiQueue.FOREGROUND,
+                )
+                if raw.get("res") != "WAIT":
+                    break
+            else:
+                raise TimeoutError("Image request poll timed out")
+        except (TimeoutError, SecuritasDirectError):
             _LOGGER.warning(
                 "Image request polling timed out for %s, fetching thumbnail anyway",
                 device.name,
             )
 
         # Fetch the thumbnail
-        thumbnail = await self.session.get_thumbnail(
-            installation, device.name, device.zone_id
+        thumbnail = await self._api_queue.submit(
+            self.session.get_thumbnail,
+            installation,
+            device.name,
+            device.zone_id,
+            priority=ApiQueue.FOREGROUND,
         )
         if thumbnail.image is None:
             return None
