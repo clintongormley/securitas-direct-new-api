@@ -7,15 +7,14 @@ import homeassistant.components.lock as lock
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_SCAN_INTERVAL
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_call_later, async_track_time_interval
+from homeassistant.helpers.event import async_track_time_interval
 
 from . import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    SecuritasDirectDevice,
     SecuritasHub,
 )
 from .securitas_direct_new_api import (
@@ -25,8 +24,6 @@ from .securitas_direct_new_api import (
     SmartLockMode,
 )
 from .securitas_direct_new_api.apimanager import SMARTLOCK_DEVICE_ID
-
-from .securitas_direct_new_api.dataTypes import Service
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,61 +47,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up Securitas Direct lock entities.
 
-    Only fast, non-polling API calls are made here (get_services is cached,
-    get_lock_modes is a single query).  Danalock config is fetched lazily
-    on the first ``async_update_status`` to avoid blocking startup.
+    No API calls are made here.  Lock devices are discovered
+    asynchronously after startup and added via the stored callback.
     """
     entry_data = hass.data[DOMAIN][entry.entry_id]
-    client: SecuritasHub = entry_data["hub"]
-    locks: list[SecuritasLock] = []
-    securitas_devices: list[SecuritasDirectDevice] = entry_data["devices"]
-    for device in securitas_devices:
-        services: list[Service] = await client.get_services(device.installation)
-        has_doorlock = any(s.request == DOORLOCK_SERVICE for s in services)
-        if not has_doorlock:
-            continue
-
-        # Discover all lock devices for this installation (single fast query)
-        lock_modes: list[SmartLockMode] = await client.get_lock_modes(
-            device.installation
-        )
-
-        if not lock_modes:
-            # Fallback: create one lock with default device ID
-            lock_modes = [
-                SmartLockMode(
-                    res=None,
-                    lockStatus=LOCK_STATUS_UNKNOWN,
-                    deviceId=SMARTLOCK_DEVICE_ID,
-                )
-            ]
-
-        for mode in lock_modes:
-            device_id = mode.deviceId or SMARTLOCK_DEVICE_ID
-            locks.append(
-                SecuritasLock(
-                    device.installation,
-                    client=client,
-                    hass=hass,
-                    device_id=device_id,
-                    initial_status=mode.lockStatus,
-                )
-            )
-
-    if not locks:
-        _LOGGER.debug("No Securitas Direct %s services found", DOORLOCK_SERVICE)
-        return
-
-    async_add_entities(locks, False)
-
-    # Schedule initial update shortly after setup to populate values
-    # without blocking entity registration.
-    @callback
-    def _initial_update(_now) -> None:
-        for entity in locks:
-            entity.async_schedule_update_ha_state(force_refresh=True)
-
-    async_call_later(hass, 10, _initial_update)
+    entry_data["lock_add_entities"] = async_add_entities
 
 
 class SecuritasLock(lock.LockEntity):

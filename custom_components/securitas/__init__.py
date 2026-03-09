@@ -374,11 +374,115 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         }
 
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+        # Discover cameras and locks in the background after setup completes.
+        # This avoids blocking startup with API calls.
+        entry.async_create_background_task(
+            hass,
+            _async_discover_devices(hass, entry),
+            f"securitas_discover_{entry.entry_id}",
+        )
         return True
     else:
         raise ConfigEntryNotReady(
             "Config entry missing device IDs. Delete and re-add the integration."
         )
+
+
+async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Discover cameras and locks in the background after setup."""
+    from .button import SecuritasCaptureButton
+    from .camera import SecuritasCamera
+    from .lock import (
+        DOORLOCK_SERVICE,
+        LOCK_STATUS_UNKNOWN,
+        SecuritasLock,
+    )
+    from .securitas_direct_new_api import SmartLockMode
+    from .securitas_direct_new_api.apimanager import SMARTLOCK_DEVICE_ID
+
+    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if entry_data is None:
+        return
+
+    client: SecuritasHub = entry_data["hub"]
+    devices: list[SecuritasDirectDevice] = entry_data["devices"]
+
+    for device in devices:
+        installation = device.installation
+
+        # ── Camera discovery ──
+        try:
+            cameras = await client.get_camera_devices(installation)
+        except Exception:
+            _LOGGER.warning(
+                "Failed to get camera devices for %s", installation.number
+            )
+            cameras = []
+
+        if cameras:
+            camera_add = entry_data.get("camera_add_entities")
+            button_add = entry_data.get("button_add_entities")
+            if camera_add:
+                camera_add(
+                    [SecuritasCamera(client, installation, cam) for cam in cameras],
+                    False,
+                )
+            if button_add:
+                button_add(
+                    [
+                        SecuritasCaptureButton(client, installation, cam)
+                        for cam in cameras
+                    ],
+                    True,
+                )
+
+        # ── Lock discovery ──
+        try:
+            services = await client.get_services(installation)
+        except Exception:
+            _LOGGER.warning(
+                "Failed to get services for %s", installation.number
+            )
+            continue
+
+        has_doorlock = any(s.request == DOORLOCK_SERVICE for s in services)
+        if not has_doorlock:
+            continue
+
+        try:
+            lock_modes: list[SmartLockMode] = await client.get_lock_modes(installation)
+        except Exception:
+            _LOGGER.warning(
+                "Failed to get lock modes for %s", installation.number
+            )
+            lock_modes = []
+
+        if not lock_modes:
+            lock_modes = [
+                SmartLockMode(
+                    res=None,
+                    lockStatus=LOCK_STATUS_UNKNOWN,
+                    deviceId=SMARTLOCK_DEVICE_ID,
+                )
+            ]
+
+        lock_add = entry_data.get("lock_add_entities")
+        if lock_add:
+            locks = [
+                SecuritasLock(
+                    installation,
+                    client=client,
+                    hass=hass,
+                    device_id=mode.deviceId or SMARTLOCK_DEVICE_ID,
+                    initial_status=mode.lockStatus,
+                )
+                for mode in lock_modes
+            ]
+            lock_add(locks, False)
+            # Schedule initial lock update
+            for lock_entity in locks:
+                lock_entity.async_schedule_update_ha_state(force_refresh=True)
 
 
 async def _register_card_resource(hass: HomeAssistant) -> None:

@@ -11,7 +11,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import DOMAIN, SIGNAL_CAMERA_UPDATE, SecuritasDirectDevice, SecuritasHub
+from . import DOMAIN, SIGNAL_CAMERA_UPDATE, SecuritasHub
 from .securitas_direct_new_api import Installation
 from .securitas_direct_new_api.dataTypes import CameraDevice
 
@@ -23,25 +23,13 @@ _PLACEHOLDER_IMAGE = (Path(__file__).parent / "placeholder.jpg").read_bytes()
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up Securitas Direct camera entities."""
+    """Set up Securitas Direct camera entities.
+
+    No API calls are made here.  Camera devices are discovered
+    asynchronously after startup and added via the stored callback.
+    """
     entry_data = hass.data[DOMAIN][entry.entry_id]
-    client: SecuritasHub = entry_data["hub"]
-    securitas_devices: list[SecuritasDirectDevice] = entry_data["devices"]
-    entities: list[Camera] = []
-
-    for device in securitas_devices:
-        try:
-            cameras = await client.get_camera_devices(device.installation)
-        except Exception:
-            _LOGGER.warning(
-                "Failed to get camera devices for installation %s",
-                device.installation.number,
-            )
-            continue
-        for cam_device in cameras:
-            entities.append(SecuritasCamera(client, device.installation, cam_device))
-
-    async_add_entities(entities, False)
+    entry_data["camera_add_entities"] = async_add_entities
 
 
 def _device_info(installation: Installation) -> DeviceInfo:
