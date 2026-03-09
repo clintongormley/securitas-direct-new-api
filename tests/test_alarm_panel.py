@@ -2615,8 +2615,8 @@ class TestLastProtoCode:
     def test_non_proto_string_not_stored(self):
         """Non-proto strings (e.g. from xSStatus) don't overwrite proto code.
 
-        When check_alarm_panel is disabled, protomResponse carries the
-        xSStatus.status string (e.g. "ARMED_TOTAL") instead of a single-char
+        Periodic polling uses xSStatus, so protomResponse carries the
+        status string (e.g. "ARMED_TOTAL") instead of a single-char
         proto code.  This must not pollute _last_proto_code.
         """
         alarm = make_alarm()

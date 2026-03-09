@@ -322,10 +322,10 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
                 )
                 return
             # Only update _last_proto_code when protomResponse is a known proto
-            # code.  When check_alarm_panel is disabled, protomResponse may
-            # contain non-proto values like "ARMED_TOTAL" from xSStatus; those
-            # must not overwrite the last proto code or the resolver's
-            # state-based command selection will break.
+            # code.  Periodic polling uses xSStatus which returns values like
+            # "ARMED_TOTAL" instead of proto codes; those must not overwrite
+            # the last proto code or the resolver's state-based command
+            # selection will break.
             if (
                 status.protomResponse == PROTO_DISARMED
                 or status.protomResponse in PROTO_TO_STATE

@@ -95,21 +95,26 @@ async def test_setup_calls_list_installations(
 
 
 
-async def test_setup_check_alarm_via_update_overview(
+async def test_setup_general_status_via_update_overview(
     hass: HomeAssistant, mock_server: MockGraphQLServer
 ):
-    """update_overview() triggers CheckAlarm when check_alarm_panel=True."""
+    """update_overview() uses check_general_status (Status), not CheckAlarm."""
+    from .mock_graphql import graphql_general_status
+
     queue_standard_setup(mock_server)
+    mock_server.set_default_response("Status", graphql_general_status(status="D"))
     entry, _ = await _setup(hass, mock_server)
 
     entry_data = hass.data[DOMAIN][entry.entry_id]
     hub = entry_data["hub"]
     devices = entry_data["devices"]
 
-    # update_overview drives the full check_alarm → check_alarm_status flow
+    # Reset call log to only count calls from update_overview
+    mock_server.reset()
     status = await hub.update_overview(devices[0].installation)
-    assert mock_server.call_count("CheckAlarm") >= 1
-    assert status.protomResponse is not None
+    assert mock_server.call_count("Status") >= 1
+    assert mock_server.call_count("CheckAlarm") == 0
+    assert status.protomResponse == "D"
 
 
 async def test_login_sets_auth_token(
@@ -342,16 +347,17 @@ async def test_setup_connection_error_raises_not_ready(
 async def test_initial_state_disarmed(
     hass: HomeAssistant, mock_server: MockGraphQLServer
 ):
-    """Proto 'D' from CheckAlarmStatus → alarm state is disarmed."""
+    """Status 'D' from check_general_status → alarm state is disarmed."""
+    from .mock_graphql import graphql_general_status
+
     queue_standard_setup(mock_server, proto="D")
+    mock_server.set_default_response("Status", graphql_general_status(status="D"))
     entry, _ = await _setup(hass, mock_server)
 
     entry_data = hass.data[DOMAIN][entry.entry_id]
     hub = entry_data["hub"]
     devices = entry_data["devices"]
     assert len(devices) == 1
-
-    # update_overview was called with proto D
 
     status = await hub.update_overview(devices[0].installation)
     assert status.protomResponse == "D"
@@ -360,8 +366,11 @@ async def test_initial_state_disarmed(
 async def test_initial_state_armed_away(
     hass: HomeAssistant, mock_server: MockGraphQLServer
 ):
-    """Proto 'T' from CheckAlarmStatus → total armed."""
+    """Status 'T' from check_general_status → total armed."""
+    from .mock_graphql import graphql_general_status
+
     queue_standard_setup(mock_server, proto="T")
+    mock_server.set_default_response("Status", graphql_general_status(status="T"))
     entry, result = await _setup(hass, mock_server)
     assert result is True
 
@@ -369,45 +378,28 @@ async def test_initial_state_armed_away(
     hub = entry_data["hub"]
     devices = entry_data["devices"]
 
-    mock_server.add_response("CheckAlarm", graphql_check_alarm())
-    mock_server.add_response("CheckAlarmStatus", graphql_alarm_status(proto="T"))
     status = await hub.update_overview(devices[0].installation)
     assert status.protomResponse == "T"
 
 
-async def test_general_status_used_when_check_alarm_disabled(
+async def test_general_status_used_by_update_overview(
     hass: HomeAssistant, mock_server: MockGraphQLServer
 ):
-    """When check_alarm_panel=False, update_overview() uses Status, not CheckAlarm."""
+    """update_overview() always uses Status (check_general_status), not CheckAlarm."""
     from .mock_graphql import graphql_general_status
 
-    caps = make_jwt(exp_minutes=60)
-    mock_server.add_response("mkLoginToken", graphql_login())
-    mock_server.add_response("mkInstallationList", graphql_installations())
-    srv = graphql_services(capabilities_jwt=caps)
-    mock_server.add_response("Srv", srv)
-    mock_server.set_default_response("Srv", srv)
+    queue_standard_setup(mock_server)
     mock_server.set_default_response("Status", graphql_general_status(status="T"))
 
-    entry = _make_entry(hass, check_alarm_panel=False)
-    mock_http = mock_server.make_http_client()
-    with patch(
-        "custom_components.securitas.async_get_clientsession",
-        return_value=mock_http,
-    ):
-        with patch(
-            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
-            return_value=True,
-        ):
-            result = await async_setup_entry(hass, entry)
-
+    entry, result = await _setup(hass, mock_server)
     assert result is True
 
     entry_data = hass.data[DOMAIN][entry.entry_id]
     hub = entry_data["hub"]
     devices = entry_data["devices"]
 
-    # Directly call update_overview — with check_alarm=False it should use Status
+    # Reset call log to only count calls from update_overview
+    mock_server.reset()
     status = await hub.update_overview(devices[0].installation)
     assert mock_server.call_count("Status") >= 1
     assert mock_server.call_count("CheckAlarm") == 0

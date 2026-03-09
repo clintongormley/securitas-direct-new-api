@@ -9,7 +9,6 @@ import pytest
 from .mock_graphql import MockGraphQLServer
 
 from custom_components.securitas import (
-    CONF_CHECK_ALARM_PANEL,
     CONF_CODE_ARM_REQUIRED,
     CONF_COUNTRY,
     CONF_DELAY_CHECK_OPERATION,
@@ -198,7 +197,6 @@ def make_config_entry_data(
     code: str = "",
     has_peri: bool = False,
     code_arm_required: bool = False,
-    check_alarm_panel: bool = True,
     scan_interval: int = DEFAULT_SCAN_INTERVAL,
     delay_check_operation: float = DEFAULT_DELAY_CHECK_OPERATION,
     device_id: str = "test-device-id",
@@ -220,7 +218,6 @@ def make_config_entry_data(
         CONF_CODE: code,
         CONF_HAS_PERI: has_peri,
         CONF_CODE_ARM_REQUIRED: code_arm_required,
-        CONF_CHECK_ALARM_PANEL: check_alarm_panel,
         CONF_SCAN_INTERVAL: scan_interval,
         CONF_DELAY_CHECK_OPERATION: delay_check_operation,
         CONF_DEVICE_ID: device_id,
@@ -245,7 +242,6 @@ def make_securitas_hub_mock(**overrides) -> MagicMock:
     """Create a MagicMock mimicking SecuritasHub."""
     hub = MagicMock(spec=SecuritasHub)
     hub.session = AsyncMock()
-    hub.check_alarm = True
     hub.country = "ES"
     hub.lang = "es"
     hub.config = {}

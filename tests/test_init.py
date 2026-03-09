@@ -19,7 +19,6 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.securitas import (
-    CONF_CHECK_ALARM_PANEL,
     CONF_CODE_ARM_REQUIRED,
     CONF_COUNTRY,
     CONF_DELAY_CHECK_OPERATION,
@@ -143,17 +142,10 @@ class TestSecuritasHubInit:
         config = make_config_entry_data()
         hub = SecuritasHub(config, None, MagicMock(), hass)
         assert hub.country == "ES"
-        assert hub.check_alarm is True
 
     def test_hub_init_with_minimal_config_flow_config(self, hass):
-        """SecuritasHub.__init__ should accept the config dict built by _create_client.
-
-        This catches the bug where async_step_user didn't set CONF_CHECK_ALARM_PANEL
-        before calling _create_client(), causing a KeyError in production.
-        """
+        """SecuritasHub.__init__ should accept the config dict built by _create_client."""
         from custom_components.securitas import (
-            CONF_CHECK_ALARM_PANEL,
-            DEFAULT_CHECK_ALARM_PANEL,
             DEFAULT_DELAY_CHECK_OPERATION,
         )
 
@@ -167,12 +159,10 @@ class TestSecuritasHubInit:
                 CONF_DEVICE_ID: "test-device-id",
                 CONF_UNIQUE_ID: "test-uuid",
                 CONF_DEVICE_INDIGITALL: "",
-                CONF_CHECK_ALARM_PANEL: DEFAULT_CHECK_ALARM_PANEL,
             }
         )
         hub = SecuritasHub(config, None, MagicMock(), hass)
         assert hub.country == "ES"
-        assert hub.check_alarm == DEFAULT_CHECK_ALARM_PANEL
 
 
 # ===========================================================================
@@ -276,7 +266,6 @@ class TestSecuritasHub:
                 CONF_USERNAME: "test@example.com",
                 CONF_PASSWORD: "test-password",
                 CONF_COUNTRY: "ES",
-                CONF_CHECK_ALARM_PANEL: True,
                 CONF_DEVICE_ID: "test-device-id",
                 CONF_UNIQUE_ID: "test-uuid",
                 CONF_DEVICE_INDIGITALL: "test-indigitall",
@@ -302,7 +291,6 @@ class TestSecuritasHub:
         assert hub.session is not None
         assert hub.config[CONF_USERNAME] == "test@example.com"
         assert hub.country == "ES"
-        assert hub.check_alarm is True
 
     def test_init_stores_config(self):
         """Constructor should store the domain config."""
@@ -378,61 +366,24 @@ class TestSecuritasHub:
         hub.set_authentication_token("new-token")
         assert hub.session.authentication_token == "new-token"
 
-    async def test_update_overview_check_alarm_true(self):
-        """update_overview with check_alarm=True should use check_alarm + _check_alarm_status."""
-        hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
-        hub.session = AsyncMock()
-        hub.session.check_alarm = AsyncMock(return_value="ref-123")
-        hub.session.delay_check_operation = 2
-        raw_response = {
-            "res": "OK",
-            "msg": "",
-            "status": "armed",
-            "numinst": "123456",
-            "protomResponse": "T",
-            "protomResponseDate": "",
-        }
-        hub.session._check_alarm_status = AsyncMock(return_value=raw_response)
-        inst = make_installation()
-
-        result = await hub.update_overview(inst)
-
-        hub.session.check_alarm.assert_awaited_once_with(inst)
-        hub.session._check_alarm_status.assert_awaited_once()
-        assert result.protomResponse == "T"
-        assert result.status == "armed"
-
-    async def test_update_overview_check_alarm_false(self):
-        """update_overview with check_alarm=False should use check_general_status."""
-        hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: False})
+    async def test_update_overview_uses_general_status(self):
+        """update_overview always uses check_general_status."""
+        hub = self._make_hub()
         hub.session = AsyncMock()
         hub.session.check_general_status = AsyncMock(
-            return_value=SStatus(status="armed", timestampUpdate="2024-01-01")
+            return_value=SStatus(status="T", timestampUpdate="2024-01-01")
         )
         inst = make_installation()
+
         result = await hub.update_overview(inst)
+
         hub.session.check_general_status.assert_awaited_once_with(inst)
-        assert result.status == "armed"
+        assert result.protomResponse == "T"
         assert result.InstallationNumer == inst.number
 
-    async def test_update_overview_reraises_403_check_alarm(self):
-        """update_overview re-raises 403 errors from _check_alarm_status."""
-        hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
-        hub.session = AsyncMock()
-        hub.session.check_alarm = AsyncMock(return_value="ref-123")
-        hub.session.delay_check_operation = 2
-        hub.session._check_alarm_status = AsyncMock(
-            side_effect=SecuritasDirectError("HTTP 403", http_status=403)
-        )
-        inst = make_installation()
-
-        with pytest.raises(SecuritasDirectError) as exc_info:
-            await hub.update_overview(inst)
-        assert exc_info.value.http_status == 403
-
-    async def test_update_overview_reraises_403_general_status(self):
-        """update_overview re-raises 403 from check_general_status."""
-        hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: False})
+    async def test_update_overview_reraises_403(self):
+        """update_overview re-raises 403 errors from check_general_status."""
+        hub = self._make_hub()
         hub.session = AsyncMock()
         hub.session.check_general_status = AsyncMock(
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
@@ -445,13 +396,11 @@ class TestSecuritasHub:
         # _last_api_time should still be updated even on 403 (for cooldown)
         assert hub._api_queue._last_api_time > 0
 
-    async def test_update_overview_403_check_alarm_updates_last_api_time(self):
-        """403 on _check_alarm_status still updates _last_api_time for cooldown."""
-        hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
+    async def test_update_overview_403_updates_last_api_time(self):
+        """403 on check_general_status still updates _last_api_time for cooldown."""
+        hub = self._make_hub()
         hub.session = AsyncMock()
-        hub.session.check_alarm = AsyncMock(return_value="ref-123")
-        hub.session.delay_check_operation = 2
-        hub.session._check_alarm_status = AsyncMock(
+        hub.session.check_general_status = AsyncMock(
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
         )
         inst = make_installation()
@@ -462,9 +411,9 @@ class TestSecuritasHub:
 
     async def test_update_overview_swallows_non_403_error(self):
         """update_overview swallows non-403 errors and returns empty status."""
-        hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
+        hub = self._make_hub()
         hub.session = AsyncMock()
-        hub.session.check_alarm = AsyncMock(
+        hub.session.check_general_status = AsyncMock(
             side_effect=SecuritasDirectError("Network error")
         )
         inst = make_installation()
@@ -475,19 +424,11 @@ class TestSecuritasHub:
 
     async def test_update_overview_cooldown_between_calls(self):
         """update_overview updates _api_queue._last_api_time after API calls."""
-        hub = self._make_hub(**{CONF_CHECK_ALARM_PANEL: True})
+        hub = self._make_hub()
         hub.session = AsyncMock()
-        hub.session.check_alarm = AsyncMock(return_value="ref-123")
-        hub.session.delay_check_operation = 2
-        raw_response = {
-            "res": "OK",
-            "msg": "",
-            "status": "",
-            "numinst": "123456",
-            "protomResponse": "D",
-            "protomResponseDate": "",
-        }
-        hub.session._check_alarm_status = AsyncMock(return_value=raw_response)
+        hub.session.check_general_status = AsyncMock(
+            return_value=SStatus(status="D", timestampUpdate="2024-01-01")
+        )
         inst = make_installation()
 
         assert hub._api_queue._last_api_time == 0
@@ -848,7 +789,6 @@ class TestAsyncUpdateOptions:
                 CONF_CODE: data[CONF_CODE],
                 CONF_CODE_ARM_REQUIRED: data[CONF_CODE_ARM_REQUIRED],
                 CONF_SCAN_INTERVAL: data[CONF_SCAN_INTERVAL],
-                CONF_CHECK_ALARM_PANEL: data[CONF_CHECK_ALARM_PANEL],
                 CONF_HAS_PERI: data.get(CONF_HAS_PERI, False),
                 CONF_MAP_HOME: data[CONF_MAP_HOME],
                 CONF_MAP_AWAY: data[CONF_MAP_AWAY],

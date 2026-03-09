@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.securitas import (
-    CONF_CHECK_ALARM_PANEL,
     CONF_CODE_ARM_REQUIRED,
     CONF_COUNTRY,
     CONF_DELAY_CHECK_OPERATION,
@@ -77,7 +76,6 @@ USER_INPUT_CREDENTIALS = {
 USER_INPUT_OPTIONS = {
     CONF_CODE: "",
     CONF_CODE_ARM_REQUIRED: False,
-    CONF_CHECK_ALARM_PANEL: True,
     CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
     CONF_DELAY_CHECK_OPERATION: float(DEFAULT_DELAY_CHECK_OPERATION),
 }
@@ -230,7 +228,6 @@ async def _advance_to_mappings(hass, entry):
         user_input={
             CONF_CODE: "1234",
             CONF_CODE_ARM_REQUIRED: False,
-            CONF_CHECK_ALARM_PANEL: True,
             CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
             CONF_DELAY_CHECK_OPERATION: float(DEFAULT_DELAY_CHECK_OPERATION),
         },
@@ -570,14 +567,12 @@ async def test_create_client_with_real_hub_init(hass):
     flow.config[CONF_DEVICE_ID] = FAKE_UUID
     flow.config[CONF_UNIQUE_ID] = FAKE_UUID
     flow.config[CONF_DEVICE_INDIGITALL] = ""
-    flow.config[CONF_CHECK_ALARM_PANEL] = True
 
     with patch(PATCH_SESSION, return_value=MagicMock()):
         hub = flow._create_client()
 
     assert hub is not None
     assert hub.country == "ES"
-    assert hub.check_alarm is True
 
 
 async def test_create_client_raises_value_error_when_password_none(hass):
@@ -630,7 +625,6 @@ async def test_options_init_submitting_advances_to_mappings(hass):
         user_input={
             CONF_CODE: "1234",
             CONF_CODE_ARM_REQUIRED: True,
-            CONF_CHECK_ALARM_PANEL: True,
             CONF_SCAN_INTERVAL: 60,
             CONF_DELAY_CHECK_OPERATION: 3.0,
         },

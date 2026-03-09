@@ -27,7 +27,6 @@ from homeassistant.helpers.selector import (
 )
 
 from . import (
-    CONF_CHECK_ALARM_PANEL,
     CONF_CODE_ARM_REQUIRED,
     CONF_COUNTRY,
     CONF_DELAY_CHECK_OPERATION,
@@ -42,7 +41,6 @@ from . import (
     CONF_MAP_VACATION,
     CONF_NOTIFY_GROUP,
     COUNTRY_CODES,
-    DEFAULT_CHECK_ALARM_PANEL,
     DEFAULT_CODE,
     DEFAULT_CODE_ARM_REQUIRED,
     DEFAULT_DELAY_CHECK_OPERATION,
@@ -183,8 +181,6 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self.config[CONF_DELAY_CHECK_OPERATION] = DEFAULT_DELAY_CHECK_OPERATION
         self.config[CONF_DEVICE_INDIGITALL] = ""
         self.config[CONF_ENTRY_ID] = ""
-        self.config[CONF_CHECK_ALARM_PANEL] = DEFAULT_CHECK_ALARM_PANEL
-
         # Reuse existing session for this username if one is already running,
         # to avoid a new login that would invalidate the active session.
         # Password must match to prevent unauthorized addition of installations.
@@ -365,9 +361,6 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_CODE_ARM_REQUIRED, default=DEFAULT_CODE_ARM_REQUIRED
                 ): bool,
                 vol.Optional(
-                    CONF_CHECK_ALARM_PANEL, default=DEFAULT_CHECK_ALARM_PANEL
-                ): bool,
-                vol.Optional(
                     CONF_SCAN_INTERVAL,
                     default=(
                         DEFAULT_SCAN_INTERVAL_ES
@@ -473,8 +466,6 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
         delay_check_operation = self._get(
             CONF_DELAY_CHECK_OPERATION, DEFAULT_DELAY_CHECK_OPERATION
         )
-        check_alarm_panel = self._get(CONF_CHECK_ALARM_PANEL, DEFAULT_CHECK_ALARM_PANEL)
-
         notify_group = self._get(CONF_NOTIFY_GROUP, "")
 
         _NOTIFY_EXCLUDE = {"notify", "send_message", "persistent_notification"}
@@ -494,7 +485,6 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
                     description={"suggested_value": self._get(CONF_CODE, DEFAULT_CODE)},
                 ): str,
                 vol.Optional(CONF_CODE_ARM_REQUIRED, default=code_arm_required): bool,
-                vol.Optional(CONF_CHECK_ALARM_PANEL, default=check_alarm_panel): bool,
                 vol.Optional(CONF_SCAN_INTERVAL, default=scan_interval): int,
                 vol.Optional(
                     CONF_DELAY_CHECK_OPERATION, default=delay_check_operation

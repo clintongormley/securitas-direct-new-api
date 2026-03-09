@@ -55,7 +55,6 @@ CARD_URL = f"{CARD_BASE_URL}?v={_MANIFEST['version']}"
 
 CONF_COUNTRY = "country"
 CONF_CODE_ARM_REQUIRED = "code_arm_required"
-CONF_CHECK_ALARM_PANEL = "check_alarm_panel"
 CONF_USE_2FA = "use_2FA"
 CONF_HAS_PERI = "has_peri"
 CONF_DEVICE_INDIGITALL = "idDeviceIndigitall"
@@ -74,7 +73,6 @@ DEFAULT_USE_2FA = True
 DEFAULT_SCAN_INTERVAL = 120
 DEFAULT_SCAN_INTERVAL_ES = 300
 DEFAULT_CODE_ARM_REQUIRED = False
-DEFAULT_CHECK_ALARM_PANEL = True
 DEFAULT_DELAY_CHECK_OPERATION = 2
 DEFAULT_CODE = ""
 DEFAULT_COUNTRY = "ES"
@@ -104,9 +102,6 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional(CONF_CODE, default=DEFAULT_CODE): str,
                 vol.Optional(
                     CONF_CODE_ARM_REQUIRED, default=DEFAULT_CODE_ARM_REQUIRED
-                ): bool,
-                vol.Optional(
-                    CONF_CHECK_ALARM_PANEL, default=DEFAULT_CHECK_ALARM_PANEL
                 ): bool,
                 vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
             }
@@ -138,7 +133,6 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
             CONF_CODE,
             CONF_CODE_ARM_REQUIRED,
             CONF_SCAN_INTERVAL,
-            CONF_CHECK_ALARM_PANEL,
             CONF_MAP_HOME,
             CONF_MAP_AWAY,
             CONF_MAP_NIGHT,
@@ -191,9 +185,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     config[CONF_HAS_PERI] = entry.data.get(CONF_HAS_PERI, False)
     config[CONF_CODE_ARM_REQUIRED] = _opt(
         CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED
-    )
-    config[CONF_CHECK_ALARM_PANEL] = _opt(
-        CONF_CHECK_ALARM_PANEL, DEFAULT_CHECK_ALARM_PANEL
     )
     default_scan = (
         DEFAULT_SCAN_INTERVAL_ES
@@ -567,7 +558,6 @@ class SecuritasHub:
         self.config = domain_config
         self.config_entry: ConfigEntry | None = config_entry
         self.sentinel_services: list[Service] = []
-        self.check_alarm: bool = domain_config[CONF_CHECK_ALARM_PANEL]
         self.country: str = domain_config[CONF_COUNTRY].upper()
         self.lang: str = ApiDomains().get_language(self.country)
         self.hass: HomeAssistant = hass
@@ -798,87 +788,35 @@ class SecuritasHub:
         raise TimeoutError("Disarm status poll timed out")
 
     async def update_overview(self, installation: Installation) -> CheckAlarmStatus:
-        """Update the overview via individual queue-submitted API calls."""
-        if self.check_alarm is not True:
-            try:
-                status = await self._api_queue.submit(
-                    self.session.check_general_status,
-                    installation,
-                    priority=ApiQueue.BACKGROUND,
-                )
-            except SecuritasDirectError as err:
-                _LOGGER.warning(
-                    "Error checking general status for %s: %s",
-                    installation.number,
-                    err.log_detail(),
-                )
-                if getattr(err, "http_status", None) == 403:
-                    raise
-                return CheckAlarmStatus()
-            return CheckAlarmStatus(
-                status.status or "",
-                "",
-                status.status or "",
-                installation.number,
-                status.status or "",
-                status.timestampUpdate or "",
-            )
+        """Poll alarm status via check_general_status (single API call).
 
-        # check_alarm path: each step is a separate queue submission
+        Periodic polling always uses xSStatus for efficiency.  The more
+        expensive CheckAlarm path (protom round-trip) is used only for
+        arm/disarm operations and the manual refresh button.
+        """
         try:
-            reference_id = await self._api_queue.submit(
-                self.session.check_alarm,
+            status = await self._api_queue.submit(
+                self.session.check_general_status,
                 installation,
                 priority=ApiQueue.BACKGROUND,
             )
         except SecuritasDirectError as err:
-            _LOGGER.error(
-                "Error checking alarm status for %s: %s",
+            _LOGGER.warning(
+                "Error checking general status for %s: %s",
                 installation.number,
                 err.log_detail(),
             )
             if getattr(err, "http_status", None) == 403:
                 raise
             return CheckAlarmStatus()
-
-        # Poll — each retry is a separate queue submission
-        max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
-        for attempt in range(1, max_attempts + 1):
-            try:
-                raw = await self._api_queue.submit(
-                    self.session._check_alarm_status,
-                    installation,
-                    reference_id,
-                    attempt,
-                    priority=ApiQueue.BACKGROUND,
-                )
-            except SecuritasDirectError as err:
-                _LOGGER.error(
-                    "Error polling alarm status for %s: %s",
-                    installation.number,
-                    err.log_detail(),
-                )
-                if getattr(err, "http_status", None) == 403:
-                    raise
-                return CheckAlarmStatus()
-
-            if raw.get("res") != "WAIT":
-                proto = raw.get("protomResponse")
-                if not proto:
-                    _LOGGER.debug("Empty protomResponse for %s", installation.number)
-                    return CheckAlarmStatus()
-                self.session.protom_response = proto
-                return CheckAlarmStatus(
-                    raw["res"],
-                    raw["msg"],
-                    raw["status"],
-                    raw["numinst"],
-                    raw["protomResponse"],
-                    raw["protomResponseDate"],
-                )
-
-        _LOGGER.debug("Alarm status poll timed out for %s", installation.number)
-        return CheckAlarmStatus()
+        return CheckAlarmStatus(
+            status.status or "",
+            "",
+            status.status or "",
+            installation.number,
+            status.status or "",
+            status.timestampUpdate or "",
+        )
 
     async def change_lock_mode(
         self, installation: Installation, lock_state: bool, device_id: str
