@@ -799,9 +799,7 @@ class TestBuildConfigDict:
     def test_options_override_data(self):
         """Options should override data values."""
         data = make_config_entry_data(code="1111")
-        entry = MockConfigEntry(
-            domain=DOMAIN, data=data, options={CONF_CODE: "9999"}
-        )
+        entry = MockConfigEntry(domain=DOMAIN, data=data, options={CONF_CODE: "9999"})
         config, _ = _build_config_dict(entry)
         assert config[CONF_CODE] == "9999"
 
@@ -826,19 +824,21 @@ class TestMaxPollAttempts:
     """Tests for SecuritasHub._max_poll_attempts()."""
 
     def _make_hub(self, delay=2):
-        config = OrderedDict({
-            CONF_USERNAME: "test@example.com",
-            CONF_PASSWORD: "test-password",
-            CONF_COUNTRY: "ES",
-            CONF_DEVICE_ID: "test-device-id",
-            CONF_UNIQUE_ID: "test-uuid",
-            CONF_DEVICE_INDIGITALL: "test-indigitall",
-            CONF_DELAY_CHECK_OPERATION: delay,
-            CONF_SCAN_INTERVAL: 120,
-            CONF_CODE: "",
-            CONF_HAS_PERI: False,
-            CONF_CODE_ARM_REQUIRED: False,
-        })
+        config = OrderedDict(
+            {
+                CONF_USERNAME: "test@example.com",
+                CONF_PASSWORD: "test-password",
+                CONF_COUNTRY: "ES",
+                CONF_DEVICE_ID: "test-device-id",
+                CONF_UNIQUE_ID: "test-uuid",
+                CONF_DEVICE_INDIGITALL: "test-indigitall",
+                CONF_DELAY_CHECK_OPERATION: delay,
+                CONF_SCAN_INTERVAL: 120,
+                CONF_CODE: "",
+                CONF_HAS_PERI: False,
+                CONF_CODE_ARM_REQUIRED: False,
+            }
+        )
         return SecuritasHub(config, MagicMock(), MagicMock(), MagicMock())
 
     def test_default_timeout(self):
@@ -872,19 +872,21 @@ class TestValidateAndStoreImage:
     """Tests for SecuritasHub._validate_and_store_image()."""
 
     def _make_hub(self):
-        config = OrderedDict({
-            CONF_USERNAME: "test@example.com",
-            CONF_PASSWORD: "test-password",
-            CONF_COUNTRY: "ES",
-            CONF_DEVICE_ID: "test-device-id",
-            CONF_UNIQUE_ID: "test-uuid",
-            CONF_DEVICE_INDIGITALL: "test-indigitall",
-            CONF_DELAY_CHECK_OPERATION: 2,
-            CONF_SCAN_INTERVAL: 120,
-            CONF_CODE: "",
-            CONF_HAS_PERI: False,
-            CONF_CODE_ARM_REQUIRED: False,
-        })
+        config = OrderedDict(
+            {
+                CONF_USERNAME: "test@example.com",
+                CONF_PASSWORD: "test-password",
+                CONF_COUNTRY: "ES",
+                CONF_DEVICE_ID: "test-device-id",
+                CONF_UNIQUE_ID: "test-uuid",
+                CONF_DEVICE_INDIGITALL: "test-indigitall",
+                CONF_DELAY_CHECK_OPERATION: 2,
+                CONF_SCAN_INTERVAL: 120,
+                CONF_CODE: "",
+                CONF_HAS_PERI: False,
+                CONF_CODE_ARM_REQUIRED: False,
+            }
+        )
         return SecuritasHub(config, MagicMock(), MagicMock(), MagicMock())
 
     def test_none_thumbnail_returns_none(self):
@@ -906,6 +908,7 @@ class TestValidateAndStoreImage:
     def test_valid_jpeg_stored(self):
         """Valid JPEG data should be stored and returned."""
         import base64
+
         hub = self._make_hub()
         inst = make_installation(number="123")
         camera = MagicMock()
@@ -923,6 +926,7 @@ class TestValidateAndStoreImage:
     def test_invalid_jpeg_returns_none(self):
         """Non-JPEG data should return None."""
         import base64
+
         hub = self._make_hub()
         inst = make_installation(number="123")
         camera = MagicMock()
@@ -948,12 +952,14 @@ class TestScheduleInitialUpdates:
     def test_empty_entities_no_op(self, hass):
         """Empty entities list should not schedule anything."""
         from custom_components.securitas.entity import schedule_initial_updates
+
         # Should not raise
         schedule_initial_updates(hass, [])
 
     def test_schedules_callback(self, hass):
         """Non-empty entities should schedule a callback via async_call_later."""
         from custom_components.securitas.entity import schedule_initial_updates
+
         entity = MagicMock()
         with patch(
             "custom_components.securitas.entity.async_call_later"
@@ -965,6 +971,7 @@ class TestScheduleInitialUpdates:
     def test_callback_refreshes_entities(self, hass):
         """The scheduled callback should call async_schedule_update_ha_state on each entity."""
         from custom_components.securitas.entity import schedule_initial_updates
+
         entity1 = MagicMock()
         entity2 = MagicMock()
         with patch(
@@ -974,8 +981,12 @@ class TestScheduleInitialUpdates:
         # Extract the callback and invoke it
         cb = mock_call_later.call_args[0][2]
         cb(None)
-        entity1.async_schedule_update_ha_state.assert_called_once_with(force_refresh=True)
-        entity2.async_schedule_update_ha_state.assert_called_once_with(force_refresh=True)
+        entity1.async_schedule_update_ha_state.assert_called_once_with(
+            force_refresh=True
+        )
+        entity2.async_schedule_update_ha_state.assert_called_once_with(
+            force_refresh=True
+        )
 
 
 # ===========================================================================

@@ -421,7 +421,10 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         notify_options = _get_notify_options(self.hass)
         schema = _build_settings_schema(
-            {CONF_CODE: DEFAULT_CODE, CONF_CODE_ARM_REQUIRED: DEFAULT_CODE_ARM_REQUIRED},
+            {
+                CONF_CODE: DEFAULT_CODE,
+                CONF_CODE_ARM_REQUIRED: DEFAULT_CODE_ARM_REQUIRED,
+            },
             notify_options,
         )
         return self.async_show_form(step_id="options", data_schema=schema)
@@ -508,7 +511,9 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED
                 ),
                 CONF_NOTIFY_GROUP: self._get(CONF_NOTIFY_GROUP, ""),
-                CONF_SCAN_INTERVAL: self._get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                CONF_SCAN_INTERVAL: self._get(
+                    CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                ),
                 CONF_DELAY_CHECK_OPERATION: self._get(
                     CONF_DELAY_CHECK_OPERATION, DEFAULT_DELAY_CHECK_OPERATION
                 ),

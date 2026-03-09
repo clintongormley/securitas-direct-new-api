@@ -247,9 +247,7 @@ async def _get_or_create_session(
             sessions[username]["ref_count"] += 1
         else:
             # Create new session and log in
-            client = SecuritasHub(
-                config, entry, async_get_clientsession(hass), hass
-            )
+            client = SecuritasHub(config, entry, async_get_clientsession(hass), hass)
             try:
                 await client.login()
             except Login2FAError:
@@ -469,10 +467,7 @@ async def _discover_cameras(
             )
         if button_add:
             button_add(
-                [
-                    SecuritasCaptureButton(hub, installation, cam)
-                    for cam in cameras
-                ],
+                [SecuritasCaptureButton(hub, installation, cam) for cam in cameras],
                 True,
             )
 
@@ -959,7 +954,9 @@ class SecuritasHub:
 
     def _max_poll_attempts(self, timeout_seconds: int = 30) -> int:
         """Calculate max polling attempts for a given timeout."""
-        return max(10, round(timeout_seconds / max(1, self.session.delay_check_operation)))
+        return max(
+            10, round(timeout_seconds / max(1, self.session.delay_check_operation))
+        )
 
     def get_authentication_token(self) -> str | None:
         """Get the authentication token."""

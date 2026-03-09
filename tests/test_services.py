@@ -679,7 +679,9 @@ class TestDataclassFields:
 class TestSubmitRequestMethods:
     """Tests for submit request + single-poll methods used by ApiQueue."""
 
-    async def test_submit_arm_request_returns_reference_id(self, authed_api, installation):
+    async def test_submit_arm_request_returns_reference_id(
+        self, authed_api, installation
+    ):
         authed_api._execute_request = AsyncMock(
             return_value={
                 "data": {
@@ -709,7 +711,9 @@ class TestSubmitRequestMethods:
         with pytest.raises(SecuritasDirectError):
             await authed_api.submit_arm_request(installation, "ARM1")
 
-    async def test_submit_disarm_request_returns_reference_id(self, authed_api, installation):
+    async def test_submit_disarm_request_returns_reference_id(
+        self, authed_api, installation
+    ):
         authed_api._execute_request = AsyncMock(
             return_value={
                 "data": {
@@ -761,9 +765,7 @@ class TestSubmitRequestMethods:
                 }
             }
         )
-        raw = await authed_api.check_disarm_status(
-            installation, "ref-456", "DARM1", 1
-        )
+        raw = await authed_api.check_disarm_status(installation, "ref-456", "DARM1", 1)
         assert raw["res"] == "WAIT"
 
     async def test_submit_change_lock_mode_request_returns_reference_id(

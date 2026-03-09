@@ -358,9 +358,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             protomResponse=result.protomResponse,
         )
 
-    def _handle_arm_disarm_error(
-        self, err: SecuritasDirectError, context: str
-    ) -> None:
+    def _handle_arm_disarm_error(self, err: SecuritasDirectError, context: str) -> None:
         """Handle errors from arm or disarm operations."""
         if getattr(err, "http_status", None) == 403:
             self._set_waf_blocked(True)
