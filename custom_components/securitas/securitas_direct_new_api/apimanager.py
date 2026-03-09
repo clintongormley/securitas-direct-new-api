@@ -58,9 +58,6 @@ SMARTLOCK_KEY_TYPE = "0"
 # Service ID used when polling CheckAlarmStatus
 ALARM_STATUS_SERVICE_ID = "11"
 
-# Default timeout (seconds) for check_alarm_status polling loop
-CHECK_ALARM_STATUS_TIMEOUT = 10
-
 # Extra settle delay after a lock-mode change completes (multiples of delay_check_operation)
 LOCK_MODE_SETTLE_MULTIPLIER = 7
 
@@ -951,21 +948,13 @@ class ApiManager:
         self,
         installation: Installation,
         reference_id: str,
-        timeout: int = CHECK_ALARM_STATUS_TIMEOUT,
     ) -> CheckAlarmStatus:
         """Return the status of the alarm."""
-        await self._check_authentication_token()
-        await self._check_capabilities_token(installation)
-        count = 1
-        raw_data: dict[str, Any] = {}
-        max_count = timeout / max(1, self.delay_check_operation)
 
-        while ((count == 1) or (raw_data.get("res") == "WAIT")) and (
-            count <= max_count
-        ):
-            await asyncio.sleep(self.delay_check_operation)
-            raw_data = await self._check_alarm_status(installation, reference_id, count)
-            count += 1
+        async def _check() -> dict[str, Any]:
+            return await self._check_alarm_status(installation, reference_id)
+
+        raw_data = await self._poll_operation(_check)
 
         self.protom_response = raw_data["protomResponse"]
         return CheckAlarmStatus(
@@ -978,7 +967,7 @@ class ApiManager:
         )
 
     async def _check_alarm_status(
-        self, installation: Installation, reference_id: str, count: int
+        self, installation: Installation, reference_id: str
     ) -> dict[str, Any]:
         """Check status of the operation check alarm."""
         content = {
@@ -988,7 +977,6 @@ class ApiManager:
                 "panel": installation.panel,
                 "referenceId": reference_id,
                 "idService": ALARM_STATUS_SERVICE_ID,
-                "counter": count,
             },
             "query": "query CheckAlarmStatus($numinst: String!, $idService: String!, $panel: String!, $referenceId: String!) {\n  xSCheckAlarmStatus(numinst: $numinst, idService: $idService, panel: $panel, referenceId: $referenceId) {\n    res\n    msg\n    status\n    numinst\n    protomResponse\n    protomResponseDate\n  }\n}\n",
         }

@@ -111,7 +111,7 @@ class TestCheckAlarmStatus:
         }
 
         result = await authed_api.check_alarm_status(
-            installation, "ref-123", timeout=10
+            installation, "ref-123"
         )
 
         assert isinstance(result, CheckAlarmStatus)
@@ -150,7 +150,7 @@ class TestCheckAlarmStatus:
         mock_execute.side_effect = [wait_response, ok_response]
 
         result = await authed_api.check_alarm_status(
-            installation, "ref-123", timeout=10
+            installation, "ref-123"
         )
 
         assert result.operation_status == "OK"
@@ -165,7 +165,7 @@ class TestCheckAlarmStatus:
         with pytest.raises(
             SecuritasDirectError, match="xSCheckAlarmStatus response is None"
         ):
-            await authed_api.check_alarm_status(installation, "ref-123", timeout=10)
+            await authed_api.check_alarm_status(installation, "ref-123")
 
 
 # ── arm_alarm() ──────────────────────────────────────────────────────────────
