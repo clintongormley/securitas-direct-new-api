@@ -17,12 +17,13 @@ from aiohttp import ClientConnectorError, ClientSession
 import jwt
 
 from .dataTypes import (
+    AirQuality,
     ArmStatus,
     Attribute,
+    CameraDevice,
     CheckAlarmStatus,
     DanalockAutolock,
     DanalockConfig,
-    AirQuality,
     DanalockFeatures,
     DisarmStatus,
     Installation,
@@ -61,6 +62,9 @@ CHECK_ALARM_STATUS_TIMEOUT = 10
 
 # Extra settle delay after a lock-mode change completes (multiples of delay_check_operation)
 LOCK_MODE_SETTLE_MULTIPLIER = 7
+
+# Device type for camera devices in xSDeviceList
+CAMERA_DEVICE_TYPE = "QR"
 
 
 def generate_uuid() -> str:
@@ -1772,3 +1776,37 @@ class ApiManager:
         return await self._check_danalock_config_status(
             installation, reference_id, counter
         )
+
+    async def get_device_list(
+        self, installation: Installation
+    ) -> list[CameraDevice]:
+        """Get list of camera devices (type QR) for an installation."""
+        content = {
+            "operationName": "xSDeviceList",
+            "variables": {
+                "numinst": installation.number,
+                "panel": installation.panel,
+            },
+            "query": (
+                "query xSDeviceList($numinst: String!, $panel: String!) {"
+                " xSDeviceList(numinst: $numinst, panel: $panel) {"
+                " res devices { id code zoneId name type isActive serialNumber }"
+                " } }"
+            ),
+        }
+        await self._check_authentication_token()
+        await self._check_capabilities_token(installation)
+        response = await self._execute_request(content, "xSDeviceList", installation)
+        raw = self._extract_response_data(response, "xSDeviceList")
+        devices = raw.get("devices", [])
+        return [
+            CameraDevice(
+                id=d["id"],
+                code=int(d["code"]),
+                zone_id=d["zoneId"],
+                name=d["name"],
+                serial_number=d.get("serialNumber"),
+            )
+            for d in devices
+            if d.get("type") == CAMERA_DEVICE_TYPE and d.get("isActive", False)
+        ]

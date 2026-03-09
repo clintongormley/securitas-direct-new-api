@@ -1,9 +1,32 @@
-"""Tests for CameraDevice and ThumbnailResponse dataclasses."""
+"""Tests for CameraDevice, ThumbnailResponse dataclasses, and camera API methods."""
+
+from unittest.mock import AsyncMock
+
+import pytest
 
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
     CameraDevice,
+    Installation,
     ThumbnailResponse,
 )
+
+pytestmark = pytest.mark.asyncio
+
+
+# ── Fixtures ─────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def installation():
+    return Installation(number="123456", alias="Home", panel="SDVFAST", type="PLUS")
+
+
+@pytest.fixture
+def authed_api(api):
+    api._check_authentication_token = AsyncMock()
+    api._check_capabilities_token = AsyncMock()
+    api.delay_check_operation = 0
+    return api
 
 
 class TestCameraDevice:
@@ -63,3 +86,51 @@ class TestThumbnailResponse:
         assert thumb.timestamp == "2026-03-09T12:00:00Z"
         assert thumb.signal_type == "MOTION"
         assert thumb.image == "base64encodeddata=="
+
+
+class TestGetDeviceList:
+    DEVICE_LIST_RESPONSE = {
+        "data": {
+            "xSDeviceList": {
+                "res": "OK",
+                "devices": [
+                    {"id": "1", "code": "1", "zoneId": "QR01", "name": "Cucina", "type": "QR", "isActive": True, "serialNumber": "36QYX3LE"},
+                    {"id": "2", "code": "2", "zoneId": "MG02", "name": "Entrata", "type": "MG", "isActive": True, "serialNumber": None},
+                    {"id": "9", "code": "9", "zoneId": "QR09", "name": "Cameretta", "type": "QR", "isActive": True, "serialNumber": "36NF2KPR"},
+                    {"id": "11", "code": "10", "zoneId": "QR10", "name": "Salon", "type": "QR", "isActive": True, "serialNumber": "36NEYYER"},
+                    {"id": "20", "code": "17", "zoneId": "QR17", "name": "Inactive", "type": "QR", "isActive": False, "serialNumber": None},
+                ],
+            }
+        }
+    }
+
+    async def test_returns_only_active_qr_devices(self, authed_api, mock_execute, installation):
+        mock_execute.return_value = self.DEVICE_LIST_RESPONSE
+        result = await authed_api.get_device_list(installation)
+        assert len(result) == 3
+        assert all(isinstance(d, CameraDevice) for d in result)
+        assert [d.name for d in result] == ["Cucina", "Cameretta", "Salon"]
+
+    async def test_parses_device_fields(self, authed_api, mock_execute, installation):
+        mock_execute.return_value = self.DEVICE_LIST_RESPONSE
+        result = await authed_api.get_device_list(installation)
+        salon = result[2]
+        assert salon.id == "11"
+        assert salon.code == 10
+        assert salon.zone_id == "QR10"
+        assert salon.name == "Salon"
+        assert salon.serial_number == "36NEYYER"
+
+    async def test_empty_device_list(self, authed_api, mock_execute, installation):
+        mock_execute.return_value = {"data": {"xSDeviceList": {"res": "OK", "devices": []}}}
+        result = await authed_api.get_device_list(installation)
+        assert result == []
+
+    async def test_no_cameras(self, authed_api, mock_execute, installation):
+        mock_execute.return_value = {
+            "data": {"xSDeviceList": {"res": "OK", "devices": [
+                {"id": "2", "code": "2", "zoneId": "MG02", "name": "Entrata", "type": "MG", "isActive": True, "serialNumber": None},
+            ]}}
+        }
+        result = await authed_api.get_device_list(installation)
+        assert result == []
