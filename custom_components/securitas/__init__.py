@@ -75,7 +75,7 @@ DEFAULT_SCAN_INTERVAL = 120
 DEFAULT_SCAN_INTERVAL_ES = 300
 DEFAULT_CODE_ARM_REQUIRED = False
 DEFAULT_CHECK_ALARM_PANEL = True
-DEFAULT_DELAY_CHECK_OPERATION = 3
+DEFAULT_DELAY_CHECK_OPERATION = 2
 DEFAULT_CODE = ""
 DEFAULT_COUNTRY = "ES"
 API_CACHE_TTL = 60  # seconds — sensor data changes hourly at most
@@ -178,17 +178,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Establish connection with Securitas Direct."""
     need_sign_in: bool = False
 
+    def _opt(key, default=None):
+        """Read from options first, then data, then default."""
+        return entry.options.get(key, entry.data.get(key, default))
+
     config = OrderedDict()
     config[CONF_USERNAME] = entry.data[CONF_USERNAME]
     config[CONF_PASSWORD] = entry.data[CONF_PASSWORD]
     config[CONF_USE_2FA] = entry.data.get(CONF_USE_2FA, DEFAULT_USE_2FA)
     config[CONF_COUNTRY] = entry.data.get(CONF_COUNTRY, None)
-    config[CONF_CODE] = entry.data.get(CONF_CODE, DEFAULT_CODE)
+    config[CONF_CODE] = _opt(CONF_CODE, DEFAULT_CODE)
     config[CONF_HAS_PERI] = entry.data.get(CONF_HAS_PERI, False)
-    config[CONF_CODE_ARM_REQUIRED] = entry.data.get(
+    config[CONF_CODE_ARM_REQUIRED] = _opt(
         CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED
     )
-    config[CONF_CHECK_ALARM_PANEL] = entry.data.get(
+    config[CONF_CHECK_ALARM_PANEL] = _opt(
         CONF_CHECK_ALARM_PANEL, DEFAULT_CHECK_ALARM_PANEL
     )
     default_scan = (
@@ -196,12 +200,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if config[CONF_COUNTRY] == "ES"
         else DEFAULT_SCAN_INTERVAL
     )
-    config[CONF_SCAN_INTERVAL] = entry.data.get(CONF_SCAN_INTERVAL, default_scan)
-    config[CONF_DELAY_CHECK_OPERATION] = entry.data.get(
+    config[CONF_SCAN_INTERVAL] = _opt(CONF_SCAN_INTERVAL, default_scan)
+    config[CONF_DELAY_CHECK_OPERATION] = _opt(
         CONF_DELAY_CHECK_OPERATION, DEFAULT_DELAY_CHECK_OPERATION
     )
     config[CONF_ENTRY_ID] = entry.entry_id
-    config[CONF_NOTIFY_GROUP] = entry.data.get(CONF_NOTIFY_GROUP, "")
+    config[CONF_NOTIFY_GROUP] = _opt(CONF_NOTIFY_GROUP, "")
     config = add_device_information(config)
 
     # Register card static path + Lovelace resource early so the card
@@ -219,12 +223,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _register_card_resource(hass)
         hass.data.setdefault(DOMAIN, {})["card_registered"] = True
 
-    # Read mapping config from entry data
-    config[CONF_MAP_HOME] = entry.data.get(CONF_MAP_HOME)
-    config[CONF_MAP_AWAY] = entry.data.get(CONF_MAP_AWAY)
-    config[CONF_MAP_NIGHT] = entry.data.get(CONF_MAP_NIGHT)
-    config[CONF_MAP_CUSTOM] = entry.data.get(CONF_MAP_CUSTOM)
-    config[CONF_MAP_VACATION] = entry.data.get(CONF_MAP_VACATION)
+    # Read mapping config (options override data)
+    config[CONF_MAP_HOME] = _opt(CONF_MAP_HOME)
+    config[CONF_MAP_AWAY] = _opt(CONF_MAP_AWAY)
+    config[CONF_MAP_NIGHT] = _opt(CONF_MAP_NIGHT)
+    config[CONF_MAP_CUSTOM] = _opt(CONF_MAP_CUSTOM)
+    config[CONF_MAP_VACATION] = _opt(CONF_MAP_VACATION)
 
     if CONF_DEVICE_ID in entry.data:
         config[CONF_DEVICE_ID] = entry.data[CONF_DEVICE_ID]
