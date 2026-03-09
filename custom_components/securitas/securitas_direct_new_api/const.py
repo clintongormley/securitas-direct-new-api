@@ -43,7 +43,8 @@ PROTO_DISARMED = "D"
 
 # Map protomResponse code -> SecuritasState
 PROTO_TO_STATE: dict[str, SecuritasState] = {
-    # Same as SecuritasState.SecuritasState.DISARMED_PERI but alarm_control_panel.py L.218 already handle the disarmed case without using this map
+    # Same as DISARMED_PERI but alarm_control_panel.py already handles
+    # the disarmed case without using this map
     "D": SecuritasState.DISARMED,
     "E": SecuritasState.PERI_ONLY,
     "P": SecuritasState.PARTIAL_DAY,

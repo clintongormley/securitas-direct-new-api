@@ -152,6 +152,8 @@ class OtpPhone:
 
 @dataclass
 class SmartLock:
+    """Smart lock discovery response."""
+
     res: str | None = None
     location: str | None = None
     type: int | None = None
@@ -159,6 +161,8 @@ class SmartLock:
 
 @dataclass
 class SmartLockMode:
+    """Smart lock mode and status."""
+
     res: str | None = None
     lockStatus: str = ""
     deviceId: str = ""
@@ -167,6 +171,8 @@ class SmartLockMode:
 
 @dataclass
 class SmartLockModeStatus:
+    """Smart lock mode change operation status."""
+
     requestId: str = ""
     message: str = ""
     protomResponse: str = ""

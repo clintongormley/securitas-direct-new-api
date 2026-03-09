@@ -1329,7 +1329,7 @@ class TestPerDomainQueueSharing:
         # Both hubs should have the same queue
         hub1 = hass.data[DOMAIN][entry1.entry_id]["hub"]
         hub2 = hass.data[DOMAIN][entry2.entry_id]["hub"]
-        assert hub1._api_queue is hub2._api_queue
+        assert hub1.api_queue is hub2.api_queue
 
     async def test_different_country_gets_separate_queue(self, hass):
         """Two entries with different countries should get separate queues."""
@@ -1379,4 +1379,4 @@ class TestPerDomainQueueSharing:
 
         hub_es = hass.data[DOMAIN][entry_es.entry_id]["hub"]
         hub_it = hass.data[DOMAIN][entry_it.entry_id]["hub"]
-        assert hub_es._api_queue is not hub_it._api_queue
+        assert hub_es.api_queue is not hub_it.api_queue

@@ -82,7 +82,7 @@ class SecuritasRefreshButton(ButtonEntity):
 
             alarm_entity = self._get_alarm_entity()
             if alarm_entity is not None:
-                alarm_entity._set_refresh_failed(False)
+                alarm_entity._set_refresh_failed(False)  # pylint: disable=protected-access  # no public API on alarm entity
                 alarm_entity.async_write_ha_state()
 
             _LOGGER.info("Updating alarm panel entity for %s", self.installation.number)
@@ -99,7 +99,7 @@ class SecuritasRefreshButton(ButtonEntity):
             _LOGGER.warning("Refresh timed out for %s", self.installation.number)
             alarm_entity = self._get_alarm_entity()
             if alarm_entity is not None:
-                alarm_entity._set_refresh_failed(True)
+                alarm_entity._set_refresh_failed(True)  # pylint: disable=protected-access  # no public API on alarm entity
                 alarm_entity.async_write_ha_state()
 
         except SecuritasDirectError as err:
@@ -125,7 +125,7 @@ class SecuritasRefreshButton(ButtonEntity):
                 )
                 alarm_entity = self._get_alarm_entity()
                 if alarm_entity is not None:
-                    alarm_entity._set_waf_blocked(True)
+                    alarm_entity._set_waf_blocked(True)  # pylint: disable=protected-access  # no public API on alarm entity
                     alarm_entity.async_write_ha_state()
 
 

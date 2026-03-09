@@ -321,7 +321,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 config[CONF_COUNTRY],
                 entry.entry_id,
             )
-        client._api_queue = api_queues[domain_url]
+        client.api_queue = api_queues[domain_url]
 
         entry.async_on_unload(entry.add_update_listener(async_update_options))
 
@@ -332,7 +332,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             all_installations: list[Installation] = (
                 cached
                 if cached is not None
-                else await client._api_queue.submit(
+                else await client.api_queue.submit(
                     client.session.list_installations,
                     priority=ApiQueue.FOREGROUND,
                 )
@@ -354,13 +354,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for installation in entry_installations:
                 if cached_services and installation.number in cached_services:
                     # Pre-populate from config flow cache
-                    client._services_cache[installation.number] = cached_services[
+                    client.services_cache[installation.number] = cached_services[
                         installation.number
                     ]
-                elif installation.number not in client._services_cache:
+                elif installation.number not in client.services_cache:
                     # HA restart: fetch directly (bypass queue — we just logged
                     # in, no WAF risk yet) so platforms don't block on queue.
-                    client._services_cache[
+                    client.services_cache[
                         installation.number
                     ] = await client.session.get_all_services(installation)
                 devices.append(SecuritasDirectDevice(installation))
@@ -384,10 +384,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"securitas_discover_{entry.entry_id}",
         )
         return True
-    else:
-        raise ConfigEntryNotReady(
-            "Config entry missing device IDs. Delete and re-add the integration."
-        )
+    raise ConfigEntryNotReady(
+        "Config entry missing device IDs. Delete and re-add the integration."
+    )
 
 
 async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -415,7 +414,7 @@ async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> No
         # ── Camera discovery ──
         try:
             cameras = await client.get_camera_devices(installation)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught  # background discovery must not crash
             _LOGGER.warning("Failed to get camera devices for %s", installation.number)
             cameras = []
 
@@ -439,7 +438,7 @@ async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> No
         # ── Lock discovery ──
         try:
             services = await client.get_services(installation)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught  # background discovery must not crash
             _LOGGER.warning("Failed to get services for %s", installation.number)
             continue
 
@@ -449,7 +448,7 @@ async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> No
 
         try:
             lock_modes: list[SmartLockMode] = await client.get_lock_modes(installation)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught  # background discovery must not crash
             _LOGGER.warning("Failed to get lock modes for %s", installation.number)
             lock_modes = []
 
@@ -515,7 +514,7 @@ async def _register_card_resource(hass: HomeAssistant) -> None:
                 )
                 hass.data.setdefault(DOMAIN, {})["card_resource_id"] = item["id"]
                 return
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # HA internals may raise anything
         _LOGGER.debug(
             "Could not register as Lovelace resource, falling back to add_extra_js_url"
         )
@@ -530,7 +529,7 @@ async def _unregister_card_resource(hass: HomeAssistant) -> None:
         # Was using add_extra_js_url fallback or user-managed resource
         try:
             frontend.remove_extra_js_url(hass, CARD_URL)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught  # HA internals may raise anything
             pass
         return
     try:
@@ -539,7 +538,7 @@ async def _unregister_card_resource(hass: HomeAssistant) -> None:
             resources = lovelace_data.resources
             if hasattr(resources, "async_delete_item"):
                 await resources.async_delete_item(resource_id)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # HA internals may raise anything
         _LOGGER.debug("Could not remove Lovelace resource %s", resource_id)
 
 
@@ -769,7 +768,7 @@ class SecuritasHub:
         try:
             for attempt in range(1, max_attempts + 1):
                 raw = await self._api_queue.submit(
-                    self.session._check_request_images_status,
+                    self.session.check_request_images_status,
                     installation,
                     device.code,
                     reference_id,
@@ -841,7 +840,7 @@ class SecuritasHub:
                 camera_device.zone_id,
                 priority=ApiQueue.BACKGROUND,
             )
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught  # API call may raise anything
             _LOGGER.debug(
                 "Could not fetch thumbnail for %s on startup",
                 camera_device.name,
@@ -1105,5 +1104,21 @@ class SecuritasHub:
         )
 
     @property
+    def api_queue(self) -> ApiQueue:
+        """Return the API queue."""
+        return self._api_queue
+
+    @api_queue.setter
+    def api_queue(self, value: ApiQueue) -> None:
+        """Set the API queue."""
+        self._api_queue = value
+
+    @property
+    def services_cache(self) -> dict[str, list[Service]]:
+        """Return the services cache."""
+        return self._services_cache
+
+    @property
     def get_config_entry(self) -> ConfigEntry | None:
+        """Return the config entry."""
         return self.config_entry

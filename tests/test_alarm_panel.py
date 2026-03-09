@@ -1109,7 +1109,7 @@ class TestAsyncUpdateStatus:
         )
         alarm.client.update_overview = AsyncMock(return_value=status)
 
-        await alarm.async_update_status(now="2024-01-01T00:00:00")
+        await alarm.async_update_status(_now="2024-01-01T00:00:00")
 
         alarm.client.update_overview.assert_called_once_with(alarm.installation)
         assert alarm._state == AlarmControlPanelState.DISARMED

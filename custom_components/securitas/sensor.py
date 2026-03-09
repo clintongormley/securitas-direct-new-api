@@ -1,5 +1,6 @@
 """Securitas direct sentinel sensor."""
 
+import logging
 from datetime import timedelta
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
@@ -8,12 +9,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
-
-import logging
-
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from . import DOMAIN, SIGNAL_XSSTATUS_UPDATE, SecuritasDirectDevice, SecuritasHub
 from .constants import SentinelName
@@ -235,6 +233,7 @@ class SentinelAirQuality(SensorEntity):
         self._attr_device_info = _device_info(installation)
 
     async def async_update(self):
+        """Update the sensor via the hub's rate-limited method."""
         if self.hass is None:
             return
         air_quality = await self._fetcher.fetch()
@@ -259,6 +258,7 @@ class SentinelAirQualityStatus(SensorEntity):
         self._attr_device_info = _device_info(installation)
 
     async def async_update(self):
+        """Update the sensor via the hub's rate-limited method."""
         if self.hass is None:
             return
         air_quality = await self._fetcher.fetch()

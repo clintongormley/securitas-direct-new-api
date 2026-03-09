@@ -75,7 +75,7 @@ def generate_uuid() -> str:
     return str(uuid4()).replace("-", "")[0:16]
 
 
-def generate_device_id(lang: str) -> str:
+def generate_device_id(_lang: str) -> str:
     """Create a device identifier for the API."""
     return secrets.token_urlsafe(16) + ":APA91b" + secrets.token_urlsafe(130)[0:134]
 
@@ -147,7 +147,12 @@ class ApiManager:
         app: str = json.dumps({"appVersion": self.device_version, "origin": "native"})
         headers = {
             "app": app,
-            "User-Agent": "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.124 Safari/537.36 Edg/102.0.1245.41",
+            "User-Agent": (
+                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                " AppleWebKit/537.36 (KHTML, like Gecko)"
+                " Chrome/102.0.5005.124 Safari/537.36"
+                " Edg/102.0.1245.41"
+            ),
             "X-APOLLO-OPERATION-ID": self.apollo_operation_id,
             "X-APOLLO-OPERATION-NAME": operation,
             "extension": '{"mode":"full"}',
@@ -286,7 +291,7 @@ class ApiManager:
                     headers,
                     content,
                 )
-            elif isinstance(errors, list) and errors:
+            if isinstance(errors, list) and errors:
                 # GraphQL error response. When there's no "data" key at all, it's
                 # a pure validation error (e.g. BAD_USER_INPUT). When there IS a
                 # data key, only raise when all values are null/empty (partial
@@ -533,7 +538,17 @@ class ApiManager:
                 "deviceOsVersion": self.device_os_version,
                 "deviceVersion": self.device_version,
             },
-            "query": "mutation mkValidateDevice($idDevice: String, $idDeviceIndigitall: String, $uuid: String, $deviceName: String, $deviceBrand: String, $deviceOsVersion: String, $deviceVersion: String) {\n  xSValidateDevice(idDevice: $idDevice, idDeviceIndigitall: $idDeviceIndigitall, uuid: $uuid, deviceName: $deviceName, deviceBrand: $deviceBrand, deviceOsVersion: $deviceOsVersion, deviceVersion: $deviceVersion) {\n    res\n    msg\n    hash\n    refreshToken\n    legals\n  }\n}\n",
+            "query": (
+                "mutation mkValidateDevice($idDevice: String, "
+                "$idDeviceIndigitall: String, "
+                "$uuid: String, $deviceName: String, $deviceBrand: String, "
+                "$deviceOsVersion: String, $deviceVersion: String) {\n"
+                "  xSValidateDevice(idDevice: $idDevice, idDeviceIndigitall: "
+                "$idDeviceIndigitall, uuid: $uuid, deviceName: $deviceName, deviceBrand: "
+                "$deviceBrand, deviceOsVersion: $deviceOsVersion, deviceVersion: "
+                "$deviceVersion) {\n    res\n    msg\n    hash\n    refreshToken\n"
+                "    legals\n  }\n}\n"
+            ),
         }
 
         if otp_succeed:
@@ -585,7 +600,22 @@ class ApiManager:
                 "deviceBrand": self.device_brand,
                 "deviceOsVersion": self.device_os_version,
             },
-            "query": "mutation RefreshLogin($refreshToken: String!, $id: String!, $country: String!, $lang: String!, $callby: String!, $idDevice: String!, $idDeviceIndigitall: String!, $deviceType: String!, $deviceVersion: String!, $deviceResolution: String!, $deviceName: String!, $deviceBrand: String!, $deviceOsVersion: String!, $uuid: String!) {\n  xSRefreshLogin(refreshToken: $refreshToken, id: $id, country: $country, lang: $lang, callby: $callby, idDevice: $idDevice, idDeviceIndigitall: $idDeviceIndigitall, deviceType: $deviceType, deviceVersion: $deviceVersion, deviceResolution: $deviceResolution, deviceName: $deviceName, deviceBrand: $deviceBrand, deviceOsVersion: $deviceOsVersion, uuid: $uuid) {\n    __typename\n    res\n    msg\n    hash\n    refreshToken\n    legals\n    changePassword\n    needDeviceAuthorization\n    mainUser\n  }\n}",
+            "query": (
+                "mutation RefreshLogin($refreshToken: String!, $id: String!, $country: "
+                "String!, $lang: String!, $callby: String!, $idDevice: String!, "
+                "$idDeviceIndigitall: String!, $deviceType: String!, $deviceVersion: "
+                "String!, $deviceResolution: String!, $deviceName: String!, $deviceBrand: "
+                "String!, $deviceOsVersion: String!, $uuid: String!) {\n"
+                "  xSRefreshLogin(refreshToken: $refreshToken, "
+                "id: $id, country: $country, "
+                "lang: $lang, callby: $callby, idDevice: $idDevice, idDeviceIndigitall: "
+                "$idDeviceIndigitall, deviceType: $deviceType, deviceVersion: "
+                "$deviceVersion, deviceResolution: $deviceResolution, deviceName: "
+                "$deviceName, deviceBrand: $deviceBrand, deviceOsVersion: "
+                "$deviceOsVersion, uuid: $uuid) {\n    __typename\n    res\n    msg\n"
+                "    hash\n    refreshToken\n    legals\n    changePassword\n"
+                "    needDeviceAuthorization\n    mainUser\n  }\n}"
+            ),
         }
         response = await self._execute_request(content, "RefreshLogin")
 
@@ -616,7 +646,11 @@ class ApiManager:
                 "recordId": device_id,
                 "otpHash": auth_otp_hash,
             },
-            "query": "mutation mkSendOTP($recordId: Int!, $otpHash: String!) {\n  xSSendOtp(recordId: $recordId, otpHash: $otpHash) {\n    res\n    msg\n  }\n}\n",
+            "query": (
+                "mutation mkSendOTP($recordId: Int!, $otpHash: String!) {\n"
+                "  xSSendOtp(recordId: $recordId, otpHash: $otpHash) {\n    res\n    msg\n"
+                "  }\n}\n"
+            ),
         }
         response = await self._execute_request(content, "mkSendOTP")
 
@@ -645,26 +679,40 @@ class ApiManager:
                 "deviceOsVersion": self.device_os_version,
                 "uuid": self.uuid,
             },
-            "query": "mutation mkLoginToken($user: String!, $password: String!, $id: String!, $country: String!, $lang: String!, $callby: String!, $idDevice: String!, $idDeviceIndigitall: String!, $deviceType: String!, $deviceVersion: String!, $deviceResolution: String!, $deviceName: String!, $deviceBrand: String!, $deviceOsVersion: String!, $uuid: String!) { xSLoginToken(user: $user, password: $password, country: $country, lang: $lang, callby: $callby, id: $id, idDevice: $idDevice, idDeviceIndigitall: $idDeviceIndigitall, deviceType: $deviceType, deviceVersion: $deviceVersion, deviceResolution: $deviceResolution, deviceName: $deviceName, deviceBrand: $deviceBrand, deviceOsVersion: $deviceOsVersion, uuid: $uuid) { __typename res msg hash refreshToken legals changePassword needDeviceAuthorization mainUser } }",
+            "query": (
+                "mutation mkLoginToken($user: String!, $password: String!, $id: String!, "
+                "$country: String!, $lang: String!, $callby: String!, $idDevice: String!, "
+                "$idDeviceIndigitall: String!, $deviceType: String!, $deviceVersion: "
+                "String!, $deviceResolution: String!, $deviceName: String!, $deviceBrand: "
+                "String!, $deviceOsVersion: String!, $uuid: String!) { xSLoginToken(user: "
+                "$user, password: $password, country: $country, lang: $lang, callby: "
+                "$callby, id: $id, idDevice: $idDevice, idDeviceIndigitall: "
+                "$idDeviceIndigitall, deviceType: $deviceType, deviceVersion: "
+                "$deviceVersion, deviceResolution: $deviceResolution, deviceName: "
+                "$deviceName, deviceBrand: $deviceBrand, deviceOsVersion: "
+                "$deviceOsVersion, uuid: $uuid) { __typename res msg hash refreshToken "
+                "legals changePassword needDeviceAuthorization mainUser } }"
+            ),
         }
 
         response = {}
         try:
             response = await self._execute_request(content, "mkLoginToken")
         except SecuritasDirectError as err:
-            result_json = err.args[1] if len(err.args) > 1 else None
-            if result_json is not None and result_json.get("data"):
-                if result_json["data"].get("xSLoginToken"):
-                    if result_json["data"]["xSLoginToken"].get(
-                        "needDeviceAuthorization"
-                    ):
-                        # needs a 2FA
-                        raise Login2FAError(err.args) from err
-                raise LoginError(err.args) from err
-            # Has response dict = server responded with error → login failure.
-            # No response dict = network/connection error → let propagate.
+            result_json: dict | None = err.args[1] if len(err.args) > 1 else None
             if result_json is not None:
+                if result_json.get("data"):
+                    data = result_json["data"]
+                    if data.get("xSLoginToken"):
+                        if data["xSLoginToken"].get("needDeviceAuthorization"):
+                            # needs a 2FA
+                            raise Login2FAError(err.args) from err
+                    raise LoginError(err.args) from err
+                # Has response dict = server responded with error
+                # → login failure.
                 raise LoginError(err.args) from err
+            # No response dict = network/connection error
+            # → let propagate.
             raise
 
         if "errors" in response:
@@ -696,7 +744,12 @@ class ApiManager:
         """List securitas direct installations."""
         content = {
             "operationName": "mkInstallationList",
-            "query": "query mkInstallationList {\n  xSInstallations {\n    installations {\n      numinst\n      alias\n      panel\n      type\n      name\n      surname\n      address\n      city\n      postcode\n      province\n      email\n      phone\n    }\n  }\n}\n",
+            "query": (
+                "query mkInstallationList {\n  xSInstallations {\n    installations {\n"
+                "      numinst\n      alias\n      panel\n      type\n      name\n"
+                "      surname\n      address\n      city\n      postcode\n"
+                "      province\n      email\n      phone\n    }\n  }\n}\n"
+            ),
         }
         response = await self._execute_request(content, "mkInstallationList")
 
@@ -731,7 +784,11 @@ class ApiManager:
                 "numinst": installation.number,
                 "panel": installation.panel,
             },
-            "query": "query CheckAlarm($numinst: String!, $panel: String!) {\n  xSCheckAlarm(numinst: $numinst, panel: $panel) {\n    res\n    msg\n    referenceId\n  }\n}\n",
+            "query": (
+                "query CheckAlarm($numinst: String!, $panel: String!) {\n"
+                "  xSCheckAlarm(numinst: $numinst, panel: $panel) {\n    res\n    msg\n"
+                "    referenceId\n  }\n}\n"
+            ),
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -746,7 +803,23 @@ class ApiManager:
         content = {
             "operationName": "Srv",
             "variables": {"numinst": installation.number, "uuid": self.uuid},
-            "query": "query Srv($numinst: String!, $uuid: String) {\n  xSSrv(numinst: $numinst, uuid: $uuid) {\n    res\n    msg\n    language\n    installation {\n      numinst\n      role\n      alias\n      status\n      panel\n      sim\n      instIbs\n      services {\n        idService\n        active\n        visible\n        bde\n        isPremium\n        codOper\n        request\n        minWrapperVersion\n        unprotectActive\n        unprotectDeviceStatus\n        instDate\n        genericConfig {\n          total\n          attributes {\n            key\n            value\n          }\n        }\n        attributes {\n          attributes {\n            name\n            value\n            active\n          }\n        }\n      }\n      configRepoUser {\n        alarmPartitions {\n          id\n          enterStates\n          leaveStates\n        }\n      }\n      capabilities\n    }\n  }\n}",
+            "query": (
+                "query Srv($numinst: String!, $uuid: String) {\n"
+                "  xSSrv(numinst: $numinst, uuid: $uuid) {\n    res\n    msg\n"
+                "    language\n    installation {\n      numinst\n      role\n"
+                "      alias\n      status\n      panel\n      sim\n      instIbs\n"
+                "      services {\n        idService\n        active\n        visible\n"
+                "        bde\n        isPremium\n        codOper\n        request\n"
+                "        minWrapperVersion\n        unprotectActive\n"
+                "        unprotectDeviceStatus\n        instDate\n"
+                "        genericConfig {\n          total\n          attributes {\n"
+                "            key\n            value\n          }\n        }\n"
+                "        attributes {\n          attributes {\n            name\n"
+                "            value\n            active\n          }\n        }\n      }\n"
+                "      configRepoUser {\n        alarmPartitions {\n          id\n"
+                "          enterStates\n          leaveStates\n        }\n      }\n"
+                "      capabilities\n    }\n  }\n}"
+            ),
         }
         await self._check_authentication_token()
         self._register_installation(installation)
@@ -835,7 +908,15 @@ class ApiManager:
             "variables": {
                 "numinst": installation.number,
             },
-            "query": "query Sentinel($numinst: String!) {\n  xSComfort(numinst: $numinst) {\n    res\n    devices {\n      alias\n      status {\n        temperature\n        humidity\n        airQualityCode\n      }\n      zone\n    }\n    forecast {\n      city\n      currentHum\n      currentTemp\n      forecastCode\n      forecastedDays {\n        date\n        forecastCode\n        maxTemp\n        minTemp\n      }\n    }\n  }\n}",
+            "query": (
+                "query Sentinel($numinst: String!) {\n  xSComfort(numinst: $numinst) {\n"
+                "    res\n    devices {\n      alias\n      status {\n"
+                "        temperature\n        humidity\n        airQualityCode\n      }\n"
+                "      zone\n    }\n    forecast {\n      city\n      currentHum\n"
+                "      currentTemp\n      forecastCode\n      forecastedDays {\n"
+                "        date\n        forecastCode\n        maxTemp\n        minTemp\n"
+                "      }\n    }\n  }\n}"
+            ),
         }
 
         await self._check_authentication_token()
@@ -883,7 +964,13 @@ class ApiManager:
                 "numinst": installation.number,
                 "zone": zone,
             },
-            "query": "query AirQuality($numinst: String!, $zone: String!) {\n  xSAirQuality(numinst: $numinst, zone: $zone) {\n    res\n    data {\n      status {\n        current\n        avg6h\n        avg24h\n        avg7d\n        avg4w\n      }\n      hours {\n        id\n        value\n      }\n    }\n  }\n}",
+            "query": (
+                "query AirQuality($numinst: String!, $zone: String!) {\n"
+                "  xSAirQuality(numinst: $numinst, zone: $zone) {\n    res\n    data {\n"
+                "      status {\n        current\n        avg6h\n        avg24h\n"
+                "        avg7d\n        avg4w\n      }\n      hours {\n        id\n"
+                "        value\n      }\n    }\n  }\n}"
+            ),
         }
 
         await self._check_authentication_token()
@@ -922,7 +1009,11 @@ class ApiManager:
         content = {
             "operationName": "Status",
             "variables": {"numinst": installation.number},
-            "query": "query Status($numinst: String!) {\n  xSStatus(numinst: $numinst) {\n    status\n    timestampUpdate\n    wifiConnected\n    exceptions {\n      status\n      deviceType\n      alias\n    }\n  }\n}",
+            "query": (
+                "query Status($numinst: String!) {\n  xSStatus(numinst: $numinst) {\n"
+                "    status\n    timestampUpdate\n    wifiConnected\n    exceptions {\n"
+                "      status\n      deviceType\n      alias\n    }\n  }\n}"
+            ),
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -978,7 +1069,13 @@ class ApiManager:
                 "referenceId": reference_id,
                 "idService": ALARM_STATUS_SERVICE_ID,
             },
-            "query": "query CheckAlarmStatus($numinst: String!, $idService: String!, $panel: String!, $referenceId: String!) {\n  xSCheckAlarmStatus(numinst: $numinst, idService: $idService, panel: $panel, referenceId: $referenceId) {\n    res\n    msg\n    status\n    numinst\n    protomResponse\n    protomResponseDate\n  }\n}\n",
+            "query": (
+                "query CheckAlarmStatus($numinst: String!, $idService: String!, $panel: "
+                "String!, $referenceId: String!) {\n"
+                "  xSCheckAlarmStatus(numinst: $numinst, idService: $idService, panel: "
+                "$panel, referenceId: $referenceId) {\n    res\n    msg\n    status\n"
+                "    numinst\n    protomResponse\n    protomResponseDate\n  }\n}\n"
+            ),
         }
         response = await self._execute_request(
             content, "CheckAlarmStatus", installation
@@ -1275,7 +1372,12 @@ class ApiManager:
                 "panel": installation.panel,
                 "currentStatus": self.protom_response,
             },
-            "query": "mutation xSDisarmPanel($numinst: String!, $request: DisarmCodeRequest!, $panel: String!) {\n  xSDisarmPanel(numinst: $numinst, request: $request, panel: $panel) {\n    res\n    msg\n    referenceId\n  }\n}\n",
+            "query": (
+                "mutation xSDisarmPanel($numinst: String!, $request: DisarmCodeRequest!, "
+                "$panel: String!) {\n"
+                "  xSDisarmPanel(numinst: $numinst, request: $request, panel: $panel) {\n"
+                "    res\n    msg\n    referenceId\n  }\n}\n"
+            ),
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -1345,7 +1447,15 @@ class ApiManager:
                 "referenceId": reference_id,
                 "counter": counter,
             },
-            "query": "query DisarmStatus($numinst: String!, $panel: String!, $referenceId: String!, $counter: Int!, $request: DisarmCodeRequest) {\n  xSDisarmStatus(numinst: $numinst, panel: $panel, referenceId: $referenceId, counter: $counter, request: $request) {\n    res\n    msg\n    status\n    protomResponse\n    protomResponseDate\n    numinst\n    requestId\n    error {\n      code\n      type\n      allowForcing\n      exceptionsNumber\n      referenceId\n    }\n  }\n}\n",
+            "query": (
+                "query DisarmStatus($numinst: String!, $panel: String!, $referenceId: "
+                "String!, $counter: Int!, $request: DisarmCodeRequest) {\n"
+                "  xSDisarmStatus(numinst: $numinst, panel: $panel, referenceId: "
+                "$referenceId, counter: $counter, request: $request) {\n    res\n    msg\n"
+                "    status\n    protomResponse\n    protomResponseDate\n    numinst\n"
+                "    requestId\n    error {\n      code\n      type\n      allowForcing\n"
+                "      exceptionsNumber\n      referenceId\n    }\n  }\n}\n"
+            ),
         }
         response = await self._execute_request(content, "DisarmStatus", installation)
 
@@ -1353,6 +1463,7 @@ class ApiManager:
         return disarm_data
 
     async def get_smart_lock_config(self, installation: Installation) -> SmartLock:
+        """Fetch smart lock configuration for the installation."""
         content = {
             "operationName": "xSGetSmartlockConfig",
             "variables": {
@@ -1366,7 +1477,15 @@ class ApiManager:
                     }
                 ],
             },
-            "query": "query xSGetSmartlockConfig($numinst: String!, $panel: String!, $devices: [SmartlockDevicesInfo]!) {\n  xSGetSmartlockConfig(numinst: $numinst, panel: $panel, devices: $devices) {\n    res\n    referenceId\n    zoneId\n    serialNumber\n    location\n    family\n    type\n    label\n    features {\n      holdBackLatchTime\n      calibrationType\n      autolock {\n        active\n        timeout\n      }\n    }\n  }\n}",
+            "query": (
+                "query xSGetSmartlockConfig($numinst: String!, $panel: String!, $devices: "
+                "[SmartlockDevicesInfo]!) {\n"
+                "  xSGetSmartlockConfig(numinst: $numinst, panel: $panel, devices: "
+                "$devices) {\n    res\n    referenceId\n    zoneId\n    serialNumber\n"
+                "    location\n    family\n    type\n    label\n    features {\n"
+                "      holdBackLatchTime\n      calibrationType\n      autolock {\n"
+                "        active\n        timeout\n      }\n    }\n  }\n}"
+            ),
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -1389,12 +1508,18 @@ class ApiManager:
     async def get_lock_current_mode(
         self, installation: Installation
     ) -> list[SmartLockMode]:
+        """Get the current mode of all smart locks."""
         content = {
             "operationName": "xSGetLockCurrentMode",
             "variables": {
                 "numinst": installation.number,
             },
-            "query": "query xSGetLockCurrentMode($numinst: String!, $counter: Int) {\n  xSGetLockCurrentMode(numinst: $numinst, counter: $counter) {\n    res\n    smartlockInfo {\n      lockStatus\n      deviceId\n      statusTimestamp\n    }\n  }\n}",
+            "query": (
+                "query xSGetLockCurrentMode($numinst: String!, $counter: Int) {\n"
+                "  xSGetLockCurrentMode(numinst: $numinst, counter: $counter) {\n    res\n"
+                "    smartlockInfo {\n      lockStatus\n      deviceId\n"
+                "      statusTimestamp\n    }\n  }\n}"
+            ),
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -1430,6 +1555,7 @@ class ApiManager:
         lock: bool,
         device_id: str = SMARTLOCK_DEVICE_ID,
     ) -> SmartLockModeStatus:
+        """Change the lock/unlock mode of a smart lock."""
         content = {
             "operationName": "xSChangeSmartlockMode",
             "variables": {
@@ -1439,7 +1565,13 @@ class ApiManager:
                 "deviceId": device_id,
                 "lock": lock,
             },
-            "query": "mutation xSChangeSmartlockMode($numinst: String!, $panel: String!, $deviceId: String!, $deviceType: String!, $lock: Boolean!) {\n  xSChangeSmartlockMode(\n    numinst: $numinst\n    panel: $panel\n    deviceId: $deviceId\n    deviceType: $deviceType\n    lock: $lock\n  ) {\n    res\n    msg\n    referenceId\n  }\n}",
+            "query": (
+                "mutation xSChangeSmartlockMode($numinst: String!, $panel: String!, "
+                "$deviceId: String!, $deviceType: String!, $lock: Boolean!) {\n"
+                "  xSChangeSmartlockMode(\n    numinst: $numinst\n    panel: $panel\n"
+                "    deviceId: $deviceId\n    deviceType: $deviceType\n    lock: $lock\n"
+                "  ) {\n    res\n    msg\n    referenceId\n  }\n}"
+            ),
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -1494,7 +1626,14 @@ class ApiManager:
                 "panel": installation.panel,
                 "referenceId": reference_id,
             },
-            "query": "query xSChangeSmartlockModeStatus($numinst: String!, $panel: String!, $referenceId: String!, $deviceId: String, $counter: Int) {\n  xSChangeSmartlockModeStatus(\n    numinst: $numinst\n    panel: $panel\n    referenceId: $referenceId\n    counter: $counter\n    deviceId: $deviceId\n  ) {\n    res\n    msg\n    protomResponse\n    status\n  }\n}",
+            "query": (
+                "query xSChangeSmartlockModeStatus($numinst: String!, $panel: String!, "
+                "$referenceId: String!, $deviceId: String, $counter: Int) {\n"
+                "  xSChangeSmartlockModeStatus(\n    numinst: $numinst\n"
+                "    panel: $panel\n    referenceId: $referenceId\n    counter: $counter\n"
+                "    deviceId: $deviceId\n  ) {\n    res\n    msg\n    protomResponse\n"
+                "    status\n  }\n}"
+            ),
         }
         response = await self._execute_request(
             content, "xSChangeSmartlockModeStatus", installation
@@ -1519,7 +1658,13 @@ class ApiManager:
                 "deviceType": SMARTLOCK_DEVICE_TYPE,
                 "deviceId": device_id,
             },
-            "query": "query xSGetDanalockConfig($numinst: String!, $panel: String!, $deviceId: String!, $deviceType: String) {\n  xSGetDanalockConfig(\n    numinst: $numinst\n    panel: $panel\n    deviceId: $deviceId\n    deviceType: $deviceType\n  ) {\n    res\n    msg\n    referenceId\n  }\n}",
+            "query": (
+                "query xSGetDanalockConfig($numinst: String!, $panel: String!, $deviceId: "
+                "String!, $deviceType: String) {\n  xSGetDanalockConfig(\n"
+                "    numinst: $numinst\n    panel: $panel\n    deviceId: $deviceId\n"
+                "    deviceType: $deviceType\n  ) {\n    res\n    msg\n    referenceId\n"
+                "  }\n}"
+            ),
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -1558,7 +1703,18 @@ class ApiManager:
                 "referenceId": reference_id,
                 "counter": counter,
             },
-            "query": "query xSGetDanalockConfigStatus($numinst: String!, $referenceId: String!, $counter: Int!) {\n  xSGetDanalockConfigStatus(\n    numinst: $numinst\n    referenceId: $referenceId\n    counter: $counter\n  ) {\n    res\n    msg\n    action\n    deviceNumber\n    asyncCylinder\n    batteryLowPercenteage\n    lockBeforePartialArm\n    lockBeforeFullArm\n    unlockAfterDisarm\n    lockBeforePerimeterArm\n    periodicBitExtension\n    autoLockTime\n    features {\n      holdBackLatchTime\n      calibrationType\n      autolock {\n        active\n        timeout\n      }\n    }\n  }\n}",
+            "query": (
+                "query xSGetDanalockConfigStatus("
+                "$numinst: String!, $referenceId: String!, "
+                "$counter: Int!) {\n  xSGetDanalockConfigStatus(\n    numinst: $numinst\n"
+                "    referenceId: $referenceId\n    counter: $counter\n  ) {\n    res\n"
+                "    msg\n    action\n    deviceNumber\n    asyncCylinder\n"
+                "    batteryLowPercenteage\n    lockBeforePartialArm\n"
+                "    lockBeforeFullArm\n    unlockAfterDisarm\n"
+                "    lockBeforePerimeterArm\n    periodicBitExtension\n    autoLockTime\n"
+                "    features {\n      holdBackLatchTime\n      calibrationType\n"
+                "      autolock {\n        active\n        timeout\n      }\n    }\n  }\n}"
+            ),
         }
         response = await self._execute_request(
             content, "xSGetDanalockConfigStatus", installation
@@ -1665,7 +1821,12 @@ class ApiManager:
                 "panel": installation.panel,
                 "currentStatus": self.protom_response,
             },
-            "query": "mutation xSDisarmPanel($numinst: String!, $request: DisarmCodeRequest!, $panel: String!) {\n  xSDisarmPanel(numinst: $numinst, request: $request, panel: $panel) {\n    res\n    msg\n    referenceId\n  }\n}\n",
+            "query": (
+                "mutation xSDisarmPanel($numinst: String!, $request: DisarmCodeRequest!, "
+                "$panel: String!) {\n"
+                "  xSDisarmPanel(numinst: $numinst, request: $request, panel: $panel) {\n"
+                "    res\n    msg\n    referenceId\n  }\n}\n"
+            ),
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -1705,7 +1866,13 @@ class ApiManager:
                 "deviceId": device_id,
                 "lock": lock,
             },
-            "query": "mutation xSChangeSmartlockMode($numinst: String!, $panel: String!, $deviceId: String!, $deviceType: String!, $lock: Boolean!) {\n  xSChangeSmartlockMode(\n    numinst: $numinst\n    panel: $panel\n    deviceId: $deviceId\n    deviceType: $deviceType\n    lock: $lock\n  ) {\n    res\n    msg\n    referenceId\n  }\n}",
+            "query": (
+                "mutation xSChangeSmartlockMode($numinst: String!, $panel: String!, "
+                "$deviceId: String!, $deviceType: String!, $lock: Boolean!) {\n"
+                "  xSChangeSmartlockMode(\n    numinst: $numinst\n    panel: $panel\n"
+                "    deviceId: $deviceId\n    deviceType: $deviceType\n    lock: $lock\n"
+                "  ) {\n    res\n    msg\n    referenceId\n  }\n}"
+            ),
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -1745,7 +1912,13 @@ class ApiManager:
                 "deviceType": SMARTLOCK_DEVICE_TYPE,
                 "deviceId": device_id,
             },
-            "query": "query xSGetDanalockConfig($numinst: String!, $panel: String!, $deviceId: String!, $deviceType: String) {\n  xSGetDanalockConfig(\n    numinst: $numinst\n    panel: $panel\n    deviceId: $deviceId\n    deviceType: $deviceType\n  ) {\n    res\n    msg\n    referenceId\n  }\n}",
+            "query": (
+                "query xSGetDanalockConfig($numinst: String!, $panel: String!, $deviceId: "
+                "String!, $deviceType: String) {\n  xSGetDanalockConfig(\n"
+                "    numinst: $numinst\n    panel: $panel\n    deviceId: $deviceId\n"
+                "    deviceType: $deviceType\n  ) {\n    res\n    msg\n    referenceId\n"
+                "  }\n}"
+            ),
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -1861,6 +2034,18 @@ class ApiManager:
             content, "RequestImagesStatus", installation
         )
         return self._extract_response_data(response, "xSRequestImagesStatus")
+
+    async def check_request_images_status(
+        self,
+        installation: Installation,
+        device_code: int,
+        reference_id: str,
+        counter: int = 1,
+    ) -> dict:
+        """Public wrapper for _check_request_images_status."""
+        return await self._check_request_images_status(
+            installation, device_code, reference_id, counter
+        )
 
     async def get_thumbnail(
         self, installation: Installation, device_name: str, zone_id: str

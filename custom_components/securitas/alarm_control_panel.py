@@ -187,6 +187,8 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             client.config.get(CONF_CODE_ARM_REQUIRED, False) if self._code else False
         )
 
+        self._last_arm_result: ArmStatus | DisarmStatus | None = None
+
         # Force-arm context: stored when arming fails due to non-blocking
         # exceptions (e.g. open window).  Consumed on the next arm attempt to
         # override the exception.  Cleared on status refresh.
@@ -253,10 +255,13 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             self._mobile_action_unsub()
 
     async def async_update(self) -> None:
-        """Update the status of the alarm based on the configuration. This is called when HA reloads."""
+        """Update the status of the alarm based on the configuration.
+
+        This is called when HA reloads.
+        """
         await self.async_update_status()
 
-    async def async_update_status(self, now=None) -> None:
+    async def async_update_status(self, _now=None) -> None:
         """Update the status of the alarm."""
         if self.hass is None:
             return
@@ -442,10 +447,9 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
                         self._last_arm_result = result
                     assert result is not None
                     return result
-                else:
-                    result = await self._send_single_command(command, **force_params)
-                    self._last_arm_result = result
-                    return result
+                result = await self._send_single_command(command, **force_params)
+                self._last_arm_result = result
+                return result
             except ArmingExceptionError:
                 raise  # Arming exceptions need special handling upstream
             except SecuritasDirectError as err:
@@ -497,10 +501,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         """Send a single arm or disarm command to the API."""
         if command.startswith("D"):
             return await self.client.disarm_alarm(self.installation, command)
-        else:
-            return await self.client.arm_alarm(
-                self.installation, command, **force_params
-            )
+        return await self.client.arm_alarm(self.installation, command, **force_params)
 
     def _set_refresh_failed(self, failed: bool) -> None:
         """Track whether the last manual refresh timed out."""
@@ -521,7 +522,10 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
                         domain="persistent_notification",
                         service="dismiss",
                         service_data={
-                            "notification_id": f"{DOMAIN}.securitas_rate_limited_{self.installation.number}",
+                            "notification_id": (
+                                f"{DOMAIN}.securitas_rate_limited"
+                                f"_{self.installation.number}"
+                            ),
                         },
                     )
                 )
@@ -711,11 +715,17 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
                             "tag": self._arming_exception_notification_id,
                             "actions": [
                                 {
-                                    "action": f"SECURITAS_FORCE_ARM_{self.installation.number}",
+                                    "action": (
+                                        "SECURITAS_FORCE_ARM"
+                                        f"_{self.installation.number}"
+                                    ),
                                     "title": "Force Arm",
                                 },
                                 {
-                                    "action": f"SECURITAS_CANCEL_FORCE_ARM_{self.installation.number}",
+                                    "action": (
+                                        "SECURITAS_CANCEL_FORCE_ARM"
+                                        f"_{self.installation.number}"
+                                    ),
                                     "title": "Cancel",
                                 },
                             ],

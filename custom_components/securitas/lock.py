@@ -1,9 +1,11 @@
+"""Securitas Direct smart lock platform."""
+
 import datetime
 from datetime import timedelta
 import logging
 from typing import Any
 
-import homeassistant.components.lock as lock
+from homeassistant.components import lock
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_SCAN_INTERVAL
@@ -55,6 +57,8 @@ async def async_setup_entry(
 
 
 class SecuritasLock(lock.LockEntity):
+    """Representation of a Securitas Direct smart lock."""
+
     def __init__(
         self,
         installation: Installation,
@@ -142,9 +146,11 @@ class SecuritasLock(lock.LockEntity):
             self._update_unsub = None
 
     async def async_update(self) -> None:
+        """Update lock state."""
         await self.async_update_status()
 
-    async def async_update_status(self, now=None) -> None:
+    async def async_update_status(self, _now=None) -> None:
+        """Poll lock status from the API."""
         if self.hass is None:
             return
 
@@ -164,7 +170,7 @@ class SecuritasLock(lock.LockEntity):
                         self.installation.number,
                         cfg.features.holdBackLatchTime,
                     )
-            except Exception:
+            except (SecuritasDirectError, KeyError, TypeError):
                 _LOGGER.debug(
                     "Could not fetch Danalock config for %s device %s",
                     self.installation.number,
@@ -184,6 +190,7 @@ class SecuritasLock(lock.LockEntity):
             )
 
     async def get_lock_state(self) -> str:
+        """Return the current lock status from the API."""
         lock_modes: list[SmartLockMode] = await self.client.get_lock_modes(
             self.installation
         )
