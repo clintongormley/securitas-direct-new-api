@@ -61,8 +61,6 @@ Or manually:
 
 ## Setup
 
-![Setup](./docs/images/setup.png)
-
 Go to **Settings → Integrations → Add Integration** and search for **Securitas Direct**.
 
 The setup flow is a multi-step wizard:
@@ -72,26 +70,35 @@ The setup flow is a multi-step wizard:
 3. **Options** — Set your PIN code, notification service, and optionally expand the **Advanced** section for scan interval and API delay settings.
 4. **Mappings** — Map each HA alarm button to a Securitas alarm mode.
 
-| Option                                  | Default   | Description                                                                                                                                                                            |
-| --------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Username                                | —         | Your Securitas Direct account username.                                                                                                                                                |
-| Password                                | —         | Your Securitas Direct account password.                                                                                                                                                |
-| Country Code                            | _(auto)_  | Auto-detected from your HA locale. All supported countries available in dropdown.                                                                                                      |
-| PIN Code                                | _(empty)_ | Optional local PIN for the HA alarm panel. This PIN is **not** sent to Securitas — it only protects the panel in Home Assistant. Can be numeric or alphanumeric.                       |
-| Require PIN to arm                      | No        | When enabled, the PIN is also required to arm the alarm (not just to disarm). Has no effect if no PIN is set.                                                                          |
-| Notify service                          | _(none)_  | A `notify` service to call when arming is blocked by an exception. Select a mobile app notify service to receive an actionable notification with **Force Arm** and **Cancel** buttons. |
-| Update interval _(Advanced)_            | 120s      | How often (in seconds) the integration checks the alarm status. Set to 0 to disable automatic polling.                                                                                 |
-| Delay between API requests _(Advanced)_ | 2s        | Minimum delay between consecutive API requests. Higher values reduce the risk of WAF rate limiting.                                                                                    |
+### Login
+
+![Setup](./docs/images/setup.png)
+
+| Option       | Default  | Description                                                                       |
+| ------------ | -------- | --------------------------------------------------------------------------------- |
+| Username     | —        | Your Securitas Direct account username.                                           |
+| Password     | —        | Your Securitas Direct account password.                                           |
+| Country Code | _(auto)_ | Auto-detected from your HA locale. All supported countries available in dropdown. |
 
 ### Two-factor authentication
 
 If your account requires 2FA, you will automatically be asked to select a phone number and enter the SMS code during setup.
+
+![2FA](./docs/images/2fa.png)
 
 ## Options
 
 After setup, you can change most settings via **Settings → Integrations → Securitas Direct → Configure**.
 
 ![Options](./docs/images/options.png)
+
+| Option                                  | Default   | Description                                                                                                                                                                            |
+| --------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PIN Code                                | _(empty)_ | Optional local PIN for the HA alarm panel. This PIN is **not** sent to Securitas — it only protects the panel in Home Assistant. Can be numeric or alphanumeric.                       |
+| Require PIN to arm                      | No        | When enabled, the PIN is also required to arm the alarm (not just to disarm). Has no effect if no PIN is set.                                                                          |
+| Notify service                          | _(none)_  | A `notify` service to call when arming is blocked by an exception. Select a mobile app notify service to receive an actionable notification with **Force Arm** and **Cancel** buttons. |
+| Update interval _(Advanced)_            | 120s      | How often (in seconds) the integration checks the alarm status. Set to 0 to disable automatic polling.                                                                                 |
+| Delay between API requests _(Advanced)_ | 2s        | Minimum delay between consecutive API requests. Higher values reduce the risk of WAF rate limiting.                                                                                    |
 
 ## Alarm State Mappings
 
@@ -122,7 +129,7 @@ Each of the five HA alarm buttons can be mapped to any Securitas mode in the int
 
 When the integration checks the alarm status, it translates the Securitas response back to the correct HA state using the same mapping. For example, if you mapped **Away** to "Total + Perimeter", then when Securitas reports "Total + Perimeter" the alarm panel will show "Armed Away".
 
-When switching between armed modes (e.g. from "Armed Home" to "Armed Away"), the integration automatically disarms the alarm first and then arms with the new mode. This is necessary because the Securitas API treats interior and perimeter as independent axes.
+When switching between modes (e.g. from "Armed Home" to "Armed Away + Perimeter" or to "Disarmed"), the integration automatically determines what changes need to be made to match the requested state.
 
 ### Default Mappings
 
@@ -146,7 +153,7 @@ When switching between armed modes (e.g. from "Armed Home" to "Armed Away"), the
 | Custom    | Perimeter Only    |
 | Vacation  | Not Used (hidden) |
 
-> **Note:** Perimeter variants (e.g. "Partial Night + Perimeter") are available as options and can be assigned to any button via the integration options. Some panels (e.g. SDVECU in Italy) accept compound commands like `ARMNIGHT1PERI1` as a single API call, while others (e.g. SDVFAST in Spain) require two sequential requests (`ARMNIGHT1` then `PERI1`). The integration auto-detects which mode your panel supports: it tries the single command first and, on failure, falls back to multi-step — remembering the result for the rest of the session.
+> **Note:** Perimeter variants (e.g. "Partial Night + Perimeter") are available as options and can be assigned to any button via the integration options.
 
 ### Unmapped Alarm States
 
@@ -208,9 +215,9 @@ target:
 
 The integration ships with a custom Lovelace card (`securitas-alarm-card`) that is purpose-built for Securitas Direct. It goes beyond the standard HA alarm panel card by integrating the force-arm flow directly into the dashboard.
 
-|                   Disarmed                   |                   Armed (Home)                   |                   All Modes                    |
-| :------------------------------------------: | :----------------------------------------------: | :--------------------------------------------: |
-| ![Disarmed](./docs/images/card-disarmed.png) | ![Armed Home](./docs/images/card-armed-home.png) | ![All Modes](./docs/images/card-all-modes.png) |
+|                   Disarmed                   |                   Armed (Home)                   |                   Custom Mapping                    |
+| :------------------------------------------: | :----------------------------------------------: | :-------------------------------------------------: |
+| ![Disarmed](./docs/images/card-disarmed.png) | ![Armed Home](./docs/images/card-armed-home.png) | ![All Modes](./docs/images/card-custom-mapping.png) |
 
 |                PIN Keypad                 |                   Force Arm                    |
 | :---------------------------------------: | :--------------------------------------------: |
