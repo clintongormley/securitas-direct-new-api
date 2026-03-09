@@ -673,13 +673,13 @@ class TestDataclassFields:
         assert mode.deviceId == ""
 
 
-# ── Raw request + single-poll methods for ApiQueue ───────────────────────────
+# ── Submit request + single-poll methods for ApiQueue ─────────────────────────
 
 
-class TestRawRequestMethods:
-    """Tests for raw request + single-poll methods used by ApiQueue."""
+class TestSubmitRequestMethods:
+    """Tests for submit request + single-poll methods used by ApiQueue."""
 
-    async def test_arm_request_returns_reference_id(self, authed_api, installation):
+    async def test_submit_arm_request_returns_reference_id(self, authed_api, installation):
         authed_api._execute_request = AsyncMock(
             return_value={
                 "data": {
@@ -691,10 +691,10 @@ class TestRawRequestMethods:
                 }
             }
         )
-        ref = await authed_api.arm_request(installation, "ARM1")
+        ref = await authed_api.submit_arm_request(installation, "ARM1")
         assert ref == "ref-123"
 
-    async def test_arm_request_error_raises(self, authed_api, installation):
+    async def test_submit_arm_request_error_raises(self, authed_api, installation):
         authed_api._execute_request = AsyncMock(
             return_value={
                 "data": {
@@ -707,9 +707,9 @@ class TestRawRequestMethods:
             }
         )
         with pytest.raises(SecuritasDirectError):
-            await authed_api.arm_request(installation, "ARM1")
+            await authed_api.submit_arm_request(installation, "ARM1")
 
-    async def test_disarm_request_returns_reference_id(self, authed_api, installation):
+    async def test_submit_disarm_request_returns_reference_id(self, authed_api, installation):
         authed_api._execute_request = AsyncMock(
             return_value={
                 "data": {
@@ -721,10 +721,10 @@ class TestRawRequestMethods:
                 }
             }
         )
-        ref = await authed_api.disarm_request(installation, "DARM1")
+        ref = await authed_api.submit_disarm_request(installation, "DARM1")
         assert ref == "ref-456"
 
-    async def test_check_arm_status_once_delegates(self, authed_api, installation):
+    async def test_check_arm_status_delegates(self, authed_api, installation):
         authed_api._execute_request = AsyncMock(
             return_value={
                 "data": {
@@ -741,10 +741,10 @@ class TestRawRequestMethods:
                 }
             }
         )
-        raw = await authed_api.check_arm_status_once(installation, "ref-123", "ARM1", 1)
+        raw = await authed_api.check_arm_status(installation, "ref-123", "ARM1", 1)
         assert raw["res"] == "WAIT"
 
-    async def test_check_disarm_status_once_delegates(self, authed_api, installation):
+    async def test_check_disarm_status_delegates(self, authed_api, installation):
         authed_api._execute_request = AsyncMock(
             return_value={
                 "data": {
@@ -761,12 +761,12 @@ class TestRawRequestMethods:
                 }
             }
         )
-        raw = await authed_api.check_disarm_status_once(
+        raw = await authed_api.check_disarm_status(
             installation, "ref-456", "DARM1", 1
         )
         assert raw["res"] == "WAIT"
 
-    async def test_change_lock_mode_request_returns_reference_id(
+    async def test_submit_change_lock_mode_request_returns_reference_id(
         self, authed_api, installation
     ):
         authed_api._execute_request = AsyncMock(
@@ -780,10 +780,10 @@ class TestRawRequestMethods:
                 }
             }
         )
-        ref = await authed_api.change_lock_mode_request(installation, True, "01")
+        ref = await authed_api.submit_change_lock_mode_request(installation, True, "01")
         assert ref == "ref-lock"
 
-    async def test_get_danalock_config_request_returns_reference_id(
+    async def test_submit_danalock_config_request_returns_reference_id(
         self, authed_api, installation
     ):
         authed_api._execute_request = AsyncMock(
@@ -797,7 +797,7 @@ class TestRawRequestMethods:
                 }
             }
         )
-        ref = await authed_api.get_danalock_config_request(installation, "01")
+        ref = await authed_api.submit_danalock_config_request(installation, "01")
         assert ref == "ref-cfg"
 
 

@@ -992,7 +992,7 @@ class SecuritasHub:
         """Arm the alarm via queue-submitted API calls."""
         reference_id = await self._api_queue.submit(
             functools.partial(
-                self.session.arm_request, installation, command, **force_params
+                self.session.submit_arm_request, installation, command, **force_params
             ),
             priority=ApiQueue.FOREGROUND,
         )
@@ -1000,7 +1000,7 @@ class SecuritasHub:
         max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
         for attempt in range(1, max_attempts + 1):
             raw = await self._api_queue.submit(
-                self.session.check_arm_status_once,
+                self.session.check_arm_status,
                 installation,
                 reference_id,
                 command,
@@ -1015,7 +1015,7 @@ class SecuritasHub:
     async def disarm_alarm(self, installation: Installation, command: str) -> Any:
         """Disarm the alarm via queue-submitted API calls."""
         reference_id = await self._api_queue.submit(
-            self.session.disarm_request,
+            self.session.submit_disarm_request,
             installation,
             command,
             priority=ApiQueue.FOREGROUND,
@@ -1024,7 +1024,7 @@ class SecuritasHub:
         max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
         for attempt in range(1, max_attempts + 1):
             raw = await self._api_queue.submit(
-                self.session.check_disarm_status_once,
+                self.session.check_disarm_status,
                 installation,
                 reference_id,
                 command,
@@ -1074,7 +1074,7 @@ class SecuritasHub:
     ) -> Any:
         """Change lock mode via queue-submitted API calls."""
         reference_id = await self._api_queue.submit(
-            self.session.change_lock_mode_request,
+            self.session.submit_change_lock_mode_request,
             installation,
             lock_state,
             device_id,
@@ -1084,7 +1084,7 @@ class SecuritasHub:
         max_attempts = max(10, round(30 / max(1, self.session.delay_check_operation)))
         for attempt in range(1, max_attempts + 1):
             raw = await self._api_queue.submit(
-                self.session.check_change_lock_mode_once,
+                self.session.check_change_lock_mode,
                 installation,
                 reference_id,
                 attempt,
