@@ -1,6 +1,7 @@
 """Support for Securitas Direct alarms."""
 
 import asyncio
+import base64
 from collections import OrderedDict
 import functools
 import json
@@ -52,6 +53,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "securitas"
 SIGNAL_XSSTATUS_UPDATE = f"{DOMAIN}_xsstatus_update"
+SIGNAL_CAMERA_UPDATE = f"{DOMAIN}_camera_update"
 CARD_BASE_URL = "/securitas_panel/securitas-alarm-card.js"
 _MANIFEST = json.loads((Path(__file__).parent / "manifest.json").read_text())
 CARD_URL = f"{CARD_BASE_URL}?v={_MANIFEST['version']}"
@@ -588,6 +590,8 @@ class SecuritasHub:
         self._lock_modes_time: dict[str, float] = {}  # last fetch time per installation
         self._api_cache: dict[str, Any] = {}  # generic cache: key -> result
         self._api_cache_time: dict[str, float] = {}  # generic cache: key -> timestamp
+        self.camera_images: dict[str, bytes] = {}
+        self._camera_devices_cache: dict[str, list] = {}
 
     async def login(self):
         """Login to Securitas."""
@@ -627,6 +631,60 @@ class SecuritasHub:
         )
         self._services_cache[key] = services
         return services
+
+    async def get_camera_devices(self, installation: Installation) -> list:
+        """Get camera devices for an installation (cached)."""
+        key = installation.number
+        if key in self._camera_devices_cache:
+            return self._camera_devices_cache[key]
+        devices = await self.session.get_device_list(installation)
+        self._camera_devices_cache[key] = devices
+        return devices
+
+    async def capture_image(
+        self, installation: Installation, camera_device
+    ) -> bytes | None:
+        """Request a new image capture and fetch the result."""
+        from .securitas_direct_new_api.dataTypes import CameraDevice
+
+        device: CameraDevice = camera_device
+        reference_id = await self.session.request_images(
+            installation, device.code
+        )
+
+        # Poll for completion
+        try:
+            await self.session._poll_operation(
+                lambda: self.session._check_request_images_status(
+                    installation, device.code, reference_id
+                ),
+                timeout=60.0,
+            )
+        except Exception:
+            _LOGGER.warning(
+                "Image request polling timed out for %s, fetching thumbnail anyway",
+                device.name,
+            )
+
+        # Fetch the thumbnail
+        thumbnail = await self.session.get_thumbnail(
+            installation, device.name, device.zone_id
+        )
+        if thumbnail.image is None:
+            return None
+
+        image_bytes = base64.b64decode(thumbnail.image)
+        key = f"{installation.number}_{device.zone_id}"
+        self.camera_images[key] = image_bytes
+
+        async_dispatcher_send(
+            self.hass, SIGNAL_CAMERA_UPDATE, installation.number, device.zone_id
+        )
+        return image_bytes
+
+    def get_camera_image(self, installation_number: str, zone_id: str) -> bytes | None:
+        """Return the last captured image for a camera."""
+        return self.camera_images.get(f"{installation_number}_{zone_id}")
 
     def get_authentication_token(self) -> str | None:
         """Get the authentication token."""

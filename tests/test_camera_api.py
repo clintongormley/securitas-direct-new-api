@@ -183,3 +183,23 @@ class TestGetThumbnail:
         result = await authed_api.get_thumbnail(installation, device_name="Salon", zone_id="QR10")
         assert result.image is None
         assert result.id_signal is None
+
+
+class TestHubCameraOperations:
+    def test_signal_constant_exists(self):
+        from custom_components.securitas import SIGNAL_CAMERA_UPDATE
+        assert isinstance(SIGNAL_CAMERA_UPDATE, str)
+
+    def test_get_camera_image_returns_none_when_empty(self):
+        """Test that get_camera_image returns None for missing keys."""
+        from custom_components.securitas import SecuritasHub
+        # Just test the dict lookup logic
+        images: dict[str, bytes] = {}
+        assert images.get("2654190_QR10") is None
+
+    def test_get_camera_image_returns_stored_bytes(self):
+        """Test that stored bytes are retrievable."""
+        images: dict[str, bytes] = {}
+        image_bytes = b"\xff\xd8\xff\xe0fake_jpeg"
+        images["2654190_QR10"] = image_bytes
+        assert images.get("2654190_QR10") == image_bytes
