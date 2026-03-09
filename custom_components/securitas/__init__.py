@@ -75,7 +75,6 @@ CONF_NOTIFY_GROUP = "notify_group"
 CONF_INSTALLATION = "installation"
 
 DEFAULT_SCAN_INTERVAL = 120
-DEFAULT_SCAN_INTERVAL_ES = 300
 DEFAULT_CODE_ARM_REQUIRED = False
 DEFAULT_DELAY_CHECK_OPERATION = 2
 DEFAULT_CODE = ""
@@ -188,12 +187,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     config[CONF_CODE_ARM_REQUIRED] = _opt(
         CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED
     )
-    default_scan = (
-        DEFAULT_SCAN_INTERVAL_ES
-        if config[CONF_COUNTRY] == "ES"
-        else DEFAULT_SCAN_INTERVAL
-    )
-    config[CONF_SCAN_INTERVAL] = _opt(CONF_SCAN_INTERVAL, default_scan)
+    config[CONF_SCAN_INTERVAL] = _opt(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     config[CONF_DELAY_CHECK_OPERATION] = _opt(
         CONF_DELAY_CHECK_OPERATION, DEFAULT_DELAY_CHECK_OPERATION
     )

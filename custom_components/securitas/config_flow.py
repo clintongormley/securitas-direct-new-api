@@ -45,7 +45,6 @@ from . import (
     DEFAULT_CODE_ARM_REQUIRED,
     DEFAULT_DELAY_CHECK_OPERATION,
     DEFAULT_SCAN_INTERVAL,
-    DEFAULT_SCAN_INTERVAL_ES,
     DOMAIN,
     SecuritasHub,
     generate_uuid,
@@ -361,12 +360,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_CODE_ARM_REQUIRED, default=DEFAULT_CODE_ARM_REQUIRED
                 ): bool,
                 vol.Optional(
-                    CONF_SCAN_INTERVAL,
-                    default=(
-                        DEFAULT_SCAN_INTERVAL_ES
-                        if self.config.get(CONF_COUNTRY) == "ES"
-                        else DEFAULT_SCAN_INTERVAL
-                    ),
+                    CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
                 ): int,
                 vol.Optional(
                     CONF_DELAY_CHECK_OPERATION, default=DEFAULT_DELAY_CHECK_OPERATION
@@ -454,11 +448,7 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
             user_input.setdefault(CONF_CODE, DEFAULT_CODE)
             self._general_data = user_input
             return await self.async_step_mappings()
-        country = self.config_entry.data.get(CONF_COUNTRY, "ES")
-        default_scan = (
-            DEFAULT_SCAN_INTERVAL_ES if country == "ES" else DEFAULT_SCAN_INTERVAL
-        )
-        scan_interval = self._get(CONF_SCAN_INTERVAL, default_scan)
+        scan_interval = self._get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
         code_arm_required = self._get(CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED)
         delay_check_operation = self._get(
