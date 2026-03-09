@@ -10,10 +10,22 @@ A Home Assistant custom integration for [Securitas Direct](https://www.securitas
 - **Custom alarm card** — a purpose-built Lovelace card with dynamic arm buttons, PIN keypad, and built-in force-arm UI.
 - **Perimeter alarm support** — full support for installations with external/outdoor sensors.
 - **Sentinel sensors** — temperature, humidity, and air quality sensors for each Sentinel device.
-- **Smart locks** — lock and unlock smart door locks.
+- **Smart locks** — lock and unlock smart door locks. Multiple locks per installation supported, including Danalock configuration attributes (battery, auto-lock, arm-lock policies).
+- **Cameras** — view the latest captured image from Securitas cameras, with a capture button to request new images on demand.
 - **Refresh button** — manually trigger an alarm status check.
 - **PIN code protection** — optional local PIN code for arming and/or disarming the alarm from Home Assistant (independent of your Securitas account).
 - **Two-factor authentication** — login via SMS verification code.
+
+## Breaking Changes in v2.0
+
+> **Warning:** This release includes breaking changes. Please read before upgrading.
+
+- **"Check alarm panel" option removed** — The integration now always uses the lightweight server-side status check for periodic polling. The more expensive panel query is still used for arm/disarm operations and the manual refresh button. If you had automations or scripts referencing this option, they will need to be updated.
+- **"Use 2FA" checkbox removed** — 2FA is now handled automatically during setup. If your account requires 2FA, you will be prompted; if not, the step is skipped.
+- **Config entry migration** — Existing config entries are automatically migrated to the new per-installation format (v2). If you had multiple installations on one account, each now has its own config entry. The migration is automatic, but you should verify your entities after upgrading.
+- **Perimeter alarm auto-detection** — The "Perimetral alarm" checkbox has been replaced by automatic detection from the installation's service attributes. Your existing perimeter setting is preserved during migration.
+- **Scan interval and API delay moved to Advanced section** — These options are now in a collapsible "Advanced" section in the options flow. The "Delay to check arming and disarming operations" has been renamed to "Delay between API requests" and now applies to all API calls (not just arm/disarm polling).
+- **WiFi diagnostic sensor added** — A new `wifi_connected` diagnostic sensor is created per installation. It is disabled by default.
 
 ## Supported Countries
 
@@ -50,22 +62,27 @@ Or manually:
 
 Go to **Settings → Integrations → Add Integration** and search for **Securitas Direct**.
 
-| Option             | Default   | Description                                                                                                                                                                                                                   |
-| ------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Username           | —         | Your Securitas Direct account username.                                                                                                                                                                                       |
-| Password           | —         | Your Securitas Direct account password.                                                                                                                                                                                       |
-| Use 2FA            | Yes       | Enable two-factor authentication via SMS. Uncheck to skip.                                                                                                                                                                    |
-| Country Code       | ES        | Your country code (see table above).                                                                                                                                                                                          |
-| PIN Code           | _(empty)_ | Optional local PIN for the HA alarm panel. This PIN is **not** sent to Securitas — it only protects the panel in Home Assistant. Can be numeric or alphanumeric. Leave empty for no PIN.                                      |
-| Require PIN to arm | No        | When enabled, the PIN is also required to arm the alarm (not just to disarm). Useful to disable for Android Auto and similar interfaces. Has no effect if no PIN is set.                                                      |
-| Perimetral alarm   | No        | Enable if your installation has external/outdoor sensors. This determines which alarm modes are available and the correct disarm command.                                                                                     |
-| Check alarm panel  | Yes       | When enabled, the integration queries the physical alarm panel for its status. When disabled, it reads the last known status from the Securitas server (fewer requests, but may be out of sync if you use the Securitas app). |
-| Update interval    | 120s      | How often (in seconds) the integration checks the alarm status.                                                                                                                                                               |
-| Notify service     | _(none)_  | A `notify` service to call when arming is blocked by an exception. Select a mobile app notify service to receive an actionable notification with **Force Arm** and **Cancel** buttons.                                        |
+The setup flow is a multi-step wizard:
+
+1. **Login** — Enter your country, username, and password. 2FA is handled automatically if your account requires it.
+2. **Installation** — If your account has multiple installations, pick which one to configure. Perimeter support is auto-detected from the installation's services.
+3. **Options** — Set your PIN code, notification service, and optionally expand the **Advanced** section for scan interval and API delay settings.
+4. **Mappings** — Map each HA alarm button to a Securitas alarm mode.
+
+| Option                          | Default   | Description                                                                                                                                                       |
+| ------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Username                        | —         | Your Securitas Direct account username.                                                                                                                           |
+| Password                        | —         | Your Securitas Direct account password.                                                                                                                           |
+| Country Code                    | _(auto)_  | Auto-detected from your HA locale. All supported countries available in dropdown.                                                                                 |
+| PIN Code                        | _(empty)_ | Optional local PIN for the HA alarm panel. This PIN is **not** sent to Securitas — it only protects the panel in Home Assistant. Can be numeric or alphanumeric.  |
+| Require PIN to arm              | No        | When enabled, the PIN is also required to arm the alarm (not just to disarm). Has no effect if no PIN is set.                                                     |
+| Notify service                  | _(none)_  | A `notify` service to call when arming is blocked by an exception. Select a mobile app notify service to receive an actionable notification with **Force Arm** and **Cancel** buttons. |
+| Update interval _(Advanced)_    | 120s      | How often (in seconds) the integration checks the alarm status. Set to 0 to disable automatic polling.                                                            |
+| Delay between API requests _(Advanced)_ | 2s | Minimum delay between consecutive API requests. Higher values reduce the risk of WAF rate limiting.                                                               |
 
 ### Two-factor authentication
 
-If 2FA is enabled (the default), you will be asked to select a phone number and enter the SMS code during setup.
+If your account requires 2FA, you will automatically be asked to select a phone number and enter the SMS code during setup.
 
 ## Options
 
@@ -220,17 +237,21 @@ If your installation includes Sentinel devices, the integration automatically cr
 
 ## Smart Locks
 
-If your installation includes smart door locks, the integration creates lock entities that you can lock and unlock from Home Assistant.
+If your installation includes smart door locks, the integration creates lock entities that you can lock and unlock from Home Assistant. Multiple locks per installation are supported — each lock gets its own entity.
+
+For Danalock locks, the entity exposes additional attributes: battery threshold, auto-lock timeout, arm-lock policies (lock before arm, unlock after disarm), and latch hold-back time.
+
+## Cameras
+
+If your installation includes Securitas cameras, the integration creates a camera entity showing the last captured image. A **Capture** button entity is also created for each camera, allowing you to request a new image on demand.
 
 ## Troubleshooting
 
 - **HTTP 403 errors / rate limiting** — Securitas uses a web application firewall (WAF) that blocks requests if you poll too frequently. The integration retries once automatically, but if you see repeated 403 errors in the logs:
-  - **Increase the update interval** — Go to **Settings → Integrations → Securitas Direct → Configure** and increase the **Update scan interval** (default: 120 seconds). Try 180 or 300 seconds.
-  - **Increase the arm/disarm poll delay** — The **Delay to check arming and disarming operations** (default: 2 seconds) controls how frequently the integration polls during arm/disarm operations. Increasing this to 4–5 seconds reduces request bursts.
-  - **Disable Check alarm panel** — This cuts the number of requests roughly in half by reading the last known status from the Securitas server instead of querying the physical panel.
+  - **Increase the update interval** — Go to **Settings → Integrations → Securitas Direct → Configure**, expand the **Advanced** section, and increase the **Update scan interval** (default: 120 seconds). Try 180 or 300 seconds.
+  - **Increase the API request delay** — The **Delay between API requests** (default: 2 seconds) controls the minimum gap between consecutive API calls. Increasing this to 4–5 seconds reduces request bursts.
   - If you have **multiple installations** on one account, each one polls independently, multiplying the request rate.
-- **Securitas calls about suspicious activity** — If you have **Check alarm panel** enabled, Securitas may notice the periodic status checks in your account. You can disable this option to use server-side status instead (less accurate but fewer requests).
-- **Alarm shows wrong state after using the Securitas app** — This happens when **Check alarm panel** is disabled. The integration only sees the last server-side status, which may not reflect changes made via the app.
+- **Alarm shows wrong state after using the Securitas app** — Periodic polling reads the last known status from the Securitas server, which may take a moment to reflect changes made via the app. Press the **Refresh** button to force an immediate panel check.
 - **Cannot clear PIN code** — In the options flow, clear the PIN field and save. The PIN will be removed.
 - **2FA issues** — If 2FA fails, remove and re-add the integration. You will be prompted for a new SMS code. If the error persists, try creating a new user via the Securitas/Verisure mobile app, then log in to the customer web portal for your country to accept the terms of use before using the new credentials in Home Assistant.
 
