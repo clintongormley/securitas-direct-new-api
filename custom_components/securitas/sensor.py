@@ -7,13 +7,12 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTemperature
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_call_later
 
 from . import DOMAIN, SecuritasDirectDevice, SecuritasHub
 from .constants import SentinelName
-from .entity import SecuritasEntity, securitas_device_info
+from .entity import SecuritasEntity, schedule_initial_updates, securitas_device_info
 from .securitas_direct_new_api import Installation, SecuritasDirectError
 from .securitas_direct_new_api.dataTypes import AirQuality, Service
 
@@ -68,16 +67,7 @@ async def async_setup_entry(
             sensors.append(SentinelAirQualityStatus(fetcher, device.installation))
     async_add_entities(sensors, False)
 
-    # Schedule initial update shortly after setup to populate values
-    # without blocking entity registration.
-    if sensors:
-
-        @callback
-        def _initial_update(_now) -> None:
-            for sensor in sensors:
-                sensor.async_schedule_update_ha_state(force_refresh=True)
-
-        async_call_later(hass, 5, _initial_update)
+    schedule_initial_updates(hass, sensors)
 
 
 class SentinelTemperature(SecuritasEntity, SensorEntity):
