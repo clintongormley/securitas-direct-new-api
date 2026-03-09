@@ -26,6 +26,7 @@ def mock_hub():
     hub = MagicMock()
     hub.camera_images = {}
     hub.get_camera_image = MagicMock(return_value=None)
+    hub.fetch_latest_thumbnail = AsyncMock()
     return hub
 
 
@@ -62,15 +63,15 @@ class TestSecuritasCamera:
         mock_hub.get_camera_image.assert_called_once_with("2654190", "QR10")
 
     @pytest.mark.asyncio
-    async def test_camera_image_returns_none_when_empty(
+    async def test_camera_image_returns_placeholder_when_empty(
         self, mock_hub, installation, camera_device
     ):
-        from custom_components.securitas.camera import SecuritasCamera
+        from custom_components.securitas.camera import SecuritasCamera, _PLACEHOLDER_IMAGE
 
         mock_hub.get_camera_image.return_value = None
         cam = SecuritasCamera(mock_hub, installation, camera_device)
         result = await cam.async_camera_image()
-        assert result is None
+        assert result == _PLACEHOLDER_IMAGE
 
 
 class TestSecuritasCaptureButton:

@@ -71,7 +71,6 @@ async def async_setup_entry(
             sensors.append(SentinelAirQualityStatus(fetcher, device.installation))
         # xSStatus diagnostic sensors — updated from polling data (no extra API calls)
         sensors.append(WifiConnectedSensor(client, device.installation))
-        sensors.append(KeepAliveDaySensor(client, device.installation))
     async_add_entities(sensors, False)
 
     # Schedule initial update shortly after setup to populate values
@@ -310,32 +309,3 @@ class WifiConnectedSensor(SensorEntity):
             self.async_write_ha_state()
 
 
-class KeepAliveDaySensor(SensorEntity):
-    """Keep-alive day counter from xSStatus — updated via dispatcher, no polling."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_should_poll = False
-    _attr_icon = "mdi:heart-pulse"
-
-    def __init__(self, client: SecuritasHub, installation: Installation) -> None:
-        self._client = client
-        self._installation = installation
-        self._attr_unique_id = f"{installation.number}_keep_alive_day"
-        self._attr_name = f"{installation.alias} Keep Alive Day"
-        self._attr_device_info = _device_info(installation)
-
-    async def async_added_to_hass(self) -> None:
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass, SIGNAL_XSSTATUS_UPDATE, self._handle_update
-            )
-        )
-
-    @callback
-    def _handle_update(self, installation_number: str) -> None:
-        if installation_number != self._installation.number:
-            return
-        status = self._client.xsstatus.get(self._installation.number)
-        if status and status.keep_alive_day is not None:
-            self._attr_native_value = status.keep_alive_day
-            self.async_write_ha_state()
