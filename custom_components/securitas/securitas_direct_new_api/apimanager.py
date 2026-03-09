@@ -1565,6 +1565,7 @@ class ApiManager:
         counter: int,
         device_id: str = SMARTLOCK_DEVICE_ID,
     ) -> dict[str, Any]:
+        """Check progress of lock mode change operation."""
         content = {
             "operationName": "xSChangeSmartlockModeStatus",
             "variables": {
@@ -1623,6 +1624,7 @@ class ApiManager:
         reference_id: str,
         counter: int,
     ) -> dict[str, Any]:
+        """Check progress of Danalock config fetch operation."""
         content = {
             "operationName": "xSGetDanalockConfigStatus",
             "variables": {

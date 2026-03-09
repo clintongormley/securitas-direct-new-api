@@ -63,8 +63,11 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 @pytest.fixture(autouse=True)
 def mock_call_later():
-    """No-op: async_call_later is no longer used by alarm_control_panel or sensor."""
-    yield
+    """Prevent lingering timers from schedule_initial_updates in entity.py."""
+    with patch(
+        "custom_components.securitas.entity.async_call_later",
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------

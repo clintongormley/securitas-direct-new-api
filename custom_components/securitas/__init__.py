@@ -316,7 +316,6 @@ def _get_or_create_api_queue(
 async def _fetch_and_cache_installations(
     hass: HomeAssistant,
     hub: "SecuritasHub",
-    config: dict,
     entry: ConfigEntry,
 ) -> list["SecuritasDirectDevice"]:
     """Fetch installations and services, populating caches.
@@ -415,7 +414,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.async_on_unload(entry.add_update_listener(async_update_options))
 
         try:
-            devices = await _fetch_and_cache_installations(hass, client, config, entry)
+            devices = await _fetch_and_cache_installations(hass, client, entry)
         except SecuritasDirectError as err:
             _LOGGER.error("Unable to connect to Securitas Direct: %s", err.log_detail())
             raise ConfigEntryNotReady("Unable to connect to Securitas Direct") from None
@@ -442,7 +441,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _discover_cameras(
-    hass: HomeAssistant,
     hub: "SecuritasHub",
     installation: Installation,
     entry_data: dict,
@@ -541,7 +539,7 @@ async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> No
 
     for device in devices:
         installation = device.installation
-        await _discover_cameras(hass, client, installation, entry_data)
+        await _discover_cameras(client, installation, entry_data)
         await _discover_locks(hass, client, installation, entry_data)
 
 
