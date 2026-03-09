@@ -10,7 +10,6 @@ from homeassistant.components import lock
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 
@@ -19,6 +18,7 @@ from . import (
     DOMAIN,
     SecuritasHub,
 )
+from .entity import securitas_device_info
 from .securitas_direct_new_api import (
     DanalockConfig,
     Installation,
@@ -101,13 +101,7 @@ class SecuritasLock(lock.LockEntity):
             self._update_unsub = None
 
         # Group under the installation device (shared with alarm panel)
-        self._attr_device_info: DeviceInfo | None = DeviceInfo(
-            identifiers={(DOMAIN, f"securitas_direct.{installation.number}")},
-            manufacturer="Securitas Direct",
-            model=installation.panel,
-            name=installation.alias,
-            hw_version=installation.type,
-        )
+        self._attr_device_info = securitas_device_info(installation)
 
     def __force_state(self, state: str) -> None:
         self._last_state = self._state

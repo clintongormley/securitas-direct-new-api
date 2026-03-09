@@ -15,7 +15,6 @@ from homeassistant.components.alarm_control_panel.const import AlarmControlPanel
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_CODE, CONF_SCAN_INTERVAL
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import (
     AddEntitiesCallback,
     async_get_current_platform,
@@ -32,6 +31,7 @@ from . import (
     SecuritasDirectDevice,
     SecuritasHub,
 )
+from .entity import securitas_device_info
 from .securitas_direct_new_api import (
     ArmingExceptionError,
     Installation,
@@ -193,13 +193,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         self._force_context: dict[str, Any] | None = None
         self._mobile_action_unsub = None
 
-        self._attr_device_info: DeviceInfo | None = DeviceInfo(
-            identifiers={(DOMAIN, self._attr_unique_id)},
-            manufacturer="Securitas Direct",
-            model=installation.panel,
-            name=installation.alias,
-            hw_version=installation.type,
-        )
+        self._attr_device_info = securitas_device_info(installation)
         self.update_status_alarm(state)
 
     def __force_state(self, state: str) -> None:

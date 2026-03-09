@@ -9,11 +9,11 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DOMAIN, SIGNAL_XSSTATUS_UPDATE, SecuritasDirectDevice, SecuritasHub
+from .entity import SecuritasEntity
 from .securitas_direct_new_api import Installation
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,18 +33,7 @@ async def async_setup_entry(
     async_add_entities(entities, False)
 
 
-def _device_info(installation: Installation) -> DeviceInfo:
-    """Build DeviceInfo that groups under the installation device."""
-    return DeviceInfo(
-        identifiers={(DOMAIN, f"securitas_direct.{installation.number}")},
-        manufacturer="Securitas Direct",
-        model=installation.panel,
-        name=installation.alias,
-        hw_version=installation.type,
-    )
-
-
-class WifiConnectedSensor(BinarySensorEntity):
+class WifiConnectedSensor(SecuritasEntity, BinarySensorEntity):
     """WiFi connection status from xSStatus — updated via dispatcher, no polling."""
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
@@ -52,11 +41,9 @@ class WifiConnectedSensor(BinarySensorEntity):
     _attr_should_poll = False
 
     def __init__(self, client: SecuritasHub, installation: Installation) -> None:
-        self._client = client
-        self._installation = installation
+        super().__init__(installation, client)
         self._attr_unique_id = f"{installation.number}_wifi_connected"
         self._attr_name = f"{installation.alias} WiFi Connected"
-        self._attr_device_info = _device_info(installation)
 
     async def async_added_to_hass(self) -> None:
         """Register dispatcher listener."""

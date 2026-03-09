@@ -5,10 +5,10 @@ import logging
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DOMAIN, SecuritasDirectDevice, SecuritasHub
+from .entity import securitas_device_info
 from .securitas_direct_new_api import (
     Installation,
     SecuritasDirectError,
@@ -49,13 +49,7 @@ class SecuritasRefreshButton(ButtonEntity):
         self.installation = installation
         self.client = client
         self.hass = hass
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"securitas_direct.{installation.number}")},
-            manufacturer="Securitas Direct",
-            model=installation.panel,
-            name=installation.alias,
-            hw_version=installation.type,
-        )
+        self._attr_device_info = securitas_device_info(installation)
 
     def _get_alarm_entity(self):
         """Return the alarm entity for this installation, if available."""
@@ -146,13 +140,7 @@ class SecuritasCaptureButton(ButtonEntity):
         self._camera_device = camera_device
         self._attr_unique_id = f"{installation.number}_capture_{camera_device.zone_id}"
         self._attr_name = f"{installation.alias} Capture {camera_device.name}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"securitas_direct.{installation.number}")},
-            manufacturer="Securitas Direct",
-            model=installation.panel,
-            name=installation.alias,
-            hw_version=installation.type,
-        )
+        self._attr_device_info = securitas_device_info(installation)
 
     async def async_press(self) -> None:
         """Request a new image capture."""

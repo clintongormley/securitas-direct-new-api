@@ -8,12 +8,12 @@ from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 
 from . import DOMAIN, SecuritasDirectDevice, SecuritasHub
 from .constants import SentinelName
+from .entity import SecuritasEntity, securitas_device_info
 from .securitas_direct_new_api import Installation, SecuritasDirectError
 from .securitas_direct_new_api.dataTypes import AirQuality, Service
 
@@ -80,18 +80,7 @@ async def async_setup_entry(
         async_call_later(hass, 5, _initial_update)
 
 
-def _device_info(installation: Installation) -> DeviceInfo:
-    """Build DeviceInfo that groups under the installation device."""
-    return DeviceInfo(
-        identifiers={(DOMAIN, f"securitas_direct.{installation.number}")},
-        manufacturer="Securitas Direct",
-        model=installation.panel,
-        name=installation.alias,
-        hw_version=installation.type,
-    )
-
-
-class SentinelTemperature(SensorEntity):
+class SentinelTemperature(SecuritasEntity, SensorEntity):
     """Sentinel temperature sensor."""
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
@@ -105,12 +94,10 @@ class SentinelTemperature(SensorEntity):
         installation: Installation,
     ) -> None:
         """Init the component."""
+        super().__init__(installation, client)
         self._attr_unique_id = f"{installation.number}_temperature_{service.id}"
         self._attr_name = f"{installation.alias} Temperature"
         self._service: Service = service
-        self._client: SecuritasHub = client
-        self._installation = installation
-        self._attr_device_info = _device_info(installation)
 
     async def async_update(self):
         """Update the sensor via the hub's rate-limited method."""
@@ -130,7 +117,7 @@ class SentinelTemperature(SensorEntity):
         self._attr_native_value = sentinel.temperature
 
 
-class SentinelHumidity(SensorEntity):
+class SentinelHumidity(SecuritasEntity, SensorEntity):
     """Sentinel Humidity sensor."""
 
     _attr_device_class = SensorDeviceClass.HUMIDITY
@@ -144,12 +131,10 @@ class SentinelHumidity(SensorEntity):
         installation: Installation,
     ) -> None:
         """Init the component."""
+        super().__init__(installation, client)
         self._attr_unique_id = f"{installation.number}_humidity_{service.id}"
         self._attr_name = f"{installation.alias} Humidity"
         self._service: Service = service
-        self._client: SecuritasHub = client
-        self._installation = installation
-        self._attr_device_info = _device_info(installation)
 
     async def async_update(self):
         """Update the sensor via the hub's rate-limited method."""
@@ -227,7 +212,7 @@ class SentinelAirQuality(SensorEntity):
         self._installation = installation
         self._attr_unique_id = f"{installation.number}_airquality_{fetcher._service.id}"
         self._attr_name = f"{installation.alias} Air Quality"
-        self._attr_device_info = _device_info(installation)
+        self._attr_device_info = securitas_device_info(installation)
 
     async def async_update(self):
         """Update the sensor via the hub's rate-limited method."""
@@ -252,7 +237,7 @@ class SentinelAirQualityStatus(SensorEntity):
             f"{installation.number}_airquality_status_{fetcher._service.id}"
         )
         self._attr_name = f"{installation.alias} Air Quality Status"
-        self._attr_device_info = _device_info(installation)
+        self._attr_device_info = securitas_device_info(installation)
 
     async def async_update(self):
         """Update the sensor via the hub's rate-limited method."""
