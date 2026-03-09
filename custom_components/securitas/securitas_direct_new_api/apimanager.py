@@ -1783,9 +1783,7 @@ class ApiManager:
             installation, reference_id, counter
         )
 
-    async def get_device_list(
-        self, installation: Installation
-    ) -> list[CameraDevice]:
+    async def get_device_list(self, installation: Installation) -> list[CameraDevice]:
         """Get list of camera devices (type QR) for an installation."""
         content = {
             "operationName": "xSDeviceList",
@@ -1817,9 +1815,7 @@ class ApiManager:
             if d.get("type") == CAMERA_DEVICE_TYPE and d.get("isActive", False)
         ]
 
-    async def request_images(
-        self, installation: Installation, device_code: int
-    ) -> str:
+    async def request_images(self, installation: Installation, device_code: int) -> str:
         """Request the panel to capture a new image. Returns referenceId."""
         content = {
             "operationName": "RequestImages",

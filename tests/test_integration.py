@@ -94,7 +94,6 @@ async def test_setup_calls_list_installations(
     assert mock_server.call_count("mkInstallationList") == 1
 
 
-
 async def test_setup_general_status_via_update_overview(
     hass: HomeAssistant, mock_server: MockGraphQLServer
 ):

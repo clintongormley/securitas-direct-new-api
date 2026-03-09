@@ -97,17 +97,59 @@ class TestGetDeviceList:
             "xSDeviceList": {
                 "res": "OK",
                 "devices": [
-                    {"id": "1", "code": "1", "zoneId": "QR01", "name": "Cucina", "type": "QR", "isActive": True, "serialNumber": "36QYX3LE"},
-                    {"id": "2", "code": "2", "zoneId": "MG02", "name": "Entrata", "type": "MG", "isActive": True, "serialNumber": None},
-                    {"id": "9", "code": "9", "zoneId": "QR09", "name": "Cameretta", "type": "QR", "isActive": True, "serialNumber": "36NF2KPR"},
-                    {"id": "11", "code": "10", "zoneId": "QR10", "name": "Salon", "type": "QR", "isActive": True, "serialNumber": "36NEYYER"},
-                    {"id": "20", "code": "17", "zoneId": "QR17", "name": "Inactive", "type": "QR", "isActive": False, "serialNumber": None},
+                    {
+                        "id": "1",
+                        "code": "1",
+                        "zoneId": "QR01",
+                        "name": "Cucina",
+                        "type": "QR",
+                        "isActive": True,
+                        "serialNumber": "36QYX3LE",
+                    },
+                    {
+                        "id": "2",
+                        "code": "2",
+                        "zoneId": "MG02",
+                        "name": "Entrata",
+                        "type": "MG",
+                        "isActive": True,
+                        "serialNumber": None,
+                    },
+                    {
+                        "id": "9",
+                        "code": "9",
+                        "zoneId": "QR09",
+                        "name": "Cameretta",
+                        "type": "QR",
+                        "isActive": True,
+                        "serialNumber": "36NF2KPR",
+                    },
+                    {
+                        "id": "11",
+                        "code": "10",
+                        "zoneId": "QR10",
+                        "name": "Salon",
+                        "type": "QR",
+                        "isActive": True,
+                        "serialNumber": "36NEYYER",
+                    },
+                    {
+                        "id": "20",
+                        "code": "17",
+                        "zoneId": "QR17",
+                        "name": "Inactive",
+                        "type": "QR",
+                        "isActive": False,
+                        "serialNumber": None,
+                    },
                 ],
             }
         }
     }
 
-    async def test_returns_only_active_qr_devices(self, authed_api, mock_execute, installation):
+    async def test_returns_only_active_qr_devices(
+        self, authed_api, mock_execute, installation
+    ):
         mock_execute.return_value = self.DEVICE_LIST_RESPONSE
         result = await authed_api.get_device_list(installation)
         assert len(result) == 3
@@ -125,15 +167,30 @@ class TestGetDeviceList:
         assert salon.serial_number == "36NEYYER"
 
     async def test_empty_device_list(self, authed_api, mock_execute, installation):
-        mock_execute.return_value = {"data": {"xSDeviceList": {"res": "OK", "devices": []}}}
+        mock_execute.return_value = {
+            "data": {"xSDeviceList": {"res": "OK", "devices": []}}
+        }
         result = await authed_api.get_device_list(installation)
         assert result == []
 
     async def test_no_cameras(self, authed_api, mock_execute, installation):
         mock_execute.return_value = {
-            "data": {"xSDeviceList": {"res": "OK", "devices": [
-                {"id": "2", "code": "2", "zoneId": "MG02", "name": "Entrata", "type": "MG", "isActive": True, "serialNumber": None},
-            ]}}
+            "data": {
+                "xSDeviceList": {
+                    "res": "OK",
+                    "devices": [
+                        {
+                            "id": "2",
+                            "code": "2",
+                            "zoneId": "MG02",
+                            "name": "Entrata",
+                            "type": "MG",
+                            "isActive": True,
+                            "serialNumber": None,
+                        },
+                    ],
+                }
+            }
         }
         result = await authed_api.get_device_list(installation)
         assert result == []
@@ -142,14 +199,26 @@ class TestGetDeviceList:
 class TestRequestImages:
     async def test_success(self, authed_api, mock_execute, installation):
         mock_execute.return_value = {
-            "data": {"xSRequestImages": {"res": "OK", "msg": "alarm-manager.processed.request", "referenceId": "4ebfe653-fa54-4805-874c-cea1c9ad927a"}}
+            "data": {
+                "xSRequestImages": {
+                    "res": "OK",
+                    "msg": "alarm-manager.processed.request",
+                    "referenceId": "4ebfe653-fa54-4805-874c-cea1c9ad927a",
+                }
+            }
         }
         ref_id = await authed_api.request_images(installation, device_code=10)
         assert ref_id == "4ebfe653-fa54-4805-874c-cea1c9ad927a"
 
     async def test_error_response(self, authed_api, mock_execute, installation):
         mock_execute.return_value = {
-            "data": {"xSRequestImages": {"res": "ERROR", "msg": "some error", "referenceId": None}}
+            "data": {
+                "xSRequestImages": {
+                    "res": "ERROR",
+                    "msg": "some error",
+                    "referenceId": None,
+                }
+            }
         }
         with pytest.raises(SecuritasDirectError):
             await authed_api.request_images(installation, device_code=10)
@@ -158,14 +227,23 @@ class TestRequestImages:
 class TestGetThumbnail:
     async def test_success(self, authed_api, mock_execute, installation):
         mock_execute.return_value = {
-            "data": {"xSGetThumbnail": {
-                "idSignal": "15681796423", "deviceId": None, "deviceCode": "QR10",
-                "deviceAlias": "Salon", "timestamp": "2026-03-09 17:47:13",
-                "signalType": "16", "image": "/9j/4AAQSkZJRgABAQEAAA==",
-                "type": "BINARY", "quality": "",
-            }}
+            "data": {
+                "xSGetThumbnail": {
+                    "idSignal": "15681796423",
+                    "deviceId": None,
+                    "deviceCode": "QR10",
+                    "deviceAlias": "Salon",
+                    "timestamp": "2026-03-09 17:47:13",
+                    "signalType": "16",
+                    "image": "/9j/4AAQSkZJRgABAQEAAA==",
+                    "type": "BINARY",
+                    "quality": "",
+                }
+            }
         }
-        result = await authed_api.get_thumbnail(installation, device_name="Salon", zone_id="QR10")
+        result = await authed_api.get_thumbnail(
+            installation, device_name="Salon", zone_id="QR10"
+        )
         assert isinstance(result, ThumbnailResponse)
         assert result.id_signal == "15681796423"
         assert result.device_code == "QR10"
@@ -174,13 +252,23 @@ class TestGetThumbnail:
 
     async def test_no_image_available(self, authed_api, mock_execute, installation):
         mock_execute.return_value = {
-            "data": {"xSGetThumbnail": {
-                "idSignal": None, "deviceId": None, "deviceCode": None,
-                "deviceAlias": None, "timestamp": None, "signalType": None,
-                "image": None, "type": None, "quality": None,
-            }}
+            "data": {
+                "xSGetThumbnail": {
+                    "idSignal": None,
+                    "deviceId": None,
+                    "deviceCode": None,
+                    "deviceAlias": None,
+                    "timestamp": None,
+                    "signalType": None,
+                    "image": None,
+                    "type": None,
+                    "quality": None,
+                }
+            }
         }
-        result = await authed_api.get_thumbnail(installation, device_name="Salon", zone_id="QR10")
+        result = await authed_api.get_thumbnail(
+            installation, device_name="Salon", zone_id="QR10"
+        )
         assert result.image is None
         assert result.id_signal is None
 
@@ -188,11 +276,11 @@ class TestGetThumbnail:
 class TestHubCameraOperations:
     def test_signal_constant_exists(self):
         from custom_components.securitas import SIGNAL_CAMERA_UPDATE
+
         assert isinstance(SIGNAL_CAMERA_UPDATE, str)
 
     def test_get_camera_image_returns_none_when_empty(self):
         """Test that get_camera_image returns None for missing keys."""
-        from custom_components.securitas import SecuritasHub
         # Just test the dict lookup logic
         images: dict[str, bytes] = {}
         assert images.get("2654190_QR10") is None

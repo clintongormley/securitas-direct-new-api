@@ -648,9 +648,7 @@ class SecuritasHub:
         from .securitas_direct_new_api.dataTypes import CameraDevice
 
         device: CameraDevice = camera_device
-        reference_id = await self.session.request_images(
-            installation, device.code
-        )
+        reference_id = await self.session.request_images(installation, device.code)
 
         # Poll for completion
         try:

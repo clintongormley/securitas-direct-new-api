@@ -35,9 +35,7 @@ async def async_setup_entry(
             )
             continue
         for cam_device in cameras:
-            entities.append(
-                SecuritasCamera(client, device.installation, cam_device)
-            )
+            entities.append(SecuritasCamera(client, device.installation, cam_device))
 
     async_add_entities(entities, False)
 

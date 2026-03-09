@@ -548,7 +548,6 @@ class TestAsyncSetupEntry:
         ):
             await async_setup_entry(hass, entry)
 
-
     async def test_setup_missing_device_id_raises_not_ready(self, hass):
         """Missing CONF_DEVICE_ID should raise ConfigEntryNotReady."""
         data = make_config_entry_data()

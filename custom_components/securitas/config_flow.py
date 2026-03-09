@@ -456,9 +456,7 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
             return await self.async_step_mappings()
         country = self.config_entry.data.get(CONF_COUNTRY, "ES")
         default_scan = (
-            DEFAULT_SCAN_INTERVAL_ES
-            if country == "ES"
-            else DEFAULT_SCAN_INTERVAL
+            DEFAULT_SCAN_INTERVAL_ES if country == "ES" else DEFAULT_SCAN_INTERVAL
         )
         scan_interval = self._get(CONF_SCAN_INTERVAL, default_scan)
 

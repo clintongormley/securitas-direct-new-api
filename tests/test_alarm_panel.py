@@ -2500,7 +2500,6 @@ class TestExecuteTransition:
         assert calls[0].args == (alarm.installation, "ARM1")
         assert calls[1].args == (alarm.installation, "PERI1")
 
-
     async def test_stale_state_retries_with_corrected_proto(self):
         """When result doesn't match target, retry with corrected state.
 

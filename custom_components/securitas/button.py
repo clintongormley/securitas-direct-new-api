@@ -142,9 +142,7 @@ class SecuritasCaptureButton(ButtonEntity):
         self._client = client
         self._installation = installation
         self._camera_device = camera_device
-        self._attr_unique_id = (
-            f"{installation.number}_capture_{camera_device.zone_id}"
-        )
+        self._attr_unique_id = f"{installation.number}_capture_{camera_device.zone_id}"
         self._attr_name = f"{installation.alias} Capture {camera_device.name}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"securitas_direct.{installation.number}")},
@@ -157,9 +155,7 @@ class SecuritasCaptureButton(ButtonEntity):
     async def async_press(self) -> None:
         """Request a new image capture."""
         try:
-            await self._client.capture_image(
-                self._installation, self._camera_device
-            )
+            await self._client.capture_image(self._installation, self._camera_device)
         except SecuritasDirectError as err:
             _LOGGER.warning(
                 "Failed to capture image from %s: %s",
