@@ -66,7 +66,10 @@ class TestSecuritasCamera:
     async def test_camera_image_returns_placeholder_when_empty(
         self, mock_hub, installation, camera_device
     ):
-        from custom_components.securitas.camera import SecuritasCamera, _PLACEHOLDER_IMAGE
+        from custom_components.securitas.camera import (
+            SecuritasCamera,
+            _PLACEHOLDER_IMAGE,
+        )
 
         mock_hub.get_camera_image.return_value = None
         cam = SecuritasCamera(mock_hub, installation, camera_device)

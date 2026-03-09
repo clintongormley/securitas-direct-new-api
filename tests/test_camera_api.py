@@ -323,7 +323,9 @@ class TestHubCameraOperations:
         file_path = "/var/volatile/media/36QYX3LE_38_1.jpeg"
         encoded = base64.b64encode(file_path.encode()).decode()
         decoded = base64.b64decode(encoded)
-        assert not decoded.startswith(b"\xff\xd8"), "File path should not look like JPEG"
+        assert not decoded.startswith(b"\xff\xd8"), (
+            "File path should not look like JPEG"
+        )
 
     def test_jpeg_validation_accepts_jpeg(self):
         """Real JPEG data starts with FFD8 magic bytes."""

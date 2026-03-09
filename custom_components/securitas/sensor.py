@@ -307,5 +307,3 @@ class WifiConnectedSensor(SensorEntity):
             )
             self._attr_icon = "mdi:wifi" if status.wifi_connected else "mdi:wifi-off"
             self.async_write_ha_state()
-
-
