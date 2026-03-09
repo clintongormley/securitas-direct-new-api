@@ -62,6 +62,28 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     yield
 
 
+@pytest.fixture(autouse=True)
+def mock_call_later():
+    """Prevent call_later timers from lingering after config flow tests.
+
+    Completing a config flow triggers async_setup_entry, which schedules
+    call_later timers for initial updates. Older phcc (0.13.210 / HA 2025.2.0)
+    enforces lingering-timer cleanup at teardown.  Mock call_later to return
+    a no-op unsub so timers don't leak.
+    """
+    with (
+        patch(
+            "custom_components.securitas.alarm_control_panel.async_call_later",
+            return_value=lambda: None,
+        ),
+        patch(
+            "custom_components.securitas.sensor.async_call_later",
+            return_value=lambda: None,
+        ),
+    ):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Shared constants and helpers
 # ---------------------------------------------------------------------------
