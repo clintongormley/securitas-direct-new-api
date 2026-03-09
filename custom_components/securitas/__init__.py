@@ -29,6 +29,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .api_queue import ApiQueue
 from .log_filter import SensitiveDataFilter
@@ -40,6 +41,7 @@ from .securitas_direct_new_api import (
     Login2FAError,
     LoginError,
     OtpPhone,
+    SStatus,
     SecuritasDirectError,
     Service,
     generate_device_id,
@@ -49,6 +51,7 @@ from .securitas_direct_new_api import (
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "securitas"
+SIGNAL_XSSTATUS_UPDATE = f"{DOMAIN}_xsstatus_update"
 CARD_BASE_URL = "/securitas_panel/securitas-alarm-card.js"
 _MANIFEST = json.loads((Path(__file__).parent / "manifest.json").read_text())
 CARD_URL = f"{CARD_BASE_URL}?v={_MANIFEST['version']}"
@@ -359,9 +362,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 elif installation.number not in client._services_cache:
                     # HA restart: fetch directly (bypass queue — we just logged
                     # in, no WAF risk yet) so platforms don't block on queue.
-                    client._services_cache[installation.number] = (
-                        await client.session.get_all_services(installation)
-                    )
+                    client._services_cache[
+                        installation.number
+                    ] = await client.session.get_all_services(installation)
                 devices.append(SecuritasDirectDevice(installation))
         except SecuritasDirectError as err:
             _LOGGER.error("Unable to connect to Securitas Direct: %s", err.log_detail())
@@ -551,6 +554,7 @@ class SecuritasHub:
     ) -> None:
         """Initialize the Securitas hub."""
         self.overview: CheckAlarmStatus | dict = {}
+        self.xsstatus: dict[str, SStatus] = {}
         self.config = domain_config
         self.config_entry: ConfigEntry | None = config_entry
         self.sentinel_services: list[Service] = []
@@ -805,6 +809,8 @@ class SecuritasHub:
             if getattr(err, "http_status", None) == 403:
                 raise
             return CheckAlarmStatus()
+        self.xsstatus[installation.number] = status
+        async_dispatcher_send(self.hass, SIGNAL_XSSTATUS_UPDATE, installation.number)
         return CheckAlarmStatus(
             status.status or "",
             "",

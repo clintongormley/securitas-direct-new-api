@@ -915,7 +915,7 @@ class ApiManager:
         content = {
             "operationName": "Status",
             "variables": {"numinst": installation.number},
-            "query": "query Status($numinst: String!) {\n  xSStatus(numinst: $numinst) {\n    status\n    timestampUpdate\n    exceptions {\n      status\n      deviceType\n      alias\n    }\n  }\n}",
+            "query": "query Status($numinst: String!) {\n  xSStatus(numinst: $numinst) {\n    status\n    timestampUpdate\n    wifiConnected\n    keepAliveDay\n    exceptions {\n      status\n      deviceType\n      alias\n    }\n  }\n}",
         }
         await self._check_authentication_token()
         await self._check_capabilities_token(installation)
@@ -932,6 +932,8 @@ class ApiManager:
             return SStatus(
                 raw_data["status"],
                 raw_data["timestampUpdate"],
+                raw_data.get("wifiConnected"),
+                raw_data.get("keepAliveDay"),
             )
 
         return SStatus(None, None)
