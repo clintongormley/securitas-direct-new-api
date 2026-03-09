@@ -578,7 +578,6 @@ class SecuritasAlarmCard extends HTMLElement {
         align-items: center;
         gap: 14px;
         margin-bottom: 20px;
-        cursor: pointer;
       }
       .icon-wrap {
         width: 48px; height: 48px;
