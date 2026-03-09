@@ -96,9 +96,7 @@ class SecuritasRefreshButton(ButtonEntity):
                     )
 
         except TimeoutError:
-            _LOGGER.warning(
-                "Refresh timed out for %s", self.installation.number
-            )
+            _LOGGER.warning("Refresh timed out for %s", self.installation.number)
             alarm_entity = self._get_alarm_entity()
             if alarm_entity is not None:
                 alarm_entity._set_refresh_failed(True)

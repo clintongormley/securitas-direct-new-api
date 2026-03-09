@@ -110,9 +110,7 @@ class TestCheckAlarmStatus:
             }
         }
 
-        result = await authed_api.check_alarm_status(
-            installation, "ref-123"
-        )
+        result = await authed_api.check_alarm_status(installation, "ref-123")
 
         assert isinstance(result, CheckAlarmStatus)
         assert result.operation_status == "OK"
@@ -149,9 +147,7 @@ class TestCheckAlarmStatus:
         }
         mock_execute.side_effect = [wait_response, ok_response]
 
-        result = await authed_api.check_alarm_status(
-            installation, "ref-123"
-        )
+        result = await authed_api.check_alarm_status(installation, "ref-123")
 
         assert result.operation_status == "OK"
         assert result.status == "DISARMED"

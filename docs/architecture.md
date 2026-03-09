@@ -170,6 +170,8 @@ The central coordinator. It owns an `ApiManager` session and is shared by all en
 
 ### Setup flow (`async_setup_entry`)
 
+**Critical rule:** Platform `async_setup_entry` functions must **never** make API calls. All API-based discovery is deferred to a background task that runs after setup completes. This avoids blocking HA startup.
+
 ```
 1. Read config entry data into OrderedDict
 2. Migrate old config: if no per-button mappings exist, derive from PERI_alarm checkbox
@@ -182,9 +184,28 @@ The central coordinator. It owns an `ApiManager` session and is shared by all en
    └── SecuritasDirectError → raise ConfigEntryNotReady (HA retries)
 6. List installations
 7. For each installation: get_services() → create SecuritasDirectDevice
-8. Store devices in hass.data[DOMAIN][CONF_INSTALLATION_KEY]
-9. Forward to platforms: alarm_control_panel, sensor, lock
+8. Store devices in hass.data[DOMAIN][entry.entry_id]
+9. Forward to platforms: alarm_control_panel, sensor, button, camera, lock
+   └── Each platform stores its async_add_entities callback in entry_data
+       and creates only entities it can build without API calls
+10. Launch background task (_async_discover_devices) to:
+    ├── Discover camera devices → add Camera + CaptureButton entities
+    └── Discover lock devices → add Lock entities
 ```
+
+**What each platform does at setup (synchronous):**
+
+| Platform | Creates | API calls |
+|----------|---------|-----------|
+| alarm_control_panel | SecuritasAlarm entities | None (starts as "unknown") |
+| button | SecuritasRefreshButton entities | None (stores callback for capture buttons) |
+| camera | Nothing | None (stores callback) |
+| sensor | Sentinel sensors | None (uses cached services) |
+| lock | Nothing | None (stores callback) |
+
+**Background discovery (`_async_discover_devices`):**
+
+After all platforms are registered, a single background task discovers cameras and locks via API calls, then adds entities using the stored `async_add_entities` callbacks. This runs concurrently with HA startup, so the integration is immediately available (alarm panel, refresh buttons, sensors) while cameras and locks appear shortly after.
 
 ### Options update (`async_update_options`)
 
@@ -212,7 +233,7 @@ The alarm and lock platforms manage their own timers because they need per-entit
 
 ### Alarm control panel (`alarm_control_panel.py`)
 
-The main entity. One `SecuritasAlarm` per installation.
+The main entity. One `SecuritasAlarm` per installation. The entity starts with `_state = None` (renders as "unknown" in HA) until the first successful API poll populates the real alarm state. This avoids showing a false "disarmed" state at startup.
 
 **State mapping system:** During `__init__`, two dictionaries are built from the user's configuration:
 

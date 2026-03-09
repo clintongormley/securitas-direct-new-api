@@ -651,9 +651,7 @@ class TestCheckAlarmStatus:
             }
         }
 
-        result = await authed_api.check_alarm_status(
-            installation, "ref-abc-123"
-        )
+        result = await authed_api.check_alarm_status(installation, "ref-abc-123")
 
         assert isinstance(result, CheckAlarmStatus)
         assert result.operation_status == "OK"
