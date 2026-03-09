@@ -13,7 +13,7 @@
                     "code_arm_required": "Exigir também o código PIN (se houver) para armar o alarme",
                     "PERI_alarm": "Existe um alarme perimetral?",
                     "scan_interval": "Intervalo de atualização em segundos (0 desativa as atualizações automáticas)",
-                    "delay_check_operation": "Atraso para verificar as operações de armar e desarmar (seg)"
+                    "delay_check_operation": "Atraso entre solicitações de API (seg)"
                 },
                 "description": "Fazer login no Securitas Direct.",
                 "title": "Login"
@@ -36,7 +36,7 @@
                     "code_arm_required": "Exigir também o código PIN (se houver) para armar o alarme",
                     "PERI_alarm": "Existe um alarme perimetral?",
                     "scan_interval": "Intervalo de atualização em segundos (0 desativa as atualizações automáticas)",
-                    "delay_check_operation": "Atraso para verificar as operações de armar e desarmar (seg)",
+                    "delay_check_operation": "Atraso entre solicitações de API (seg)",
                     "notify_group": "Serviço de notificação para exceções de armar (ex. mobile_app_phone)"
                 }
             },

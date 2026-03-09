@@ -13,7 +13,7 @@
                     "code_arm_required": "Richiedere anche il codice PIN (se presente) per attivare l'allarme",
                     "PERI_alarm": "È presente un allarme perimetrale?",
                     "scan_interval": "Intervallo di aggiornamento in secondi (0 disattiva gli aggiornamenti automatici)",
-                    "delay_check_operation": "Ritardo per verificare le operazioni di attivazione e disattivazione (sec)"
+                    "delay_check_operation": "Ritardo tra le richieste API (sec)"
                 },
                 "description": "Accedi a Securitas Direct.",
                 "title": "Accesso"
@@ -36,7 +36,7 @@
                     "code_arm_required": "Richiedere anche il codice PIN (se presente) per attivare l'allarme",
                     "PERI_alarm": "È presente un allarme perimetrale?",
                     "scan_interval": "Intervallo di aggiornamento in secondi (0 disattiva gli aggiornamenti automatici)",
-                    "delay_check_operation": "Ritardo per verificare le operazioni di attivazione e disattivazione (sec)",
+                    "delay_check_operation": "Ritardo tra le richieste API (sec)",
                     "notify_group": "Servizio di notifica per eccezioni di attivazione (es. mobile_app_phone)"
                 }
             },
