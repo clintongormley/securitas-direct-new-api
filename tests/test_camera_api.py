@@ -9,6 +9,9 @@ from custom_components.securitas.securitas_direct_new_api.dataTypes import (
     Installation,
     ThumbnailResponse,
 )
+from custom_components.securitas.securitas_direct_new_api.exceptions import (
+    SecuritasDirectError,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -134,3 +137,49 @@ class TestGetDeviceList:
         }
         result = await authed_api.get_device_list(installation)
         assert result == []
+
+
+class TestRequestImages:
+    async def test_success(self, authed_api, mock_execute, installation):
+        mock_execute.return_value = {
+            "data": {"xSRequestImages": {"res": "OK", "msg": "alarm-manager.processed.request", "referenceId": "4ebfe653-fa54-4805-874c-cea1c9ad927a"}}
+        }
+        ref_id = await authed_api.request_images(installation, device_code=10)
+        assert ref_id == "4ebfe653-fa54-4805-874c-cea1c9ad927a"
+
+    async def test_error_response(self, authed_api, mock_execute, installation):
+        mock_execute.return_value = {
+            "data": {"xSRequestImages": {"res": "ERROR", "msg": "some error", "referenceId": None}}
+        }
+        with pytest.raises(SecuritasDirectError):
+            await authed_api.request_images(installation, device_code=10)
+
+
+class TestGetThumbnail:
+    async def test_success(self, authed_api, mock_execute, installation):
+        mock_execute.return_value = {
+            "data": {"xSGetThumbnail": {
+                "idSignal": "15681796423", "deviceId": None, "deviceCode": "QR10",
+                "deviceAlias": "Salon", "timestamp": "2026-03-09 17:47:13",
+                "signalType": "16", "image": "/9j/4AAQSkZJRgABAQEAAA==",
+                "type": "BINARY", "quality": "",
+            }}
+        }
+        result = await authed_api.get_thumbnail(installation, device_name="Salon", zone_id="QR10")
+        assert isinstance(result, ThumbnailResponse)
+        assert result.id_signal == "15681796423"
+        assert result.device_code == "QR10"
+        assert result.device_alias == "Salon"
+        assert result.image == "/9j/4AAQSkZJRgABAQEAAA=="
+
+    async def test_no_image_available(self, authed_api, mock_execute, installation):
+        mock_execute.return_value = {
+            "data": {"xSGetThumbnail": {
+                "idSignal": None, "deviceId": None, "deviceCode": None,
+                "deviceAlias": None, "timestamp": None, "signalType": None,
+                "image": None, "type": None, "quality": None,
+            }}
+        }
+        result = await authed_api.get_thumbnail(installation, device_name="Salon", zone_id="QR10")
+        assert result.image is None
+        assert result.id_signal is None

@@ -34,6 +34,7 @@ from .dataTypes import (
     SmartLock,
     SmartLockMode,
     SmartLockModeStatus,
+    ThumbnailResponse,
 )
 from .domains import ApiDomains
 from .exceptions import (
@@ -65,6 +66,11 @@ LOCK_MODE_SETTLE_MULTIPLIER = 7
 
 # Device type for camera devices in xSDeviceList
 CAMERA_DEVICE_TYPE = "QR"
+
+# Image request parameters
+IMAGE_RESOLUTION = 0
+IMAGE_MEDIA_TYPE = 1
+IMAGE_DEVICE_TYPE = 106
 
 
 def generate_uuid() -> str:
@@ -1810,3 +1816,99 @@ class ApiManager:
             for d in devices
             if d.get("type") == CAMERA_DEVICE_TYPE and d.get("isActive", False)
         ]
+
+    async def request_images(
+        self, installation: Installation, device_code: int
+    ) -> str:
+        """Request the panel to capture a new image. Returns referenceId."""
+        content = {
+            "operationName": "RequestImages",
+            "variables": {
+                "numinst": installation.number,
+                "panel": installation.panel,
+                "devices": [device_code],
+                "resolution": IMAGE_RESOLUTION,
+                "mediaType": IMAGE_MEDIA_TYPE,
+                "deviceType": IMAGE_DEVICE_TYPE,
+            },
+            "query": (
+                "mutation RequestImages($numinst: String!, $panel: String!,"
+                " $devices: [Int]!, $mediaType: Int, $resolution: Int,"
+                " $deviceType: Int) {"
+                " xSRequestImages(numinst: $numinst, panel: $panel,"
+                " devices: $devices, mediaType: $mediaType,"
+                " resolution: $resolution, deviceType: $deviceType) {"
+                " res msg referenceId } }"
+            ),
+        }
+        await self._check_authentication_token()
+        await self._check_capabilities_token(installation)
+        response = await self._execute_request(content, "RequestImages", installation)
+        raw = self._extract_response_data(response, "xSRequestImages")
+        if raw.get("res") != "OK":
+            raise SecuritasDirectError(raw.get("msg", "Failed to request images"))
+        return raw["referenceId"]
+
+    async def _check_request_images_status(
+        self,
+        installation: Installation,
+        device_code: int,
+        reference_id: str,
+        counter: int = 1,
+    ) -> dict:
+        """Check status of image request (used by _poll_operation)."""
+        content = {
+            "operationName": "RequestImagesStatus",
+            "variables": {
+                "numinst": installation.number,
+                "panel": installation.panel,
+                "devices": [device_code],
+                "referenceId": reference_id,
+                "counter": counter,
+            },
+            "query": (
+                "query RequestImagesStatus($numinst: String!, $panel: String!,"
+                " $devices: [Int!]!, $referenceId: String!, $counter: Int) {"
+                " xSRequestImagesStatus(numinst: $numinst, panel: $panel,"
+                " devices: $devices, referenceId: $referenceId,"
+                " counter: $counter) { res msg numinst status } }"
+            ),
+        }
+        response = await self._execute_request(
+            content, "RequestImagesStatus", installation
+        )
+        return self._extract_response_data(response, "xSRequestImagesStatus")
+
+    async def get_thumbnail(
+        self, installation: Installation, device_name: str, zone_id: str
+    ) -> ThumbnailResponse:
+        """Fetch the latest thumbnail image for a camera device."""
+        content = {
+            "operationName": "mkGetThumbnail",
+            "variables": {
+                "numinst": installation.number,
+                "panel": installation.panel,
+                "device": device_name,
+                "zoneId": zone_id,
+            },
+            "query": (
+                "query mkGetThumbnail($numinst: String!, $panel: String!,"
+                " $device: String, $zoneId: String, $idSignal: String) {"
+                " xSGetThumbnail(numinst: $numinst, device: $device,"
+                " panel: $panel, zoneId: $zoneId, idSignal: $idSignal) {"
+                " idSignal deviceId deviceCode deviceAlias timestamp"
+                " signalType image type quality } }"
+            ),
+        }
+        await self._check_authentication_token()
+        await self._check_capabilities_token(installation)
+        response = await self._execute_request(content, "mkGetThumbnail", installation)
+        raw = self._extract_response_data(response, "xSGetThumbnail")
+        return ThumbnailResponse(
+            id_signal=raw.get("idSignal"),
+            device_code=raw.get("deviceCode"),
+            device_alias=raw.get("deviceAlias"),
+            timestamp=raw.get("timestamp"),
+            signal_type=raw.get("signalType"),
+            image=raw.get("image"),
+        )
