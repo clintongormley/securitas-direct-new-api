@@ -265,7 +265,15 @@ class SentinelAirQualityStatus(SensorEntity):
         air_quality = await self._fetcher.fetch()
         if air_quality is not None:
             code = str(air_quality.status_current)
-            self._attr_native_value = AIR_QUALITY_LABELS.get(code, code)
+            label = AIR_QUALITY_LABELS.get(code)
+            if label is None:
+                _LOGGER.warning(
+                    "Unknown air quality status code '%s' for %s — please report this",
+                    code,
+                    self._installation.number,
+                )
+                label = code
+            self._attr_native_value = label
 
 
 class WifiConnectedSensor(SensorEntity):

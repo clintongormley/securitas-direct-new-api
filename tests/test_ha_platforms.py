@@ -372,7 +372,7 @@ class TestSentinelAirQualityStatus:
         client = make_client()
         client.get_sentinel = AsyncMock(return_value=_mock_sentinel_with_zone())
         client.get_air_quality = AsyncMock(
-            return_value=AirQuality(value=200, status_current=3)
+            return_value=AirQuality(value=200, status_current=2)
         )
         fetcher = _make_fetcher(client=client)
         sensor = SentinelAirQualityStatus(fetcher, make_installation())
@@ -381,7 +381,8 @@ class TestSentinelAirQualityStatus:
         await sensor.async_update()
         assert sensor._attr_native_value == "Poor"
 
-    async def test_unknown_status_code(self):
+    async def test_unknown_status_code(self, caplog):
+        """Unknown codes fall back to the raw code string and log a warning."""
         client = make_client()
         client.get_sentinel = AsyncMock(return_value=_mock_sentinel_with_zone())
         client.get_air_quality = AsyncMock(
@@ -392,7 +393,8 @@ class TestSentinelAirQualityStatus:
         sensor.hass = MagicMock()
 
         await sensor.async_update()
-        assert sensor._attr_native_value == "Unknown"
+        assert sensor._attr_native_value == "99"
+        assert "Unknown air quality status code '99'" in caplog.text
 
     def test_unique_id_contains_status(self):
         fetcher = _make_fetcher()
