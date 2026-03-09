@@ -55,7 +55,6 @@ CARD_URL = f"{CARD_BASE_URL}?v={_MANIFEST['version']}"
 
 CONF_COUNTRY = "country"
 CONF_CODE_ARM_REQUIRED = "code_arm_required"
-CONF_USE_2FA = "use_2FA"
 CONF_HAS_PERI = "has_peri"
 CONF_DEVICE_INDIGITALL = "idDeviceIndigitall"
 CONF_ENTRY_ID = "entry_id"
@@ -69,7 +68,6 @@ CONF_MAP_VACATION = "map_vacation"
 CONF_NOTIFY_GROUP = "notify_group"
 CONF_INSTALLATION = "installation"
 
-DEFAULT_USE_2FA = True
 DEFAULT_SCAN_INTERVAL = 120
 DEFAULT_SCAN_INTERVAL_ES = 300
 DEFAULT_CODE_ARM_REQUIRED = False
@@ -97,7 +95,6 @@ CONFIG_SCHEMA = vol.Schema(
             {
                 vol.Required(CONF_USERNAME): str,
                 vol.Required(CONF_PASSWORD): str,
-                vol.Optional(CONF_USE_2FA, default=DEFAULT_USE_2FA): bool,
                 vol.Optional(CONF_COUNTRY, default=DEFAULT_COUNTRY): str,
                 vol.Optional(CONF_CODE, default=DEFAULT_CODE): str,
                 vol.Optional(
@@ -179,7 +176,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     config = OrderedDict()
     config[CONF_USERNAME] = entry.data[CONF_USERNAME]
     config[CONF_PASSWORD] = entry.data[CONF_PASSWORD]
-    config[CONF_USE_2FA] = entry.data.get(CONF_USE_2FA, DEFAULT_USE_2FA)
     config[CONF_COUNTRY] = entry.data.get(CONF_COUNTRY, None)
     config[CONF_CODE] = _opt(CONF_CODE, DEFAULT_CODE)
     config[CONF_HAS_PERI] = entry.data.get(CONF_HAS_PERI, False)
