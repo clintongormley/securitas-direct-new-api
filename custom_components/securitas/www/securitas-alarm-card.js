@@ -429,22 +429,9 @@ class SecuritasAlarmCard extends HTMLElement {
   _attachListeners(stateObj, codeFormat, codeArmRequired, hasCode, isArmed) {
     const entity = this._config.entity;
 
-    // Header click → open HA more-info dialog (history, attributes, etc.)
-    const header = this.shadowRoot.querySelector(".header");
-    if (header) {
-      header.addEventListener("click", () => {
-        this.dispatchEvent(new CustomEvent("hass-more-info", {
-          detail: { entityId: entity },
-          bubbles: true,
-          composed: true,
-        }));
-      });
-    }
-
     // Arm / Disarm / Refresh buttons
     this.shadowRoot.querySelectorAll("[data-action]").forEach(btn => {
       btn.addEventListener("click", (e) => {
-        e.stopPropagation(); // prevent header's more-info handler
         const action = btn.dataset.action;
         this._handleAction(action, stateObj, codeFormat, codeArmRequired, hasCode, isArmed, entity);
       });
