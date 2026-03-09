@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.securitas import (
+    CONF_ADVANCED,
     CONF_CODE_ARM_REQUIRED,
     CONF_COUNTRY,
     CONF_DELAY_CHECK_OPERATION,
@@ -76,8 +77,10 @@ USER_INPUT_CREDENTIALS = {
 USER_INPUT_OPTIONS = {
     CONF_CODE: "",
     CONF_CODE_ARM_REQUIRED: False,
-    CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
-    CONF_DELAY_CHECK_OPERATION: float(DEFAULT_DELAY_CHECK_OPERATION),
+    CONF_ADVANCED: {
+        CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+        CONF_DELAY_CHECK_OPERATION: float(DEFAULT_DELAY_CHECK_OPERATION),
+    },
 }
 
 USER_INPUT_MAPPINGS_STD = {
@@ -228,8 +231,10 @@ async def _advance_to_mappings(hass, entry):
         user_input={
             CONF_CODE: "1234",
             CONF_CODE_ARM_REQUIRED: False,
-            CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
-            CONF_DELAY_CHECK_OPERATION: float(DEFAULT_DELAY_CHECK_OPERATION),
+            CONF_ADVANCED: {
+                CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+                CONF_DELAY_CHECK_OPERATION: float(DEFAULT_DELAY_CHECK_OPERATION),
+            },
         },
     )
     assert result["step_id"] == "mappings"
@@ -625,8 +630,10 @@ async def test_options_init_submitting_advances_to_mappings(hass):
         user_input={
             CONF_CODE: "1234",
             CONF_CODE_ARM_REQUIRED: True,
-            CONF_SCAN_INTERVAL: 60,
-            CONF_DELAY_CHECK_OPERATION: 3.0,
+            CONF_ADVANCED: {
+                CONF_SCAN_INTERVAL: 60,
+                CONF_DELAY_CHECK_OPERATION: 3.0,
+            },
         },
     )
 

@@ -59,6 +59,7 @@ CARD_BASE_URL = "/securitas_panel/securitas-alarm-card.js"
 _MANIFEST = json.loads((Path(__file__).parent / "manifest.json").read_text())
 CARD_URL = f"{CARD_BASE_URL}?v={_MANIFEST['version']}"
 
+CONF_ADVANCED = "advanced"
 CONF_COUNTRY = "country"
 CONF_CODE_ARM_REQUIRED = "code_arm_required"
 CONF_HAS_PERI = "has_peri"
@@ -415,9 +416,7 @@ async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> No
         try:
             cameras = await client.get_camera_devices(installation)
         except Exception:
-            _LOGGER.warning(
-                "Failed to get camera devices for %s", installation.number
-            )
+            _LOGGER.warning("Failed to get camera devices for %s", installation.number)
             cameras = []
 
         if cameras:
@@ -441,9 +440,7 @@ async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> No
         try:
             services = await client.get_services(installation)
         except Exception:
-            _LOGGER.warning(
-                "Failed to get services for %s", installation.number
-            )
+            _LOGGER.warning("Failed to get services for %s", installation.number)
             continue
 
         has_doorlock = any(s.request == DOORLOCK_SERVICE for s in services)
@@ -453,9 +450,7 @@ async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> No
         try:
             lock_modes: list[SmartLockMode] = await client.get_lock_modes(installation)
         except Exception:
-            _LOGGER.warning(
-                "Failed to get lock modes for %s", installation.number
-            )
+            _LOGGER.warning("Failed to get lock modes for %s", installation.number)
             lock_modes = []
 
         if not lock_modes:

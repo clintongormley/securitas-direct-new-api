@@ -35,9 +35,16 @@
                     "code": "Código PIN (dejar vacío si no hay PIN)",
                     "code_arm_required": "Requerir también código PIN (si lo hay) para armar alarma",
                     "PERI_alarm": "¿Hay una alarma perimetral?",
-                    "scan_interval": "Intervalo de actualización en segundos (0 desactiva las actualizaciones automáticas)",
-                    "delay_check_operation": "Retardo entre solicitudes de API (seg)",
                     "notify_group": "Servicio de notificación para excepciones de armado (p. ej. mobile_app_phone)"
+                },
+                "sections": {
+                    "advanced": {
+                        "name": "Avanzado",
+                        "data": {
+                            "scan_interval": "Intervalo de actualización en segundos (0 desactiva las actualizaciones automáticas)",
+                            "delay_check_operation": "Retardo entre solicitudes de API (seg)"
+                        }
+                    }
                 }
             },
             "mappings": {

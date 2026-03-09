@@ -19,6 +19,7 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     CountrySelector,
@@ -27,6 +28,7 @@ from homeassistant.helpers.selector import (
 )
 
 from . import (
+    CONF_ADVANCED,
     CONF_CODE_ARM_REQUIRED,
     CONF_COUNTRY,
     CONF_DELAY_CHECK_OPERATION,
@@ -341,6 +343,9 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Step 3: PIN, scan interval, notification settings."""
         if user_input is not None:
             user_input.setdefault(CONF_CODE, DEFAULT_CODE)
+            # Flatten the advanced section back to top-level keys
+            advanced = user_input.pop(CONF_ADVANCED, {})
+            user_input.update(advanced)
             self._options_data = user_input
             return await self.async_step_mappings()
 
@@ -359,10 +364,6 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_CODE_ARM_REQUIRED, default=DEFAULT_CODE_ARM_REQUIRED
                 ): bool,
-                vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
-                vol.Optional(
-                    CONF_DELAY_CHECK_OPERATION, default=DEFAULT_DELAY_CHECK_OPERATION
-                ): vol.All(vol.Coerce(float), vol.Range(min=2.0, max=15.0)),
                 vol.Optional(CONF_NOTIFY_GROUP, default=""): selector(
                     {
                         "select": {
@@ -371,6 +372,20 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             "mode": "dropdown",
                         }
                     }
+                ),
+                vol.Optional(CONF_ADVANCED): section(
+                    vol.Schema(
+                        {
+                            vol.Optional(
+                                CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
+                            ): int,
+                            vol.Optional(
+                                CONF_DELAY_CHECK_OPERATION,
+                                default=DEFAULT_DELAY_CHECK_OPERATION,
+                            ): vol.All(vol.Coerce(float), vol.Range(min=2.0, max=15.0)),
+                        }
+                    ),
+                    {"collapsed": True},
                 ),
             }
         )
@@ -444,11 +459,14 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
         """Step 1: General settings."""
         if user_input is not None:
             user_input.setdefault(CONF_CODE, DEFAULT_CODE)
+            # Flatten the advanced section back to top-level keys
+            advanced = user_input.pop(CONF_ADVANCED, {})
+            user_input.update(advanced)
             self._general_data = user_input
             return await self.async_step_mappings()
-        scan_interval = self._get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
         code_arm_required = self._get(CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED)
+        scan_interval = self._get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         delay_check_operation = self._get(
             CONF_DELAY_CHECK_OPERATION, DEFAULT_DELAY_CHECK_OPERATION
         )
@@ -471,10 +489,6 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
                     description={"suggested_value": self._get(CONF_CODE, DEFAULT_CODE)},
                 ): str,
                 vol.Optional(CONF_CODE_ARM_REQUIRED, default=code_arm_required): bool,
-                vol.Optional(CONF_SCAN_INTERVAL, default=scan_interval): int,
-                vol.Optional(
-                    CONF_DELAY_CHECK_OPERATION, default=delay_check_operation
-                ): vol.All(vol.Coerce(float), vol.Range(min=2.0, max=15.0)),
                 vol.Optional(CONF_NOTIFY_GROUP, default=notify_group): selector(
                     {
                         "select": {
@@ -483,6 +497,20 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
                             "mode": "dropdown",
                         }
                     }
+                ),
+                vol.Optional(CONF_ADVANCED): section(
+                    vol.Schema(
+                        {
+                            vol.Optional(
+                                CONF_SCAN_INTERVAL, default=scan_interval
+                            ): int,
+                            vol.Optional(
+                                CONF_DELAY_CHECK_OPERATION,
+                                default=delay_check_operation,
+                            ): vol.All(vol.Coerce(float), vol.Range(min=2.0, max=15.0)),
+                        }
+                    ),
+                    {"collapsed": True},
                 ),
             }
         )
