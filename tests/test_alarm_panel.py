@@ -2501,6 +2501,65 @@ class TestExecuteTransition:
         assert calls[1].args == (alarm.installation, "PERI1")
 
 
+    async def test_stale_state_retries_with_corrected_proto(self):
+        """When result doesn't match target, retry with corrected state.
+
+        Scenario: _last_proto_code says disarmed ("D") but panel is
+        actually in perimeter-only ("E").  User requests arm total+peri.
+        First attempt sends ARM1 (wrong — only arms interior → "T").
+        Retry sees real state "T", sends PERI1 → reaches target "A".
+        """
+        alarm = make_alarm(has_peri=True)
+        alarm._last_proto_code = "D"  # stale — panel is actually in "E"
+        # First call: ARM1 (from "D") → result is "T" (not the target "A")
+        # Second call: PERI1 (from "T") → result is "A" (target reached)
+        alarm.client.arm_alarm = AsyncMock(
+            side_effect=[
+                ArmStatus(protomResponse="T", operation_status="OK"),
+                ArmStatus(protomResponse="A", operation_status="OK"),
+            ]
+        )
+        result = await alarm._execute_transition(
+            AlarmState(InteriorMode.TOTAL, PerimeterMode.ON)
+        )
+        assert result.protomResponse == "A"
+        assert alarm._last_proto_code == "T"  # updated before retry
+        calls = alarm.client.arm_alarm.call_args_list
+        # First attempt resolved D→A: tries compound first
+        assert calls[0].args[1] in ("ARMINTEXT1", "ARM1PERI1", "ARM1")
+        # Second attempt resolved T→A: needs only PERI1
+        assert calls[1].args == (alarm.installation, "PERI1")
+
+    async def test_stale_state_retry_limited_to_one(self):
+        """State mismatch retry happens at most once."""
+        alarm = make_alarm(has_peri=True)
+        alarm._last_proto_code = "D"
+        # Both attempts return wrong state — should not loop forever
+        alarm.client.arm_alarm = AsyncMock(
+            return_value=ArmStatus(protomResponse="T", operation_status="OK")
+        )
+        result = await alarm._execute_transition(
+            AlarmState(InteriorMode.TOTAL, PerimeterMode.ON)
+        )
+        # Accepted the second attempt's result even though it's wrong
+        assert result.protomResponse == "T"
+        # Called twice (attempt 0 + attempt 1), not more
+        assert alarm.client.arm_alarm.call_count == 2
+
+    async def test_no_retry_when_state_matches_target(self):
+        """No retry when the result matches the target state."""
+        alarm = make_alarm(has_peri=False)
+        alarm._last_proto_code = "D"
+        alarm.client.arm_alarm = AsyncMock(
+            return_value=ArmStatus(protomResponse="T", operation_status="OK")
+        )
+        result = await alarm._execute_transition(
+            AlarmState(InteriorMode.TOTAL, PerimeterMode.OFF)
+        )
+        assert result.protomResponse == "T"
+        alarm.client.arm_alarm.assert_called_once()
+
+
 # ===========================================================================
 # _last_proto_code tracking
 # ===========================================================================

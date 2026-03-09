@@ -367,19 +367,51 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         target: AlarmState,
         **force_params: str,
     ) -> ArmStatus | DisarmStatus:
-        """Execute a state transition using the command resolver."""
-        current = PROTO_TO_ALARM_STATE.get(
-            self._last_proto_code or "D",
-            AlarmState(InteriorMode.OFF, PerimeterMode.OFF),
-        )
-        steps = self._resolver.resolve(current, target)
+        """Execute a state transition, retrying once if state was stale.
 
-        if not steps:
-            return DisarmStatus(protomResponse=self._last_proto_code or "D")
-
+        After executing the resolved command sequence, checks whether the
+        panel's actual state matches the target.  If not (e.g. because
+        ``_last_proto_code`` was stale), updates the proto code from the
+        real response and retries with the corrected current state.
+        """
         result: ArmStatus | DisarmStatus | None = None
-        for step in steps:
-            result = await self._execute_step(step, **force_params)
+
+        for attempt in range(2):
+            current = PROTO_TO_ALARM_STATE.get(
+                self._last_proto_code or "D",
+                AlarmState(InteriorMode.OFF, PerimeterMode.OFF),
+            )
+            steps = self._resolver.resolve(current, target)
+
+            if not steps:
+                # Resolver says we're already in the target state.
+                return DisarmStatus(protomResponse=self._last_proto_code or "D")
+
+            for step in steps:
+                result = await self._execute_step(step, **force_params)
+
+            assert result is not None
+
+            # Check whether we actually reached the target state.
+            actual_proto = result.protomResponse
+            if actual_proto and actual_proto in PROTO_TO_ALARM_STATE:
+                actual_state = PROTO_TO_ALARM_STATE[actual_proto]
+                if actual_state == target:
+                    return result
+
+                if attempt == 0:
+                    _LOGGER.warning(
+                        "State mismatch: expected %s, got %s (proto %s). "
+                        "Retrying with corrected state.",
+                        target,
+                        actual_state,
+                        actual_proto,
+                    )
+                    self._last_proto_code = actual_proto
+                    continue
+
+            # No proto code to compare, or second attempt — accept as-is.
+            return result
 
         assert result is not None
         return result
