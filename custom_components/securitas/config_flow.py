@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
 import logging
 from typing import Any
 
@@ -18,7 +17,7 @@ from homeassistant.const import (
     CONF_UNIQUE_ID,
     CONF_USERNAME,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import section
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
@@ -71,6 +70,77 @@ VERSION = 3
 
 _LOGGER = logging.getLogger(__name__)
 
+_NOTIFY_EXCLUDE = {"notify", "send_message", "persistent_notification"}
+
+
+def _get_notify_options(hass: HomeAssistant) -> list[dict[str, str]]:
+    """Build notify service dropdown options."""
+    notify_services = sorted(
+        svc
+        for svc in hass.services.async_services().get("notify", {}).keys()
+        if svc not in _NOTIFY_EXCLUDE
+    )
+    return [{"value": "", "label": "(disabled)"}] + [
+        {"value": svc, "label": svc} for svc in notify_services
+    ]
+
+
+def _build_settings_schema(
+    defaults: dict[str, Any],
+    notify_options: list[dict[str, str]],
+    *,
+    use_suggested: bool = False,
+) -> vol.Schema:
+    """Build the shared settings schema for config and options flows."""
+    code_val = defaults.get(CONF_CODE, DEFAULT_CODE)
+    code_field = (
+        vol.Optional(CONF_CODE, description={"suggested_value": code_val})
+        if use_suggested
+        else vol.Optional(CONF_CODE, default=code_val)
+    )
+
+    return vol.Schema(
+        {
+            code_field: str,
+            vol.Optional(
+                CONF_CODE_ARM_REQUIRED,
+                default=defaults.get(CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED),
+            ): bool,
+            vol.Optional(
+                CONF_NOTIFY_GROUP,
+                default=defaults.get(CONF_NOTIFY_GROUP, ""),
+            ): selector(
+                {
+                    "select": {
+                        "options": notify_options,
+                        "custom_value": True,
+                        "mode": "dropdown",
+                    }
+                }
+            ),
+            vol.Optional(CONF_ADVANCED): section(
+                vol.Schema(
+                    {
+                        vol.Optional(
+                            CONF_SCAN_INTERVAL,
+                            default=defaults.get(
+                                CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                            ),
+                        ): int,
+                        vol.Optional(
+                            CONF_DELAY_CHECK_OPERATION,
+                            default=defaults.get(
+                                CONF_DELAY_CHECK_OPERATION,
+                                DEFAULT_DELAY_CHECK_OPERATION,
+                            ),
+                        ): vol.All(vol.Coerce(float), vol.Range(min=2.0, max=15.0)),
+                    }
+                ),
+                {"collapsed": True},
+            ),
+        }
+    )
+
 
 class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow."""
@@ -80,7 +150,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the flow handler."""
-        self.config: OrderedDict = OrderedDict()
+        self.config: dict[str, Any] = {}
         self.securitas: SecuritasHub | None = None
         self.otp_challenge: tuple[str | None, list[OtpPhone] | None] | None = None
         self._available_installations: list[Installation] = []
@@ -177,7 +247,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return self.async_show_form(step_id="user", data_schema=self._user_schema())
 
-        self.config = OrderedDict(user_input)
+        self.config = dict(user_input)
 
         self.config[CONF_DELAY_CHECK_OPERATION] = DEFAULT_DELAY_CHECK_OPERATION
         self.config[CONF_DEVICE_INDIGITALL] = ""
@@ -349,45 +419,10 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             self._options_data = user_input
             return await self.async_step_mappings()
 
-        notify_services = sorted(
-            svc
-            for svc in self.hass.services.async_services().get("notify", {}).keys()
-            if svc not in {"notify", "send_message", "persistent_notification"}
-        )
-        notify_options = [{"value": "", "label": "(disabled)"}] + [
-            {"value": svc, "label": svc} for svc in notify_services
-        ]
-
-        schema = vol.Schema(
-            {
-                vol.Optional(CONF_CODE, default=DEFAULT_CODE): str,
-                vol.Optional(
-                    CONF_CODE_ARM_REQUIRED, default=DEFAULT_CODE_ARM_REQUIRED
-                ): bool,
-                vol.Optional(CONF_NOTIFY_GROUP, default=""): selector(
-                    {
-                        "select": {
-                            "options": notify_options,
-                            "custom_value": True,
-                            "mode": "dropdown",
-                        }
-                    }
-                ),
-                vol.Optional(CONF_ADVANCED): section(
-                    vol.Schema(
-                        {
-                            vol.Optional(
-                                CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
-                            ): int,
-                            vol.Optional(
-                                CONF_DELAY_CHECK_OPERATION,
-                                default=DEFAULT_DELAY_CHECK_OPERATION,
-                            ): vol.All(vol.Coerce(float), vol.Range(min=2.0, max=15.0)),
-                        }
-                    ),
-                    {"collapsed": True},
-                ),
-            }
+        notify_options = _get_notify_options(self.hass)
+        schema = _build_settings_schema(
+            {CONF_CODE: DEFAULT_CODE, CONF_CODE_ARM_REQUIRED: DEFAULT_CODE_ARM_REQUIRED},
+            notify_options,
         )
         return self.async_show_form(step_id="options", data_schema=schema)
 
@@ -465,54 +500,21 @@ class SecuritasOptionsFlowHandler(config_entries.OptionsFlow):
             self._general_data = user_input
             return await self.async_step_mappings()
 
-        code_arm_required = self._get(CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED)
-        scan_interval = self._get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        delay_check_operation = self._get(
-            CONF_DELAY_CHECK_OPERATION, DEFAULT_DELAY_CHECK_OPERATION
-        )
-        notify_group = self._get(CONF_NOTIFY_GROUP, "")
-
-        _NOTIFY_EXCLUDE = {"notify", "send_message", "persistent_notification"}
-        notify_services = sorted(
-            svc
-            for svc in self.hass.services.async_services().get("notify", {}).keys()
-            if svc not in _NOTIFY_EXCLUDE
-        )
-        notify_options = [{"value": "", "label": "(disabled)"}] + [
-            {"value": svc, "label": svc} for svc in notify_services
-        ]
-
-        schema = vol.Schema(
+        notify_options = _get_notify_options(self.hass)
+        schema = _build_settings_schema(
             {
-                vol.Optional(
-                    CONF_CODE,
-                    description={"suggested_value": self._get(CONF_CODE, DEFAULT_CODE)},
-                ): str,
-                vol.Optional(CONF_CODE_ARM_REQUIRED, default=code_arm_required): bool,
-                vol.Optional(CONF_NOTIFY_GROUP, default=notify_group): selector(
-                    {
-                        "select": {
-                            "options": notify_options,
-                            "custom_value": True,
-                            "mode": "dropdown",
-                        }
-                    }
+                CONF_CODE: self._get(CONF_CODE, DEFAULT_CODE),
+                CONF_CODE_ARM_REQUIRED: self._get(
+                    CONF_CODE_ARM_REQUIRED, DEFAULT_CODE_ARM_REQUIRED
                 ),
-                vol.Optional(CONF_ADVANCED): section(
-                    vol.Schema(
-                        {
-                            vol.Optional(
-                                CONF_SCAN_INTERVAL, default=scan_interval
-                            ): int,
-                            vol.Optional(
-                                CONF_DELAY_CHECK_OPERATION,
-                                default=delay_check_operation,
-                            ): vol.All(vol.Coerce(float), vol.Range(min=2.0, max=15.0)),
-                        }
-                    ),
-                    {"collapsed": True},
+                CONF_NOTIFY_GROUP: self._get(CONF_NOTIFY_GROUP, ""),
+                CONF_SCAN_INTERVAL: self._get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                CONF_DELAY_CHECK_OPERATION: self._get(
+                    CONF_DELAY_CHECK_OPERATION, DEFAULT_DELAY_CHECK_OPERATION
                 ),
-            }
+            },
+            notify_options,
+            use_suggested=True,
         )
         return self.async_show_form(step_id="init", data_schema=schema)
 

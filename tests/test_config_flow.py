@@ -1,6 +1,5 @@
 """Tests for the Securitas Direct config flow."""
 
-from collections import OrderedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -64,24 +63,8 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 @pytest.fixture(autouse=True)
 def mock_call_later():
-    """Prevent call_later timers from lingering after config flow tests.
-
-    Completing a config flow triggers async_setup_entry, which schedules
-    call_later timers for initial updates. Older phcc (0.13.210 / HA 2025.2.0)
-    enforces lingering-timer cleanup at teardown.  Mock call_later to return
-    a no-op unsub so timers don't leak.
-    """
-    with (
-        patch(
-            "custom_components.securitas.alarm_control_panel.async_call_later",
-            return_value=lambda: None,
-        ),
-        patch(
-            "custom_components.securitas.sensor.async_call_later",
-            return_value=lambda: None,
-        ),
-    ):
-        yield
+    """No-op: async_call_later is no longer used by alarm_control_panel or sensor."""
+    yield
 
 
 # ---------------------------------------------------------------------------
@@ -589,7 +572,7 @@ async def test_create_client_with_real_hub_init(hass):
     flow = FlowHandler()
     flow.hass = hass
     # Simulate the config dict built by async_step_user before _create_client
-    flow.config = OrderedDict(USER_INPUT_CREDENTIALS)
+    flow.config = dict(USER_INPUT_CREDENTIALS)
     flow.config[CONF_DELAY_CHECK_OPERATION] = DEFAULT_DELAY_CHECK_OPERATION
     flow.config[CONF_DEVICE_ID] = FAKE_UUID
     flow.config[CONF_UNIQUE_ID] = FAKE_UUID
@@ -608,7 +591,7 @@ async def test_create_client_raises_value_error_when_password_none(hass):
 
     flow = FlowHandler()
     flow.hass = hass
-    flow.config = OrderedDict()
+    flow.config = dict()
     flow.config[CONF_PASSWORD] = None
 
     with pytest.raises(ValueError, match="Invalid internal state"):
