@@ -1,6 +1,6 @@
 """Priority-based API rate limiter for Securitas Direct.
 
-All API calls go through an ApiQueue which enforces minimum gaps between
+All API calls go through an ApiQueue which enforces a minimum gap between
 requests and lets foreground (user-initiated) requests preempt background
 (periodic polling) work.
 """
@@ -12,8 +12,7 @@ import time
 _LOGGER = logging.getLogger(__name__)
 
 # Default intervals
-DEFAULT_FOREGROUND_INTERVAL: float = 2.0
-DEFAULT_BACKGROUND_INTERVAL: float = 2.0
+DEFAULT_INTERVAL: float = 2.0
 DEFAULT_WAF_COOLDOWN: float = 60.0
 
 
@@ -21,13 +20,14 @@ class ApiQueue:
     """Serialize API calls with priority-based rate limiting.
 
     Two priority levels:
-    - FOREGROUND (min gap = foreground_interval): arm/disarm, lock changes,
-      setup/discovery, and their status polls.
-    - BACKGROUND (min gap = background_interval): periodic alarm status,
-      sentinel, air quality, lock status reads.
+    - FOREGROUND: arm/disarm, lock changes, setup/discovery, and their
+      status polls.
+    - BACKGROUND: periodic alarm status, sentinel, air quality, lock
+      status reads.
 
-    Foreground requests preempt queued background work.  In-flight API calls
-    are never cancelled — preemption happens between calls.
+    Both levels share the same minimum gap (interval).  Foreground requests
+    preempt queued background work.  In-flight API calls are never
+    cancelled — preemption happens between calls.
     """
 
     FOREGROUND = 0
@@ -35,12 +35,11 @@ class ApiQueue:
 
     def __init__(
         self,
-        foreground_interval: float = DEFAULT_FOREGROUND_INTERVAL,
-        background_interval: float = DEFAULT_BACKGROUND_INTERVAL,
+        interval: float = DEFAULT_INTERVAL,
     ) -> None:
         self._intervals = {
-            self.FOREGROUND: foreground_interval,
-            self.BACKGROUND: background_interval,
+            self.FOREGROUND: interval,
+            self.BACKGROUND: interval,
         }
         self._lock = asyncio.Lock()
         self._last_api_time: float = 0

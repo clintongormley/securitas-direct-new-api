@@ -14,7 +14,7 @@ class TestApiQueueBasic:
     """Basic submit and rate limiting."""
 
     async def test_submit_executes_coroutine(self):
-        queue = ApiQueue(foreground_interval=0, background_interval=0)
+        queue = ApiQueue(interval=0)
 
         async def fn():
             return 42
@@ -23,7 +23,7 @@ class TestApiQueueBasic:
         assert result == 42
 
     async def test_submit_passes_args(self):
-        queue = ApiQueue(foreground_interval=0, background_interval=0)
+        queue = ApiQueue(interval=0)
 
         async def fn(a, b):
             return a + b
@@ -32,7 +32,7 @@ class TestApiQueueBasic:
         assert result == 10
 
     async def test_submit_propagates_exception(self):
-        queue = ApiQueue(foreground_interval=0, background_interval=0)
+        queue = ApiQueue(interval=0)
 
         async def fn():
             raise ValueError("boom")
@@ -41,7 +41,7 @@ class TestApiQueueBasic:
             await queue.submit(fn, priority=ApiQueue.BACKGROUND)
 
     async def test_last_api_time_updated_on_success(self):
-        queue = ApiQueue(foreground_interval=0, background_interval=0)
+        queue = ApiQueue(interval=0)
         before = time.monotonic()
 
         async def fn():
@@ -51,7 +51,7 @@ class TestApiQueueBasic:
         assert queue._last_api_time >= before
 
     async def test_last_api_time_updated_on_error(self):
-        queue = ApiQueue(foreground_interval=0, background_interval=0)
+        queue = ApiQueue(interval=0)
 
         async def fn():
             raise RuntimeError("fail")
@@ -65,7 +65,7 @@ class TestApiQueueRateLimiting:
     """Minimum gap enforcement."""
 
     async def test_background_enforces_interval(self):
-        queue = ApiQueue(foreground_interval=0, background_interval=0.1)
+        queue = ApiQueue(interval=0.1)
         times = []
 
         async def fn():
@@ -75,26 +75,13 @@ class TestApiQueueRateLimiting:
         await queue.submit(fn, priority=ApiQueue.BACKGROUND)
         assert times[1] - times[0] >= 0.09  # allow small float error
 
-    async def test_foreground_enforces_shorter_interval(self):
-        queue = ApiQueue(foreground_interval=0.05, background_interval=0.2)
-        times = []
-
-        async def fn():
-            times.append(time.monotonic())
-
-        await queue.submit(fn, priority=ApiQueue.FOREGROUND)
-        await queue.submit(fn, priority=ApiQueue.FOREGROUND)
-        gap = times[1] - times[0]
-        assert gap >= 0.04
-        assert gap < 0.15  # much less than background interval
-
 
 class TestApiQueuePriority:
     """Foreground preemption of background work."""
 
     async def test_foreground_runs_before_queued_background(self):
         """When foreground and background are both waiting, foreground goes first."""
-        queue = ApiQueue(foreground_interval=0.05, background_interval=0.05)
+        queue = ApiQueue(interval=0.05)
         order = []
 
         # Hold the lock with an initial call
@@ -131,7 +118,7 @@ class TestApiQueuePriority:
 
     async def test_background_yields_while_foreground_pending(self):
         """Background waits while foreground work is pending."""
-        queue = ApiQueue(foreground_interval=0, background_interval=0)
+        queue = ApiQueue(interval=0)
         events = []
 
         # Simulate: foreground is "pending" (incremented but not yet submitted)
