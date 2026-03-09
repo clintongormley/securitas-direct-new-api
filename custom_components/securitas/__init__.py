@@ -303,7 +303,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         api_queues = hass.data[DOMAIN].setdefault("api_queues", {})
         if domain_url not in api_queues:
             api_queues[domain_url] = ApiQueue(
-                foreground_interval=config[CONF_DELAY_CHECK_OPERATION],
+                interval=config[CONF_DELAY_CHECK_OPERATION],
             )
             _LOGGER.info(
                 "Created ApiQueue %s for domain %s (country=%s, entry=%s)",
@@ -576,8 +576,7 @@ class SecuritasHub:
         )
         self.installations: list[Installation] = []
         self._api_queue = ApiQueue(
-            foreground_interval=domain_config[CONF_DELAY_CHECK_OPERATION],
-            background_interval=5.0,
+            interval=domain_config[CONF_DELAY_CHECK_OPERATION],
         )
         self._lock_modes: dict[
             str, list
@@ -693,7 +692,7 @@ class SecuritasHub:
         thumbnail = None
         for attempt in range(max_attempts):
             if attempt > 0:
-                await asyncio.sleep(5)
+                await asyncio.sleep(max(5, self.session.delay_check_operation))
             thumbnail = await self._api_queue.submit(
                 self.session.get_thumbnail,
                 installation,
