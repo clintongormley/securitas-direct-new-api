@@ -81,8 +81,8 @@ class TestSecuritasRefreshButtonInit:
 class TestSecuritasRefreshButtonAsyncPress:
     """Tests for SecuritasRefreshButton.async_press."""
 
-    async def test_success_calls_check_alarm_and_status(self):
-        """Success: calls check_alarm + check_alarm_status, sets protom_response."""
+    async def test_success_calls_refresh_alarm_status(self):
+        """Success: calls hub.refresh_alarm_status, sets protom_response."""
         button = make_button()
 
         alarm_status = OperationStatus(
@@ -93,15 +93,11 @@ class TestSecuritasRefreshButtonAsyncPress:
             protomResponse="D",
             protomResponseData="",
         )
-        button.client.session.check_alarm = AsyncMock(return_value="ref-123")
-        button.client.session.check_alarm_status = AsyncMock(return_value=alarm_status)
+        button.client.refresh_alarm_status = AsyncMock(return_value=alarm_status)
 
         await button.async_press()
 
-        button.client.session.check_alarm.assert_called_once_with(button.installation)
-        button.client.session.check_alarm_status.assert_called_once_with(
-            button.installation, "ref-123"
-        )
+        button.client.refresh_alarm_status.assert_called_once_with(button.installation)
         assert button.client.session.protom_response == "D"
 
     async def test_success_updates_alarm_entities(self):
@@ -116,8 +112,7 @@ class TestSecuritasRefreshButtonAsyncPress:
             protomResponse="T",
             protomResponseData="",
         )
-        button.client.session.check_alarm = AsyncMock(return_value="ref-456")
-        button.client.session.check_alarm_status = AsyncMock(return_value=alarm_status)
+        button.client.refresh_alarm_status = AsyncMock(return_value=alarm_status)
 
         await button.async_press()
 
@@ -131,34 +126,17 @@ class TestSecuritasRefreshButtonAsyncPress:
     async def test_error_securitas_direct_error_caught(self):
         """SecuritasDirectError is caught and logged, no crash."""
         button = make_button()
-        button.client.session.check_alarm = AsyncMock(
+        button.client.refresh_alarm_status = AsyncMock(
             side_effect=SecuritasDirectError("API timeout")
         )
 
         # Should not raise
         await button.async_press()
 
-        # check_alarm_status should never have been called
-        button.client.session.check_alarm_status.assert_not_called()  # type: ignore[attr-defined]
-
-    async def test_error_during_check_alarm_status(self):
-        """SecuritasDirectError during check_alarm_status is caught gracefully."""
-        button = make_button()
-        button.client.session.check_alarm = AsyncMock(return_value="ref-789")
-        button.client.session.check_alarm_status = AsyncMock(
-            side_effect=SecuritasDirectError("status timeout")
-        )
-
-        # Should not raise
-        await button.async_press()
-
-        # No update_entity call should happen
-        button.hass.services.async_call.assert_not_called()  # type: ignore[attr-defined]
-
     async def test_403_creates_persistent_notification(self):
         """403 error creates a rate-limited persistent notification."""
         button = make_button()
-        button.client.session.check_alarm = AsyncMock(
+        button.client.refresh_alarm_status = AsyncMock(
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
         )
 
@@ -173,7 +151,7 @@ class TestSecuritasRefreshButtonAsyncPress:
     async def test_403_sets_waf_blocked_on_alarm_entity(self):
         """403 on button press sets waf_blocked on the alarm entity."""
         button = make_button()
-        button.client.session.check_alarm = AsyncMock(
+        button.client.refresh_alarm_status = AsyncMock(
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
         )
 
@@ -193,7 +171,7 @@ class TestSecuritasRefreshButtonAsyncPress:
     async def test_403_without_alarm_entity_does_not_crash(self):
         """403 when no alarm entity is registered still works (just notification)."""
         button = make_button()
-        button.client.session.check_alarm = AsyncMock(
+        button.client.refresh_alarm_status = AsyncMock(
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
         )
         button.hass.data = {}  # type: ignore[attr-defined]
@@ -206,7 +184,7 @@ class TestSecuritasRefreshButtonAsyncPress:
     async def test_non_403_error_does_not_create_notification(self):
         """Non-403 errors are logged but do not create persistent notifications."""
         button = make_button()
-        button.client.session.check_alarm = AsyncMock(
+        button.client.refresh_alarm_status = AsyncMock(
             side_effect=SecuritasDirectError("Network error")
         )
 
@@ -305,4 +283,4 @@ class TestHassNoneGuardsButton:
         # Should not raise or call any API methods
         await button.async_press()
 
-        button.client.session.check_alarm.assert_not_called()  # type: ignore[attr-defined]
+        button.client.refresh_alarm_status.assert_not_called()  # type: ignore[attr-defined]

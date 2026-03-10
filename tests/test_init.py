@@ -247,8 +247,8 @@ class TestSecuritasDirectDevice:
         info = device.device_info
         assert info["identifiers"] == {(DOMAIN, "securitas_direct.123456")}  # type: ignore[typeddict-item]
         assert info["manufacturer"] == "Securitas Direct"  # type: ignore[typeddict-item]
-        assert info["model"] == "PREMIUM"  # type: ignore[typeddict-item]
-        assert info["hw_version"] == "SDVFAST"  # type: ignore[typeddict-item]
+        assert info["model"] == "SDVFAST"  # type: ignore[typeddict-item]
+        assert info["hw_version"] == "PREMIUM"  # type: ignore[typeddict-item]
         assert info["name"] == "MyHome"  # type: ignore[typeddict-item]
 
 

@@ -59,10 +59,7 @@ class SecuritasRefreshButton(SecuritasEntity, ButtonEntity):
         if self.hass is None:
             return
         try:
-            reference_id = await self.client.session.check_alarm(self.installation)
-            alarm_status = await self.client.session.check_alarm_status(
-                self.installation, reference_id
-            )
+            alarm_status = await self.client.refresh_alarm_status(self.installation)
 
             self.client.session.protom_response = alarm_status.protomResponse
 

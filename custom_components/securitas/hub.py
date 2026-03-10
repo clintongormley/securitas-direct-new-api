@@ -103,8 +103,8 @@ class SecuritasDirectDevice:
         return DeviceInfo(
             identifiers={(DOMAIN, f"securitas_direct.{self.installation.number}")},
             manufacturer="Securitas Direct",
-            model=self.installation.type,
-            hw_version=self.installation.panel,
+            model=self.installation.panel,
+            hw_version=self.installation.type,
             name=self.name,
         )
 
@@ -498,6 +498,9 @@ class SecuritasHub:
 
     async def disarm_alarm(self, installation: Installation, command: str) -> Any:
         """Disarm the alarm via queue-submitted API calls."""
+        # Capture protom_response at request time so status polls use the
+        # correct currentStatus even if protom_response changes concurrently.
+        current_status = self.session.protom_response
         reference_id = await self._api_queue.submit(
             self.session.submit_disarm_request,
             installation,
@@ -513,12 +516,42 @@ class SecuritasHub:
                 reference_id,
                 command,
                 attempt,
+                current_status,
                 priority=ApiQueue.FOREGROUND,
             )
             if raw.get("res") != "WAIT":
                 return self.session.process_disarm_result(raw)
 
         raise TimeoutError("Disarm status poll timed out")
+
+    async def refresh_alarm_status(self, installation: Installation) -> OperationStatus:
+        """Full alarm status refresh via CheckAlarm + poll (through queue).
+
+        Used by the refresh button for an authoritative protom round-trip.
+        """
+        reference_id = await self._api_queue.submit(
+            self.session.check_alarm,
+            installation,
+            priority=ApiQueue.FOREGROUND,
+        )
+
+        max_attempts = self._max_poll_attempts(timeout_seconds=30)
+        for attempt in range(1, max_attempts + 1):
+            status = await self._api_queue.submit(
+                self.session.check_alarm_status,
+                installation,
+                reference_id,
+                priority=ApiQueue.FOREGROUND,
+            )
+            if hasattr(status, "protomResponse") and status.protomResponse:
+                return status
+            # check_alarm_status returns OperationStatus with empty
+            # protomResponse when still waiting
+            raw = getattr(status, "operation_status", "")
+            if raw != "WAIT":
+                return status
+
+        raise TimeoutError("Alarm status refresh timed out")
 
     async def update_overview(self, installation: Installation) -> OperationStatus:
         """Poll alarm status via check_general_status (single API call).

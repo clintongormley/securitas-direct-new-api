@@ -4,6 +4,7 @@ import asyncio
 from collections import OrderedDict
 import logging
 from pathlib import Path
+import time
 from uuid import uuid4
 
 import voluptuous as vol
@@ -305,15 +306,21 @@ async def _fetch_and_cache_installations(
     Returns a list of SecuritasDirectDevice wrappers for this entry's
     installations.
     """
-    cached = hass.data[DOMAIN].pop("installations", None)
-    all_installations: list[Installation] = (
-        cached
-        if cached is not None
-        else await hub.api_queue.submit(
+    install_cache = hass.data[DOMAIN].get("installations_cache")
+    if (
+        install_cache is not None
+        and time.monotonic() - install_cache["time"] < API_CACHE_TTL
+    ):
+        all_installations: list[Installation] = install_cache["data"]
+    else:
+        all_installations = await hub.api_queue.submit(
             hub.session.list_installations,
             priority=ApiQueue.FOREGROUND,
         )
-    )
+        hass.data[DOMAIN]["installations_cache"] = {
+            "data": all_installations,
+            "time": time.monotonic(),
+        }
     target_number = entry.data.get(CONF_INSTALLATION)
     if target_number:
         entry_installations = [
@@ -323,9 +330,15 @@ async def _fetch_and_cache_installations(
         # Legacy entries without CONF_INSTALLATION get all
         entry_installations = all_installations
 
-    # Use cached services from config flow if available,
+    # Use cached services from config flow if available and fresh,
     # otherwise fetch from API (e.g. on HA restart).
-    cached_services = hass.data[DOMAIN].pop("cached_services", None)
+    svc_cache = hass.data[DOMAIN].get("cached_services")
+    cached_services = (
+        svc_cache["data"]
+        if svc_cache is not None
+        and time.monotonic() - svc_cache["time"] < API_CACHE_TTL
+        else None
+    )
 
     devices: list[SecuritasDirectDevice] = []
     for installation in entry_installations:
@@ -594,13 +607,21 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
         config_entry, PLATFORMS
     )
 
-    # Decrement shared session ref count
+    # Decrement shared session ref count (under the same lock used for creation)
     username = config_entry.data.get(CONF_USERNAME)
     sessions = hass.data.get(DOMAIN, {}).get("sessions", {})
+    setup_locks = hass.data.get(DOMAIN, {}).get("setup_locks", {})
     if username and username in sessions:
-        sessions[username]["ref_count"] -= 1
-        if sessions[username]["ref_count"] <= 0:
-            sessions.pop(username)
+        lock = setup_locks.get(username)
+        if lock:
+            async with lock:
+                sessions[username]["ref_count"] -= 1
+                if sessions[username]["ref_count"] <= 0:
+                    sessions.pop(username)
+        else:
+            sessions[username]["ref_count"] -= 1
+            if sessions[username]["ref_count"] <= 0:
+                sessions.pop(username)
 
     # Clean up per-entry data
     hass.data[DOMAIN].pop(config_entry.entry_id, None)

@@ -52,7 +52,9 @@ def _make_entry(hass: HomeAssistant, **overrides) -> MockConfigEntry:
     return entry
 
 
-async def _setup(hass: HomeAssistant, server: MockGraphQLServer) -> tuple[MockConfigEntry, bool]:
+async def _setup(
+    hass: HomeAssistant, server: MockGraphQLServer
+) -> tuple[MockConfigEntry, bool]:
     """Create an entry and run full async_setup_entry with the mock server."""
     entry = _make_entry(hass)
     mock_http = server.make_http_client()
@@ -109,13 +111,17 @@ async def test_setup_makes_only_expected_api_calls(
     # Run setup but capture calls before background tasks execute.
     entry = _make_entry(hass)
     mock_http = mock_server.make_http_client()
-    with patch(
-        "custom_components.securitas.async_get_clientsession",
-        return_value=mock_http,
-    ), patch(
-        "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
-    ) as mock_fwd, patch(
-        "custom_components.securitas._async_discover_devices",
+    with (
+        patch(
+            "custom_components.securitas.async_get_clientsession",
+            return_value=mock_http,
+        ),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+        ) as mock_fwd,
+        patch(
+            "custom_components.securitas._async_discover_devices",
+        ),
     ):
         mock_fwd.return_value = True
         await async_setup_entry(hass, entry)
@@ -503,14 +509,11 @@ async def test_arm_away_api_call(hass: HomeAssistant, mock_server: MockGraphQLSe
     devices = entry_data["devices"]
     installation = devices[0].installation
 
-    # Queue arm sequence
-    mock_server.add_response("Srv", graphql_services(capabilities_jwt=make_jwt(60)))
-    mock_server.add_response("CheckAlarm", graphql_check_alarm())
-    mock_server.add_response("CheckAlarmStatus", graphql_alarm_status(proto="T"))
+    # Queue arm sequence: submit + poll
     mock_server.add_response("xSArmPanel", graphql_arm())
     mock_server.add_response("ArmStatus", graphql_arm_status(proto="T"))
 
-    status = await hub.session.arm_alarm(installation, "ARM1")
+    status = await hub.arm_alarm(installation, "ARM1")
     assert status.protomResponse == "T"
     assert mock_server.call_count("xSArmPanel") == 1
     assert mock_server.call_count("ArmStatus") >= 1
@@ -526,13 +529,11 @@ async def test_disarm_api_call(hass: HomeAssistant, mock_server: MockGraphQLServ
     devices = entry_data["devices"]
     installation = devices[0].installation
 
-    mock_server.add_response("Srv", graphql_services(capabilities_jwt=make_jwt(60)))
-    mock_server.add_response("CheckAlarm", graphql_check_alarm())
-    mock_server.add_response("CheckAlarmStatus", graphql_alarm_status(proto="D"))
+    # Queue disarm sequence: submit + poll
     mock_server.add_response("xSDisarmPanel", graphql_disarm())
     mock_server.add_response("DisarmStatus", graphql_disarm_status(proto="D"))
 
-    status = await hub.session.disarm_alarm(installation, "DARM1")
+    status = await hub.disarm_alarm(installation, "DARM1")
     assert status.protomResponse == "D"
     assert mock_server.call_count("xSDisarmPanel") == 1
 
@@ -549,16 +550,13 @@ async def test_arm_poll_waits_for_ok(
     devices = entry_data["devices"]
     installation = devices[0].installation
 
-    mock_server.add_response("Srv", graphql_services(capabilities_jwt=make_jwt(60)))
-    mock_server.add_response("CheckAlarm", graphql_check_alarm())
-    mock_server.add_response("CheckAlarmStatus", graphql_alarm_status(proto="T"))
+    # Queue arm sequence: submit + 3 polls (2 WAIT, then OK)
     mock_server.add_response("xSArmPanel", graphql_arm())
-    # First two polls return WAIT, third returns OK
     mock_server.add_response("ArmStatus", graphql_arm_status(res="WAIT", proto=""))
     mock_server.add_response("ArmStatus", graphql_arm_status(res="WAIT", proto=""))
     mock_server.add_response("ArmStatus", graphql_arm_status(res="OK", proto="T"))
 
-    status = await hub.session.arm_alarm(installation, "ARM1")
+    status = await hub.arm_alarm(installation, "ARM1")
     assert status.protomResponse == "T"
     assert mock_server.call_count("ArmStatus") == 3
 

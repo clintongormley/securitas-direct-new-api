@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import voluptuous as vol
@@ -412,7 +413,10 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=self._user_schema(self.config),
                 errors={"base": "cannot_connect"},
             )
-        self.hass.data[DOMAIN]["installations"] = installations
+        self.hass.data[DOMAIN]["installations_cache"] = {
+            "data": installations,
+            "time": time.monotonic(),
+        }
 
         configured_ids = {
             entry.data.get(CONF_INSTALLATION) for entry in self._async_current_entries()
@@ -449,7 +453,8 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
         self.hass.data.setdefault(DOMAIN, {})
         self.hass.data[DOMAIN]["cached_services"] = {
-            installation.number: services,
+            "data": {installation.number: services},
+            "time": time.monotonic(),
         }
 
         self._has_peri = self._detect_peri(services, installation)
@@ -566,6 +571,22 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(step_id="mappings", data_schema=schema)
+
+    async def async_step_abort(
+        self, reason: str | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Clean up session when flow is aborted."""
+        self._cleanup_flow_session()
+        return super().async_abort(reason=reason or "unknown")
+
+    def _cleanup_flow_session(self) -> None:
+        """Remove session stored by this flow if it has no active references."""
+        if not self.config.get(CONF_USERNAME):
+            return
+        username = self.config[CONF_USERNAME]
+        sessions = self.hass.data.get(DOMAIN, {}).get("sessions", {})
+        if username in sessions and sessions[username]["ref_count"] <= 0:
+            sessions.pop(username)
 
     @staticmethod
     @callback

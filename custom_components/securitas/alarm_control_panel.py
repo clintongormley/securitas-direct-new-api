@@ -154,12 +154,8 @@ class SecuritasAlarm(SecuritasEntity, alarm.AlarmControlPanelEntity):
         self._update_interval: timedelta = timedelta(
             seconds=scan_seconds if scan_seconds > 0 else DEFAULT_SCAN_INTERVAL
         )
-        if scan_seconds > 0:
-            self._update_unsub = async_track_time_interval(
-                hass, self.async_update_status, self._update_interval
-            )
-        else:
-            self._update_unsub = None
+        self._scan_seconds = scan_seconds
+        self._update_unsub = None
         self._operation_in_progress: bool = False
         self._operation_epoch: int = 0
         self._code: str | None = client.config.get(CONF_CODE, None)
@@ -183,7 +179,11 @@ class SecuritasAlarm(SecuritasEntity, alarm.AlarmControlPanelEntity):
         self.update_status_alarm(state)
 
     async def async_added_to_hass(self) -> None:
-        """Register mobile notification action listener when added to HA."""
+        """Register timer and mobile notification action listener when added to HA."""
+        if self._scan_seconds > 0:
+            self._update_unsub = async_track_time_interval(
+                self.hass, self.async_update_status, self._update_interval
+            )
         self._mobile_action_unsub = self.hass.bus.async_listen(
             "mobile_app_notification_action",
             self._handle_mobile_action,

@@ -1,7 +1,7 @@
 """Tests for sensor and lock platform entities."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
     AirQuality,
@@ -102,18 +102,14 @@ def make_lock(
     hass.async_create_task = MagicMock()
     hass.services = MagicMock()
 
-    with patch(
-        "custom_components.securitas.lock.async_track_time_interval"
-    ) as mock_track:
-        mock_track.return_value = MagicMock()
-        lock_entity = SecuritasLock(
-            installation=installation,
-            client=client,
-            hass=hass,
-            device_id=device_id,
-            initial_status=initial_status,
-            danalock_config=danalock_config,
-        )
+    lock_entity = SecuritasLock(
+        installation=installation,
+        client=client,
+        hass=hass,
+        device_id=device_id,
+        initial_status=initial_status,
+        danalock_config=danalock_config,
+    )
     return lock_entity
 
 
@@ -470,18 +466,11 @@ class TestSecuritasLockInit:
                 f"Expected is_locking=False for state={state}"
             )
 
-    def test_is_opening_returns_true_when_state_is_3(self):
+    def test_is_opening_always_returns_false(self):
         lock = make_lock()
-        lock._state = "3"
-        assert lock.is_opening is True
-
-    def test_is_opening_returns_false_when_state_is_not_3(self):
-        lock = make_lock()
-        for state in ("1", "2", "4", "0"):
+        for state in ("1", "2", "3", "4", "0"):
             lock._state = state
-            assert lock.is_opening is False, (
-                f"Expected is_opening=False for state={state}"
-            )
+            assert lock.is_opening is False
 
     def test_is_jammed_always_returns_false(self):
         lock = make_lock()
@@ -489,11 +478,18 @@ class TestSecuritasLockInit:
             lock._state = state
             assert lock.is_jammed is False
 
-    def test_is_unlocking_always_returns_false(self):
+    def test_is_unlocking_returns_true_when_state_is_3(self):
         lock = make_lock()
-        for state in ("1", "2", "3", "4", "0"):
+        lock._state = "3"
+        assert lock.is_unlocking is True
+
+    def test_is_unlocking_returns_false_when_state_is_not_3(self):
+        lock = make_lock()
+        for state in ("1", "2", "4", "0"):
             lock._state = state
-            assert lock.is_unlocking is False
+            assert lock.is_unlocking is False, (
+                f"Expected is_unlocking=False for state={state}"
+            )
 
     def test_name_returns_installation_alias_with_device_id(self):
         lock = make_lock()
@@ -622,31 +618,31 @@ class TestSecuritasLockActions:
         assert lock._state == "1"
         lock.async_schedule_update_ha_state.assert_called()
 
-    async def test_async_lock_error_does_not_change_final_state(self):
+    async def test_async_lock_error_restores_previous_state(self):
         lock = make_lock()
         lock.async_schedule_update_ha_state = MagicMock()
+        lock.async_write_ha_state = MagicMock()
         lock.client.change_lock_mode = AsyncMock(
             side_effect=SecuritasDirectError("API error")
         )
 
         await lock.async_lock()
 
-        # __force_state("4") was called, but then the error caused early return.
-        # State remains "4" (locking) — it does NOT reach "2" (locked).
-        assert lock._state == "4"
+        # On error, state is restored from _last_state (initial "2" = locked)
+        assert lock._state == "2"
 
-    async def test_async_unlock_error_does_not_change_final_state(self):
+    async def test_async_unlock_error_restores_previous_state(self):
         lock = make_lock()
         lock.async_schedule_update_ha_state = MagicMock()
+        lock.async_write_ha_state = MagicMock()
         lock.client.change_lock_mode = AsyncMock(
             side_effect=SecuritasDirectError("API error")
         )
 
         await lock.async_unlock()
 
-        # __force_state("3") was called, but then the error caused early return.
-        # State remains "3" (opening) — it does NOT reach "1" (open).
-        assert lock._state == "3"
+        # On error, state is restored from _last_state (initial "2" = locked)
+        assert lock._state == "2"
 
     async def test_async_lock_intermediate_state_is_locking(self):
         """Verify __force_state is called with '4' (locking) before the API call."""

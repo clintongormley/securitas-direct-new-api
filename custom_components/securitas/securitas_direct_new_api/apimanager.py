@@ -595,74 +595,6 @@ class ApiManager(SecuritasHttpClient):
         check_data = self._extract_response_data(response, "xSCheckAlarmStatus")
         return check_data
 
-    async def arm_alarm(
-        self,
-        installation: Installation,
-        command: str,
-        force_arming_remote_id: str | None = None,
-        suid: str | None = None,
-    ) -> OperationStatus:
-        """Arms the alarm in the specified mode.
-
-        When force_arming_remote_id and suid are provided, the arm request
-        overrides non-blocking exceptions (e.g. open windows) that were
-        reported in a previous attempt.
-        """
-        reference_id = await self.submit_arm_request(
-            installation, command, force_arming_remote_id, suid
-        )
-
-        count = 0
-
-        async def _check():
-            nonlocal count
-            count += 1
-            data = await self.check_arm_status(
-                installation,
-                reference_id,
-                command,
-                count,
-                force_arming_remote_id,
-            )
-            # Detect non-blocking exception that allows forcing
-            error = data.get("error")
-            if (
-                data.get("res") == "ERROR"
-                and error
-                and error.get("type") == "NON_BLOCKING"
-                and error.get("allowForcing")
-            ):
-                error_ref = error.get("referenceId", reference_id)
-                error_suid = error.get("suid", "")
-                exceptions = await self._get_exceptions(
-                    installation, error_ref, error_suid
-                )
-                raise ArmingExceptionError(error_ref, error_suid, exceptions)
-            return data
-
-        raw_data = await self._poll_operation(_check)
-
-        # Detect unsupported command errors that pass GraphQL validation
-        # but fail at the panel level (e.g. TECHNICAL_ERROR after polling)
-        if raw_data.get("res") == "ERROR":
-            error_info = raw_data.get("error") or {}
-            if error_info.get("type") != "NON_BLOCKING":
-                raise SecuritasDirectError(
-                    f"Arm command failed: {raw_data.get('msg', 'unknown error')}",
-                )
-
-        self.protom_response = raw_data["protomResponse"]
-        return OperationStatus(
-            operation_status=raw_data["res"],
-            message=raw_data["msg"],
-            status=raw_data["status"],
-            installation_number=raw_data["numinst"],
-            protomResponse=raw_data["protomResponse"],
-            protomResponseData=raw_data["protomResponseDate"],
-            requestId=raw_data["requestId"],
-            error=raw_data["error"],
-        )
-
     async def process_arm_result(
         self,
         raw_data: dict[str, Any],
@@ -819,56 +751,13 @@ class ApiManager(SecuritasHttpClient):
         )
         return []
 
-    async def disarm_alarm(
-        self, installation: Installation, command: str
-    ) -> OperationStatus:
-        """Disarm the alarm."""
-        reference_id = await self.submit_disarm_request(installation, command)
-
-        count = 0
-
-        async def _check():
-            nonlocal count
-            count += 1
-            return await self.check_disarm_status(
-                installation,
-                reference_id,
-                command,
-                count,
-            )
-
-        raw_data = await self._poll_operation(
-            _check,
-            continue_on_msg="alarm-manager.error_no_response_to_request",
-        )
-
-        # Detect unsupported command errors
-        if raw_data.get("res") == "ERROR":
-            error_info = raw_data.get("error") or {}
-            if error_info.get("type") != "NON_BLOCKING":
-                raise SecuritasDirectError(
-                    f"Disarm command failed: {raw_data.get('msg', 'unknown error')}",
-                )
-
-        if raw_data.get("protomResponse"):
-            self.protom_response = raw_data["protomResponse"]
-        return OperationStatus(
-            operation_status=raw_data.get("res", ""),
-            message=raw_data.get("msg", ""),
-            status=raw_data.get("status", ""),
-            numinst=raw_data.get("numinst", ""),
-            protomResponse=raw_data.get("protomResponse", ""),
-            protomResponseData=raw_data.get("protomResponseDate", ""),
-            requestId=raw_data.get("requestId", ""),
-            error=raw_data.get("error"),
-        )
-
     async def check_disarm_status(
         self,
         installation: Installation,
         reference_id: str,
         command: str,
         counter: int,
+        current_status: str | None = None,
     ) -> dict[str, Any]:
         """Check progress of the alarm."""
         content = {
@@ -877,7 +766,7 @@ class ApiManager(SecuritasHttpClient):
                 "request": command,
                 "numinst": installation.number,
                 "panel": installation.panel,
-                "currentStatus": self.protom_response,
+                "currentStatus": current_status or self.protom_response,
                 "referenceId": reference_id,
                 "counter": counter,
             },

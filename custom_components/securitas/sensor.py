@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DOMAIN, SecuritasDirectDevice, SecuritasHub
 from .constants import SentinelName
-from .entity import SecuritasEntity, schedule_initial_updates, securitas_device_info
+from .entity import SecuritasEntity, schedule_initial_updates
 from .securitas_direct_new_api import Installation, SecuritasDirectError
 from .securitas_direct_new_api.dataTypes import AirQuality, Service
 
@@ -188,7 +188,7 @@ class AirQualityFetcher:
             return None
 
 
-class SentinelAirQuality(SensorEntity):
+class SentinelAirQuality(SecuritasEntity, SensorEntity):
     """Air Quality sensor — numeric value from the most recent hourly reading."""
 
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -198,11 +198,10 @@ class SentinelAirQuality(SensorEntity):
         fetcher: AirQualityFetcher,
         installation: Installation,
     ) -> None:
+        super().__init__(installation, fetcher._client)
         self._fetcher = fetcher
-        self._installation = installation
         self._attr_unique_id = f"{installation.number}_airquality_{fetcher._service.id}"
         self._attr_name = f"{installation.alias} Air Quality"
-        self._attr_device_info = securitas_device_info(installation)
 
     async def async_update(self):
         """Update the sensor via the hub's rate-limited method."""
@@ -213,7 +212,7 @@ class SentinelAirQuality(SensorEntity):
             self._attr_native_value = air_quality.value
 
 
-class SentinelAirQualityStatus(SensorEntity):
+class SentinelAirQualityStatus(SecuritasEntity, SensorEntity):
     """Air Quality Status sensor — categorical status (Good/Fair/Poor/Bad)."""
 
     def __init__(
@@ -221,13 +220,12 @@ class SentinelAirQualityStatus(SensorEntity):
         fetcher: AirQualityFetcher,
         installation: Installation,
     ) -> None:
+        super().__init__(installation, fetcher._client)
         self._fetcher = fetcher
-        self._installation = installation
         self._attr_unique_id = (
             f"{installation.number}_airquality_status_{fetcher._service.id}"
         )
         self._attr_name = f"{installation.alias} Air Quality Status"
-        self._attr_device_info = securitas_device_info(installation)
 
     async def async_update(self):
         """Update the sensor via the hub's rate-limited method."""

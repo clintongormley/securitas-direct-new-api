@@ -61,6 +61,8 @@ class ApiQueue:
         Raises:
             Whatever coro_fn raises — exceptions propagate to the caller.
         """
+        # Safe without lock: asyncio is single-threaded and these are
+        # synchronous operations with no await in between.
         if priority == self.FOREGROUND:
             self._pending_foreground += 1
             self._bg_event.clear()
@@ -72,6 +74,20 @@ class ApiQueue:
                     while self._pending_foreground > 0:
                         await self._bg_event.wait()
 
+                # Compute throttle delay outside the lock so we don't block
+                # other callers (especially foreground) during the sleep.
+                interval = self._intervals[priority]
+                elapsed = time.monotonic() - self._last_api_time
+                if elapsed < interval:
+                    delay = interval - elapsed
+                    _LOGGER.debug(
+                        "[queue] Throttling %.1fs (%s) for %s",
+                        delay,
+                        "fg" if priority == self.FOREGROUND else "bg",
+                        getattr(coro_fn, "__name__", coro_fn),
+                    )
+                    await asyncio.sleep(delay)
+
                 async with self._lock:
                     # Background must re-check after acquiring lock — foreground
                     # may have arrived while we were waiting on the lock.
@@ -79,17 +95,12 @@ class ApiQueue:
                         # Release lock and loop back to yield to foreground
                         continue
 
-                    interval = self._intervals[priority]
+                    # Re-check throttle after acquiring lock — another caller
+                    # may have made a request while we were sleeping/waiting.
                     elapsed = time.monotonic() - self._last_api_time
                     if elapsed < interval:
-                        delay = interval - elapsed
-                        _LOGGER.debug(
-                            "[queue] Throttling %.1fs (%s) for %s",
-                            delay,
-                            "fg" if priority == self.FOREGROUND else "bg",
-                            getattr(coro_fn, "__name__", coro_fn),
-                        )
-                        await asyncio.sleep(delay)
+                        # Need to wait more — release lock and loop back
+                        continue
 
                     try:
                         result = await coro_fn(*args)

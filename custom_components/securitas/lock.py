@@ -92,12 +92,15 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
         self.hass: HomeAssistant = hass
         scan_seconds = client.config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         self._update_interval: timedelta = timedelta(seconds=scan_seconds)
-        if scan_seconds > 0:
+        self._scan_seconds = scan_seconds
+        self._update_unsub = None
+
+    async def async_added_to_hass(self) -> None:
+        """Register timer when entity is added to HA."""
+        if self._scan_seconds > 0:
             self._update_unsub = async_track_time_interval(
-                hass, self.async_update_status, self._update_interval
+                self.hass, self.async_update_status, self._update_interval
             )
-        else:
-            self._update_unsub = None
 
     @property
     def changed_by(self) -> str:  # type: ignore[override]
@@ -178,11 +181,11 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
 
     @property
     def is_unlocking(self) -> bool:  # type: ignore[override]
-        return False
+        return self._state == LOCK_STATUS_OPENING
 
     @property
     def is_opening(self) -> bool:  # type: ignore[override]
-        return self._state == LOCK_STATUS_OPENING
+        return False
 
     @property
     def is_jammed(self) -> bool:  # type: ignore[override]
@@ -212,6 +215,8 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
         try:
             await self.client.change_lock_mode(self.installation, True, self._device_id)
         except SecuritasDirectError as err:
+            self._state = self._last_state
+            self.async_write_ha_state()
             _LOGGER.error(
                 "Lock operation failed for %s device %s: %s",
                 self.installation.number,
@@ -229,6 +234,8 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
                 self.installation, False, self._device_id
             )
         except SecuritasDirectError as err:
+            self._state = self._last_state
+            self.async_write_ha_state()
             _LOGGER.error(
                 "Unlock operation failed for %s device %s: %s",
                 self.installation.number,
