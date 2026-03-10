@@ -229,16 +229,9 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             result = await self.securitas.send_sms_code(
                 self.otp_challenge[0] or "", user_input[CONF_CODE]
             )
-            _LOGGER.debug(
-                "send_sms_code returned: %s, token set: %s",
-                result,
-                self.securitas.get_authentication_token() is not None,
-            )
         except SecuritasDirectError as err:
-            _LOGGER.debug("send_sms_code raised SecuritasDirectError: %s", err)
             # Check if OTP expired (auth-code 10002) — restart 2FA to get new code
             if self._is_otp_expired(err):
-                _LOGGER.debug("OTP expired, restarting 2FA flow")
                 return await self._show_2fa_error("otp_expired")
             return self.async_show_form(
                 step_id="otp_challenge",
@@ -258,7 +251,6 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         # the API re-issued a challenge instead of completing authentication.
         otp_hash, _phones = result
         if otp_hash is not None:
-            _LOGGER.debug("OTP code wrong: API returned new challenge hash")
             return self.async_show_form(
                 step_id="otp_challenge",
                 data_schema=vol.Schema({vol.Required(CONF_CODE): str}),
@@ -306,7 +298,6 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if username in sessions:
             existing_hub = sessions[username]["hub"]
             if existing_hub.config[CONF_PASSWORD] == password:
-                _LOGGER.debug("Reusing existing session for %s", username)
                 self.securitas = existing_hub
                 self.config[CONF_DEVICE_ID] = existing_hub.config[CONF_DEVICE_ID]
                 self.config[CONF_UNIQUE_ID] = existing_hub.config[CONF_UNIQUE_ID]
@@ -388,26 +379,18 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def finish_setup(self):
         """Login, discover installations, detect peri, advance to options."""
         assert self.securitas is not None
-        _LOGGER.debug(
-            "finish_setup: token set=%s",
-            self.securitas.get_authentication_token() is not None,
-        )
         try:
             if self.securitas.get_authentication_token() is None:
-                _LOGGER.debug("finish_setup: calling login()")
                 await self.securitas.login()
         except Login2FAError:
-            _LOGGER.debug("finish_setup: login raised Login2FAError, restarting 2FA")
             return await self._start_2fa_flow()
-        except LoginError as err:
-            _LOGGER.debug("finish_setup: login raised LoginError: %s", err)
+        except LoginError:
             return self.async_show_form(
                 step_id="user",
                 data_schema=self._user_schema(self.config),
                 errors={"base": "invalid_auth"},
             )
-        except SecuritasDirectError as err:
-            _LOGGER.debug("finish_setup: login raised SecuritasDirectError: %s", err)
+        except SecuritasDirectError:
             return self.async_show_form(
                 step_id="user",
                 data_schema=self._user_schema(self.config),
@@ -424,10 +407,8 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             sessions[username] = {"hub": self.securitas, "ref_count": 0}
 
         try:
-            _LOGGER.debug("finish_setup: calling list_installations()")
             installations = await self.securitas.session.list_installations()
-        except SecuritasDirectError as err:
-            _LOGGER.debug("finish_setup: list_installations raised: %s", err)
+        except SecuritasDirectError:
             return self.async_show_form(
                 step_id="user",
                 data_schema=self._user_schema(self.config),

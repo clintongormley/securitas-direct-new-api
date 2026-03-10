@@ -548,8 +548,8 @@ async def test_finish_setup_logs_in_gets_token_advances_to_options(hass):
     assert result["step_id"] == "options"
     mock_hub.login.assert_awaited_once()
     assert (
-        mock_hub.get_authentication_token.call_count == 3
-    )  # debug log + is None check + get token
+        mock_hub.get_authentication_token.call_count == 2
+    )  # is None check + get token
 
 
 async def test_finish_setup_lists_installations(hass):
