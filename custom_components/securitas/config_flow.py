@@ -360,7 +360,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             installation.number: services,
         }
 
-        self._has_peri = self._detect_peri(services)
+        self._has_peri = self._detect_peri(services, installation)
         self.config[CONF_HAS_PERI] = self._has_peri
         _LOGGER.debug(
             "Perimeter detected for %s: %s", installation.number, self._has_peri
@@ -369,8 +369,9 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return await self.async_step_options()
 
     @staticmethod
-    def _detect_peri(services: list[Service]) -> bool:
-        """Detect perimeter support from service attributes (e.g. SCH PERI)."""
+    def _detect_peri(services: list[Service], installation: Installation) -> bool:
+        """Detect perimeter support from service attributes or alarm partitions."""
+        # Check service attributes (e.g. SCH with PERI attribute — Spanish panels)
         for svc in services:
             attrs = svc.attributes
             if isinstance(attrs, Attributes):
@@ -379,6 +380,11 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 for attr in attrs:
                     if isinstance(attr, Attribute) and attr.name == "PERI":
                         return True
+        # Check alarm partitions (e.g. SDVECU Italian panels)
+        # Partition "02" with non-empty enterStates indicates perimeter support
+        for partition in installation.alarm_partitions:
+            if partition.get("id") == "02" and partition.get("enterStates"):
+                return True
         return False
 
     async def async_step_select_installation(
