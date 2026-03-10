@@ -169,11 +169,9 @@ class SecuritasHttpClient:
             headers["security"] = json.dumps(authorization_value)
 
         _LOGGER.debug(
-            "Making request %s with device_id %s, uuid %s and idDeviceIndigitall %s",
+            "[%s] Request vars: %s",
             operation,
-            self.device_id,
-            self.uuid,
-            self.id_device_indigitall,
+            content.get("variables", {}),
         )
 
         # Retry once on HTTP 403 (Incapsula WAF rate limiting)
@@ -192,7 +190,7 @@ class SecuritasHttpClient:
             except ClientConnectorError as err:
                 os_err = err.os_error or err.strerror or "unknown"
                 _LOGGER.debug(
-                    "ClientConnectorError for %s: %s (os_error=%r, type=%s)",
+                    "[%s] ClientConnectorError: %s (os_error=%r, type=%s)",
                     operation,
                     err,
                     err.os_error,
@@ -205,12 +203,11 @@ class SecuritasHttpClient:
                     content,
                 ) from err
 
-            _LOGGER.debug("--------------Response--------------")
-            _LOGGER.debug(response_text)
+            _LOGGER.debug("[%s] Response: %s", operation, response_text)
 
             if http_status >= 400 or "errors" in response_text:
                 _LOGGER.debug(
-                    "Response headers for %s (HTTP %d): %s",
+                    "[%s] Response headers (HTTP %d): %s",
                     operation,
                     http_status,
                     response_headers,
@@ -223,8 +220,7 @@ class SecuritasHttpClient:
                 # Retry-After header).
                 if "_Incapsula_Resource" in response_text:
                     _LOGGER.warning(
-                        "HTTP 403 WAF block from Securitas API for '%s'"
-                        " (not retrying — WAF blocks require longer backoff)",
+                        "[%s] HTTP 403 WAF block (not retrying — WAF blocks require longer backoff)",
                         operation,
                     )
                     raise SecuritasDirectError(
@@ -240,7 +236,7 @@ class SecuritasHttpClient:
                 except (ValueError, TypeError):
                     delay = 2
                 _LOGGER.warning(
-                    "HTTP 403 from Securitas API for '%s', retrying in %ds",
+                    "[%s] HTTP 403, retrying in %ds",
                     operation,
                     delay,
                 )
@@ -249,9 +245,9 @@ class SecuritasHttpClient:
 
             if http_status >= 400:
                 _LOGGER.debug(
-                    "HTTP %d from Securitas API for operation '%s': %s",
-                    http_status,
+                    "[%s] HTTP %d error: %s",
                     operation,
+                    http_status,
                     response_text[:500],
                 )
                 raise SecuritasDirectError(
@@ -321,7 +317,7 @@ class SecuritasHttpClient:
 
                     # Session expired server-side: re-authenticate and retry once
                     if error_status == 403 and not _retried:
-                        _LOGGER.debug("Session expired server-side, re-authenticating")
+                        _LOGGER.debug("[auth] Session expired server-side, re-authenticating")
                         self.authentication_token_exp = datetime.min
                         await self._check_authentication_token()
                         if installation is not None:
@@ -385,7 +381,7 @@ class SecuritasHttpClient:
         """Check the capabilities token and get a new one if needed."""
 
         _LOGGER.debug(
-            "Capabilities token expires %s and now is %s",
+            "[auth] Capabilities token expires %s (now %s)",
             self.authentication_token_exp,
             datetime.now(),
         )
@@ -393,14 +389,14 @@ class SecuritasHttpClient:
         if (installation.capabilities == "") or (
             datetime.now() + timedelta(minutes=1) > installation.capabilities_exp
         ):
-            _LOGGER.debug("Expired capabilities token, getting a new one")
+            _LOGGER.debug("[auth] Capabilities token expired, refreshing")
             await self.get_all_services(installation)
 
     async def _check_authentication_token(self) -> None:
         """Check expiration of the authentication token and get a new one if needed."""
 
         _LOGGER.debug(
-            "Authentication token expires %s and now is %s",
+            "[auth] Auth token expires %s (now %s)",
             self.authentication_token_exp,
             datetime.now(),
         )
@@ -409,7 +405,7 @@ class SecuritasHttpClient:
             datetime.now() + timedelta(minutes=1) > self.authentication_token_exp
         ):
             if self.refresh_token_value:
-                _LOGGER.debug("Authentication token expired, refreshing")
+                _LOGGER.debug("[auth] Auth token expired, refreshing")
                 try:
                     if await self.refresh_token():
                         return
@@ -422,7 +418,7 @@ class SecuritasHttpClient:
                     _LOGGER.warning(
                         "Refresh token error, falling back to login: %s", err
                     )
-            _LOGGER.debug("Authentication token expired, logging in again")
+            _LOGGER.debug("[auth] Auth token expired, logging in again")
             await self.login()
 
     def _generate_id(self) -> str:
