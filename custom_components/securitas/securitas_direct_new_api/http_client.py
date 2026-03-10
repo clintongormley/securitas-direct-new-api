@@ -191,8 +191,9 @@ class SecuritasHttpClient:
             except ClientConnectorError as err:
                 os_err = err.os_error or err.strerror or "unknown"
                 _LOGGER.debug(
-                    "%s ClientConnectorError: %s (os_error=%r, type=%s)",
+                    "%s vars=%s ClientConnectorError: %s (os_error=%r, type=%s)",
                     log_prefix,
+                    log_vars,
                     err,
                     err.os_error,
                     type(err.os_error).__name__ if err.os_error else "None",
