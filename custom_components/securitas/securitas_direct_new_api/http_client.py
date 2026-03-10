@@ -173,10 +173,12 @@ class SecuritasHttpClient:
             if installation is not None
             else f"[{operation}]"
         )
+        _REDACTED_VARS = frozenset(
+            {"numinst", "panel", "password", "pwd", "hash", "refreshToken", "code"}
+        )
         log_vars = {
-            k: v
+            k: "***" if k in _REDACTED_VARS else v
             for k, v in content.get("variables", {}).items()
-            if k not in ("numinst", "panel")
         }
 
         # Retry once on HTTP 403 (Incapsula WAF rate limiting)
