@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -12,9 +13,8 @@ from homeassistant.helpers.event import async_call_later
 from . import DOMAIN
 from .securitas_direct_new_api.dataTypes import Installation
 
-TYPE_CHECKING = False
 if TYPE_CHECKING:
-    from . import SecuritasHub
+    from .hub import SecuritasHub
 
 
 def securitas_device_info(installation: Installation) -> DeviceInfo:

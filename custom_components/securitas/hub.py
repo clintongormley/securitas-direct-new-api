@@ -101,7 +101,7 @@ class SecuritasDirectDevice:
     def device_info(self) -> DeviceInfo:
         """Return a device description for device registry."""
         return DeviceInfo(
-            identifiers={(DOMAIN, f"{self.installation.alias}")},
+            identifiers={(DOMAIN, f"securitas_direct.{self.installation.number}")},
             manufacturer="Securitas Direct",
             model=self.installation.type,
             hw_version=self.installation.panel,
