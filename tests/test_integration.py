@@ -94,6 +94,39 @@ async def test_setup_calls_list_installations(
     assert mock_server.call_count("mkInstallationList") == 1
 
 
+async def test_setup_makes_only_expected_api_calls(
+    hass: HomeAssistant, mock_server: MockGraphQLServer
+):
+    """Setup phase must only call login, list_installations, and get_all_services.
+
+    This is a guardrail: if a new API call is added to async_setup_entry or
+    synchronous platform setup, this test will fail — forcing the developer to
+    either move the call to the background discovery task or explicitly update
+    the allowed list.
+    """
+    queue_standard_setup(mock_server)
+
+    # Run setup but capture calls before background tasks execute.
+    entry = _make_entry(hass)
+    mock_http = mock_server.make_http_client()
+    with patch(
+        "custom_components.securitas.async_get_clientsession",
+        return_value=mock_http,
+    ), patch(
+        "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+    ) as mock_fwd, patch(
+        "custom_components.securitas._async_discover_devices",
+    ):
+        mock_fwd.return_value = True
+        await async_setup_entry(hass, entry)
+
+    operations = [op for op, _, _ in mock_server.calls]
+    assert operations == ["mkLoginToken", "mkInstallationList", "Srv"], (
+        f"Unexpected API calls during setup: {operations}. "
+        "New calls should run in _async_discover_devices, not during setup."
+    )
+
+
 async def test_setup_general_status_via_update_overview(
     hass: HomeAssistant, mock_server: MockGraphQLServer
 ):
