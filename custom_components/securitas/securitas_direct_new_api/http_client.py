@@ -185,8 +185,19 @@ class SecuritasHttpClient:
                 ) as response:
                     http_status: int = response.status
                     response_text: str = await response.text()
+                    try:
+                        response_headers: dict[str, str] = dict(response.headers)
+                    except Exception:
+                        response_headers = {}
             except ClientConnectorError as err:
                 os_err = err.os_error or err.strerror or "unknown"
+                _LOGGER.debug(
+                    "ClientConnectorError for %s: %s (os_error=%r, type=%s)",
+                    operation,
+                    err,
+                    err.os_error,
+                    type(err.os_error).__name__ if err.os_error else "None",
+                )
                 raise SecuritasDirectError(
                     f"Connection error with URL {self.api_url}: {os_err}",
                     None,
@@ -196,6 +207,14 @@ class SecuritasHttpClient:
 
             _LOGGER.debug("--------------Response--------------")
             _LOGGER.debug(response_text)
+
+            if http_status >= 400 or "errors" in response_text:
+                _LOGGER.debug(
+                    "Response headers for %s (HTTP %d): %s",
+                    operation,
+                    http_status,
+                    response_headers,
+                )
 
             if http_status == 403 and attempt == 0:
                 # Incapsula WAF blocks return HTML — retrying immediately
