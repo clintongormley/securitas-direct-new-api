@@ -239,7 +239,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=vol.Schema({vol.Required(CONF_CODE): str}),
                 errors={"base": "invalid_otp"},
             )
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             _LOGGER.error(
                 "send_sms_code raised unexpected %s: %s", type(err).__name__, err
             )

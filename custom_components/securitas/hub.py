@@ -534,7 +534,7 @@ class SecuritasHub:
         )
 
         max_attempts = self._max_poll_attempts(timeout_seconds=30)
-        for attempt in range(1, max_attempts + 1):
+        for _attempt in range(1, max_attempts + 1):
             status = await self._api_queue.submit(
                 self.session.check_alarm_status,
                 installation,
