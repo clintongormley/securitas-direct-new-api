@@ -7,38 +7,44 @@ This document explains how the Securitas Direct integration works, aimed at deve
 The integration has three layers:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Home Assistant Platform Layer                                    │
-│  alarm_control_panel.py  sensor.py  lock.py  button.py  camera.py │
-├─────────────────────────────────────────────────────────┤
-│  Integration Hub Layer                                            │
-│  __init__.py  (SecuritasHub + setup)                              │
-│  config_flow.py  (ConfigFlow + OptionsFlow)                      │
-│  api_queue.py  (Priority-based rate limiting)                    │
-├───────────────────────────────────────────────────────────────────┤
-│  API Client Layer                                                 │
-│  securitas_direct_new_api/                                        │
-│  apimanager.py  command_resolver.py  domains.py                   │
-│  const.py  dataTypes.py  exceptions.py                            │
-└───────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  Home Assistant Platform Layer                                       │
+│  alarm_control_panel.py  sensor.py  binary_sensor.py                 │
+│  lock.py  button.py  camera.py                                       │
+│  entity.py  (SecuritasEntity base class)                             │
+├──────────────────────────────────────────────────────────────────────┤
+│  Integration Hub Layer                                               │
+│  __init__.py  (setup functions)                                      │
+│  hub.py  (SecuritasHub + SecuritasDirectDevice)                      │
+│  config_flow.py  (ConfigFlow + OptionsFlow)                          │
+│  api_queue.py  (Priority-based rate limiting)                        │
+│  log_filter.py  (SensitiveDataFilter)                                │
+├──────────────────────────────────────────────────────────────────────┤
+│  API Client Layer                                                    │
+│  securitas_direct_new_api/                                           │
+│  http_client.py  (SecuritasHttpClient — auth, HTTP, polling)         │
+│  apimanager.py  (ApiManager — business operations)                   │
+│  graphql_queries.py  command_resolver.py  domains.py                 │
+│  const.py  dataTypes.py  exceptions.py                               │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-Every API call goes through `ApiManager._execute_request()`, which sends GraphQL mutations/queries over HTTP to Securitas' cloud. The integration hub (`SecuritasHub`) wraps the API client and is shared by all entity platforms. Each platform creates entities for the installations discovered at startup.
+Every API call goes through `SecuritasHttpClient._execute_request()` (in `http_client.py`), which sends GraphQL mutations/queries over HTTP to Securitas' cloud. `ApiManager` inherits from `SecuritasHttpClient` and adds business-level operations (login, arm/disarm, status checks, etc.). The integration hub (`SecuritasHub` in `hub.py`) wraps the API client and is shared by all entity platforms. All entity platforms inherit from `SecuritasEntity` (in `entity.py`), which provides common attributes, state management, and notification helpers. Each platform creates entities for the installations discovered at startup.
 
 ## API client layer
 
 **Location:** `custom_components/securitas/securitas_direct_new_api/`
 
-### ApiManager (`apimanager.py`)
+### SecuritasHttpClient (`http_client.py`)
 
-The core API client. All communication with Securitas happens through GraphQL POST requests to country-specific endpoints (e.g. `customers.securitasdirect.es/owa-api/graphql`).
+The HTTP transport layer. All communication with Securitas happens through GraphQL POST requests to country-specific endpoints (e.g. `customers.securitasdirect.es/owa-api/graphql`). `SecuritasHttpClient` handles authentication tokens, HTTP request execution with retries, GraphQL response extraction, and generic polling. It defines abstract methods (`login()`, `refresh_token()`, `get_all_services()`) that the subclass `ApiManager` implements.
 
 **Request execution:** Every API call goes through `_execute_request()`, which:
 1. Builds HTTP headers including `app`, `auth` (JSON with JWT hash, user, country), `X-APOLLO-OPERATION-NAME`, and optionally `numinst`/`panel`/`X-Capabilities` for installation-scoped requests
 2. POSTs the GraphQL payload as JSON
 3. Parses the response and raises `SecuritasDirectError` on connection or API errors. For HTTP errors (status >= 400), `http_status` is set on the exception. For GraphQL-level errors (HTTP 200 but errors in payload), the `data.status` field from the first error is extracted and set as `http_status` — this is how 409 "server busy" errors are surfaced, since the Securitas API returns them as HTTP 200 with a GraphQL error containing `"data": {"status": 409}`
 
-**DRY helpers:** Three internal helpers reduce code duplication across API methods:
+**DRY helpers:** Internal helpers reduce code duplication:
 
 - `_decode_auth_token(token_str)` — Decodes a JWT (HS256, no signature verification), updates `authentication_token_exp` from the `exp` claim. Returns the decoded claims dict or `None` on failure. Used by `login()`, `refresh_token()`, and `validate_device()`.
 
@@ -46,7 +52,15 @@ The core API client. All communication with Securitas happens through GraphQL PO
 
 - `_poll_operation(check_fn, *, timeout, continue_on_msg)` — Polls `check_fn()` in a loop until the result is no longer `"WAIT"`. Handles transient errors (connection errors, timeouts, 409 "server busy") by retrying. 403 errors are not retried during polling (only at the `_execute_request` level). Raises `TimeoutError` after `timeout` seconds (default 60). Used by arm, disarm, status check, exception fetch, and lock operations.
 
+- `_ensure_auth(installation)` — Checks both the authentication token and the per-installation capabilities token, refreshing them as needed before executing a request.
+
+- `_execute_graphql(operation, query, variables, installation)` — High-level wrapper that calls `_ensure_auth()` then `_execute_request()`, providing a single entry point for installation-scoped GraphQL operations.
+
 **Device spoofing:** The client identifies itself as a Samsung Galaxy S22 running the Securitas mobile app v10.102.0. Device identity consists of three IDs generated at setup time: `device_id` (FCM-format token), `uuid` (16-char hex), and `id_device_indigitall` (UUID v4).
+
+### ApiManager (`apimanager.py`)
+
+Inherits from `SecuritasHttpClient` and implements all business-level API operations: login, refresh, 2FA validation, arm/disarm, status checks, sentinel data, lock operations, camera operations, and service discovery. All GraphQL query and mutation strings are defined in `graphql_queries.py` and imported here.
 
 **Authentication** is JWT-based with three mechanisms:
 
@@ -59,6 +73,10 @@ The core API client. All communication with Securitas happens through GraphQL PO
 **Token lifecycle:** Before every API operation, `_check_authentication_token()` checks whether the JWT expires within the next minute. If so, it tries `refresh_token()` first, falling back to `login()`. Errors during refresh are caught with specific exception types (`SecuritasDirectError`, `asyncio.TimeoutError`, `ClientConnectorError`) rather than bare `except`. Similarly, `_check_capabilities_token()` checks a per-installation capabilities JWT that's obtained from `get_all_services()`. On `logout()`, all tokens are cleared (`authentication_token`, `refresh_token_value`, `authentication_token_exp`, `login_timestamp`) to prevent stale credentials from being reused.
 
 **Polling pattern:** Arm, disarm, status-check, and exception-fetch operations are asynchronous on the server side. The client sends the initial request, receives a `referenceId`, then polls a status endpoint via `_poll_operation()` (sleeping `delay_check_operation` seconds between attempts) until the response changes from `"WAIT"` to a final state or a wall-clock timeout (default 60 seconds) is reached. Transient errors during polling — connection failures, timeouts, and 409 "server busy" responses — are automatically retried rather than failing the operation. After polling completes, `arm_alarm()` and `disarm_alarm()` check for `res: "ERROR"` with non-`NON_BLOCKING` error types (e.g. `TECHNICAL_ERROR`) and raise `SecuritasDirectError`, enabling the command resolver's fallback chain.
+
+### GraphQL queries (`graphql_queries.py`)
+
+All GraphQL query and mutation strings are extracted into `graphql_queries.py`, keeping `apimanager.py` focused on business logic. This module contains named constants for each operation (e.g. `VALIDATE_DEVICE_MUTATION`, `REFRESH_LOGIN_MUTATION`, `ARM_ALARM_MUTATION`, etc.) that `ApiManager` imports and passes to `_execute_graphql()`.
 
 ### Log sanitization (`log_filter.py`)
 
@@ -73,6 +91,18 @@ The core API client. All communication with Securitas happens through GraphQL PO
 - The filter is removed from handlers on `async_unload_entry()`.
 
 **Error notifications:** When operations fail, error notifications shown to the user use only the short error message (`err.args[0]`), never the full error tuple which could contain headers, tokens, or response bodies.
+
+### Debug logging conventions
+
+All debug log messages use context prefixes for easy filtering:
+
+| Prefix | Layer | Example |
+|--------|-------|---------|
+| `[operation:alias]` | HTTP (`http_client.py`) | Request variables and response in a single line |
+| `[auth]` | HTTP (`http_client.py`) | Token refresh, re-authentication, capabilities checks |
+| `[queue]` | Queue (`api_queue.py`) | Throttle delays and priority preemption |
+| `[setup]` | Setup (`__init__.py`) | Card resource registration, entry migration |
+| `[entity_id]` | Entity platforms | Per-entity state changes and operations |
 
 ### Country routing (`domains.py`)
 
@@ -161,7 +191,7 @@ SecuritasDirectError              Base class (http_status attribute)
 
 ## Integration hub layer
 
-**Location:** `custom_components/securitas/__init__.py`
+**Location:** `custom_components/securitas/hub.py` (SecuritasHub, SecuritasDirectDevice) and `custom_components/securitas/__init__.py` (setup functions only)
 
 ### SecuritasHub
 
@@ -213,7 +243,7 @@ Serializes API calls with priority-based rate limiting to avoid WAF blocks. One 
 6. List installations
 7. For each installation: get_services() → create SecuritasDirectDevice
 8. Store devices in hass.data[DOMAIN][entry.entry_id]
-9. Forward to platforms: alarm_control_panel, sensor, button, camera, lock
+9. Forward to platforms: alarm_control_panel, binary_sensor, sensor, button, camera, lock
    └── Each platform stores its async_add_entities callback in entry_data
        and creates only entities it can build without API calls
 10. Launch background task (_async_discover_devices) to:
@@ -226,6 +256,7 @@ Serializes API calls with priority-based rate limiting to avoid WAF blocks. One 
 | Platform | Creates | API calls |
 |----------|---------|-----------|
 | alarm_control_panel | SecuritasAlarm entities | None (starts as "unknown") |
+| binary_sensor | WifiConnectedSensor entities | None (updated via dispatcher) |
 | button | SecuritasRefreshButton entities | None (stores callback for capture buttons) |
 | camera | Nothing | None (stores callback) |
 | sensor | Sentinel sensors | None (uses cached services) |
@@ -239,9 +270,21 @@ After all platforms are registered, a single background task discovers cameras a
 
 When the user changes options (PIN code, scan interval, alarm mappings, etc.), the listener merges the new options into the config entry data and reloads the integration. This triggers a full teardown and re-setup.
 
-### SecuritasDirectDevice
+### SecuritasDirectDevice (`hub.py`)
 
 A thin wrapper around `Installation` that provides `device_info` for the HA device registry. Each physical installation becomes one device.
+
+### SecuritasEntity (`entity.py`)
+
+Base class for all Securitas Direct entities. Inherits from `homeassistant.helpers.entity.Entity` and provides:
+
+- **Common attributes** — `_installation`, `_client` (the `SecuritasHub`), `_state`, `_last_state`, and `device_info` (via the `securitas_device_info()` helper that groups entities under the installation device).
+- **State management** — `_force_state(state)` sets a transitional state and schedules an HA state write. Used by entities during arm/disarm/lock operations to show "Arming...", "Locking...", etc.
+- **Error notifications** — `_notify_error(title, message)` creates a persistent notification with an auto-generated ID scoped to the installation number.
+
+All entity platforms (`alarm_control_panel`, `sensor`, `binary_sensor`, `lock`, `button`) inherit from `SecuritasEntity`. The `camera` platform uses only the `securitas_device_info()` helper.
+
+The module also provides `schedule_initial_updates(hass, entities, delay)` which schedules a deferred state refresh for entities after setup, avoiding API calls during platform initialization.
 
 ## Polling intervals
 
@@ -362,14 +405,17 @@ The `_get_exceptions()` API call uses the same polling pattern as arm/disarm —
 
 ### Sensors (`sensor.py`)
 
-Four sensor types:
+Three sensor types:
 
 - **SentinelTemperature** — Temperature in Celsius
 - **SentinelHumidity** — Humidity as percentage
 - **SentinelAirQuality** — Air quality index with message (e.g. "Good")
-- **WifiConnectedSensor** — Diagnostic boolean from `SStatus.wifi_connected` (updated from status checks, no separate polling)
 
 Sentinel sensors are discovered during platform setup by scanning services for ones matching the Sentinel name (language-dependent: "CONFORT" in Spanish, "COMFORTO" in Portuguese). No API calls are made during setup — entities start with unknown state. Data is populated by `async_update()` using HA's built-in polling at a 30-minute interval (see [Polling intervals](#polling-intervals)).
+
+### Binary sensors (`binary_sensor.py`)
+
+- **WifiConnectedSensor** — Diagnostic binary sensor showing the panel's WiFi connection status from `SStatus.wifi_connected`. One per installation. Does not poll — instead listens for `SIGNAL_XSSTATUS_UPDATE` dispatcher signals fired by the alarm entity's periodic status checks. Uses `BinarySensorDeviceClass.CONNECTIVITY` and `EntityCategory.DIAGNOSTIC`.
 
 ### Smart lock (`lock.py`)
 
@@ -422,6 +468,8 @@ Step 1 (user): Country (auto-detected from HA), username, password
   → Existing session for same username? Reuse it (avoids duplicate login)
 Step 2 (phone_list, if 2FA): Pick which phone to send OTP to
 Step 3 (otp_challenge, if 2FA): Enter the SMS code
+  → Handles: invalid code, expired code (auto-resends), send failure
+  → Translated error messages in 6 languages (en, es, fr, it, pt, pt-BR)
 → finish_setup(): Login, list installations, get_services per installation
 Step 4 (select_installation, if multiple): Pick which installation to configure
   → Auto-detection of perimeter support from service attributes (PERI attribute)
@@ -533,8 +581,11 @@ tests/
 ├── conftest.py              Shared fixtures (API client, JWT helpers, response factories)
 ├── mock_graphql.py          Mock HTTP transport for integration tests (see below)
 ├── test_alarm_panel.py      Alarm entity: state mapping, arm/disarm, PIN validation, WAF handling
+├── test_api_queue.py        ApiQueue priority, throttling, preemption
 ├── test_auth.py             Login, refresh, 2FA, token lifecycle
 ├── test_button.py           Refresh button entity, 403 WAF notification + alarm entity sync
+├── test_camera_api.py       Camera API operations: discover, capture, thumbnails
+├── test_camera_platform.py  Camera entity platform setup and image serving
 ├── test_config_flow.py      Config flow (setup + 2FA) and options flow
 ├── test_command_resolver.py  CommandResolver state transitions, fallback chains
 ├── test_constants.py        SecuritasState enum, mapping tables
@@ -599,7 +650,7 @@ Integration tests exercise the full stack from HA config-entry setup through to 
 
 **How the mock server works:**
 
-`MockGraphQLServer` (in `tests/mock_graphql.py`) replaces `http_client.post` on `ApiManager`. Each call reads the `X-APOLLO-OPERATION-NAME` header, records the call, and returns the next queued response for that operation:
+`MockGraphQLServer` (in `tests/mock_graphql.py`) replaces `http_client.post` on the `SecuritasHttpClient` transport layer. Each call reads the `X-APOLLO-OPERATION-NAME` header, records the call, and returns the next queued response for that operation:
 
 ```python
 server = MockGraphQLServer()
@@ -638,12 +689,17 @@ Key design choices:
 | Module | Coverage | Key gaps |
 |--------|----------|----------|
 | `__init__.py` | 72% | Platform setup, session sharing, lock/camera discovery |
+| `hub.py` | — | SecuritasHub, SecuritasDirectDevice |
+| `entity.py` | — | SecuritasEntity base class |
 | `alarm_control_panel.py` | 95% | `async_setup_entry`, some HA callbacks |
 | `api_queue.py` | 100% | — |
+| `binary_sensor.py` | — | WiFi diagnostic sensor |
 | `button.py` | 93% | Capture button edge cases |
 | `camera.py` | 85% | Image refresh, thumbnail fetch |
 | `config_flow.py` | 99% | One unreachable branch |
+| `http_client.py` | — | HTTP transport, auth, polling |
 | `apimanager.py` | 95% | Rare error paths, some polling branches |
+| `graphql_queries.py` | — | Query/mutation strings |
 | `lock.py` | 94% | Some state transitions |
 | `sensor.py` | 88% | `async_setup_entry`, sensor discovery |
 | `command_resolver.py` | 92% | Rare fallback paths |
@@ -665,20 +721,25 @@ Three parallel jobs run on every PR and push to main:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `__init__.py` | 1109 | Integration setup, `SecuritasHub`, session sharing, `SecuritasDirectDevice`, log filter setup |
-| `config_flow.py` | 562 | Config flow (setup + 2FA + installation picker) and options flow (settings + mappings) |
-| `alarm_control_panel.py` | 848 | Alarm entity with state mapping, arm/disarm, force arm, PIN validation, WAF tracking |
-| `sensor.py` | 309 | Sentinel temperature, humidity, air quality, WiFi diagnostic sensors |
-| `lock.py` | 274 | Multi-lock entity with Danalock config attributes |
-| `camera.py` | 109 | Camera entity with lazy thumbnail fetching |
-| `button.py` | 166 | Refresh button with WAF notification, capture button |
-| `api_queue.py` | 105 | Priority-based rate-limited API queue (FOREGROUND/BACKGROUND) |
+| `__init__.py` | 620 | Integration setup functions, session sharing, background discovery, card resource registration |
+| `hub.py` | 612 | `SecuritasHub` (central coordinator), `SecuritasDirectDevice` (device registry wrapper) |
+| `entity.py` | 95 | `SecuritasEntity` base class, `securitas_device_info()`, `schedule_initial_updates()` |
+| `config_flow.py` | 667 | Config flow (setup + 2FA + installation picker) and options flow (settings + mappings) |
+| `alarm_control_panel.py` | 794 | Alarm entity with state mapping, arm/disarm, force arm, PIN validation, WAF tracking |
+| `sensor.py` | 247 | Sentinel temperature, humidity, air quality sensors |
+| `binary_sensor.py` | 64 | WiFi connection status diagnostic sensor (dispatcher-based, no polling) |
+| `lock.py` | 246 | Multi-lock entity with Danalock config attributes |
+| `camera.py` | 98 | Camera entity with lazy thumbnail fetching |
+| `button.py` | 150 | Refresh button with WAF notification, capture button |
+| `api_queue.py` | 104 | Priority-based rate-limited API queue (FOREGROUND/BACKGROUND) |
 | `constants.py` | 21 | `SentinelName` language mapping |
 | `log_filter.py` | 86 | `SensitiveDataFilter` — log sanitization for secrets |
-| `securitas_direct_new_api/apimanager.py` | 1897 | GraphQL API client with auth, polling, DRY helpers, all operations |
+| `securitas_direct_new_api/http_client.py` | 513 | `SecuritasHttpClient` — HTTP transport, auth tokens, request execution, polling |
+| `securitas_direct_new_api/apimanager.py` | 1292 | `ApiManager` — business operations (inherits SecuritasHttpClient) |
+| `securitas_direct_new_api/graphql_queries.py` | 256 | GraphQL query and mutation string constants |
 | `securitas_direct_new_api/command_resolver.py` | 207 | `CommandResolver`, `AlarmState`, `CommandStep` — state transition logic |
-| `securitas_direct_new_api/const.py` | 106 | `SecuritasState`, command/protocol mappings, defaults |
-| `securitas_direct_new_api/dataTypes.py` | 230 | Response dataclasses (including Danalock, Camera, SStatus) |
+| `securitas_direct_new_api/const.py` | 107 | `SecuritasState`, command/protocol mappings, defaults |
+| `securitas_direct_new_api/dataTypes.py` | 211 | Response dataclasses (including Danalock, Camera, SStatus) |
 | `securitas_direct_new_api/domains.py` | 49 | Country-to-URL routing |
 | `securitas_direct_new_api/exceptions.py` | 84 | Exception hierarchy with `http_status` and `ArmingExceptionError` |
 | `www/securitas-alarm-card.js` | 1169 | Custom Lovelace alarm card with WAF warning banner, multi-language |
