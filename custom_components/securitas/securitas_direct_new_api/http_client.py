@@ -485,7 +485,8 @@ class SecuritasHttpClient:
                     f"Poll operation timed out after {timeout}s, "
                     f"last response: {result}"
                 )
-            await asyncio.sleep(self.delay_check_operation)
+            if not first:
+                await asyncio.sleep(self.delay_check_operation)
             try:
                 result = await check_fn()
             except (ClientConnectorError, asyncio.TimeoutError) as err:

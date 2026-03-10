@@ -360,16 +360,16 @@ async def test_setup_connection_error_raises_not_ready(
 ):
     """Network error during setup raises ConfigEntryNotReady."""
     from aiohttp import ClientConnectorError
+    from aiohttp.client_reqrep import ConnectionKey
 
     entry = _make_entry(hass)
-    mock_http = mock_server.make_http_client()
-    mock_http.post = None  # will cause AttributeError / TypeError
 
     # Use a proper ClientConnectorError-raising mock
+    _conn_key = ConnectionKey("example.com", 443, False, True, None, None, None)
 
     class _FailPost:
         def post(self, url, **kwargs):
-            raise ClientConnectorError(None, OSError("connection refused"))  # type: ignore[arg-type]
+            raise ClientConnectorError(_conn_key, OSError("connection refused"))
 
     with patch(
         "custom_components.securitas.async_get_clientsession",
