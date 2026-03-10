@@ -70,7 +70,6 @@ class SecuritasDirectDevice:
         """Construct a device wrapper."""
         self.installation = installation
         self.name = installation.alias
-        self._available = True
 
     @property
     def available(self) -> bool:
@@ -128,7 +127,6 @@ class SecuritasHub:
         self.country: str = domain_config[CONF_COUNTRY].upper()
         self.lang: str = ApiDomains().get_language(self.country)
         self.hass: HomeAssistant = hass
-        self.services: dict[int, list[Service]] = {1: []}
         self._services_cache: dict[str, list[Service]] = {}
         self.log_filter: SensitiveDataFilter | None = hass.data.get(DOMAIN, {}).get(
             "log_filter"

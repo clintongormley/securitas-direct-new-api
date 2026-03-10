@@ -100,8 +100,8 @@ class TestSecuritasRefreshButtonAsyncPress:
         button.client.refresh_alarm_status.assert_called_once_with(button.installation)
         assert button.client.session.protom_response == "D"
 
-    async def test_success_updates_alarm_entities(self):
-        """Success: updates alarm entities via hass.services.async_call."""
+    async def test_success_triggers_alarm_entity_update(self):
+        """Success: triggers state update on the alarm entity for this installation."""
         button = make_button()
 
         alarm_status = OperationStatus(
@@ -114,13 +114,14 @@ class TestSecuritasRefreshButtonAsyncPress:
         )
         button.client.refresh_alarm_status = AsyncMock(return_value=alarm_status)
 
+        # Set up alarm entity lookup
+        alarm_entity = MagicMock()
+        button.hass.data = {DOMAIN: {"alarm_entities": {"123456": alarm_entity}}}  # type: ignore[attr-defined]
+
         await button.async_press()
 
-        button.hass.services.async_call.assert_called_once_with(  # type: ignore[attr-defined]
-            "homeassistant",
-            "update_entity",
-            {"entity_id": "alarm_control_panel.securitas_123"},
-            blocking=True,
+        alarm_entity.async_schedule_update_ha_state.assert_called_once_with(
+            force_refresh=True
         )
 
     async def test_error_securitas_direct_error_caught(self):

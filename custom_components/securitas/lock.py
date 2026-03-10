@@ -1,9 +1,10 @@
 """Securitas Direct smart lock platform."""
 
-import datetime
+from __future__ import annotations
+
 from datetime import timedelta
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components import lock
 
@@ -23,13 +24,13 @@ from .securitas_direct_new_api import (
     DanalockConfig,
     Installation,
     SecuritasDirectError,
-    SmartLockMode,
 )
 from .securitas_direct_new_api.apimanager import SMARTLOCK_DEVICE_ID
 
-_LOGGER = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from .securitas_direct_new_api import SmartLockMode
 
-SCAN_INTERVAL = timedelta(minutes=20)
+_LOGGER = logging.getLogger(__name__)
 
 # Service request name that identifies a smart-lock capability
 DOORLOCK_SERVICE = "DOORLOCK"
@@ -40,8 +41,6 @@ LOCK_STATUS_OPEN = "1"
 LOCK_STATUS_LOCKED = "2"
 LOCK_STATUS_OPENING = "3"
 LOCK_STATUS_LOCKING = "4"
-
-# Delay between API calls during setup to avoid rate limiting
 
 
 async def async_setup_entry(
@@ -87,8 +86,6 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
             f"securitas_direct.{installation.number}_lock_{device_id}"
         )
 
-        self._time: datetime.datetime = datetime.datetime.now()
-        self._message: str = ""
         self.hass: HomeAssistant = hass
         scan_seconds = client.config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         self._update_interval: timedelta = timedelta(seconds=scan_seconds)
@@ -156,6 +153,11 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
                 self._device_id,
                 err,
             )
+
+        # When called from timer callback (_now is not None), HA does not
+        # automatically write state — we must do it explicitly.
+        if _now is not None:
+            self.async_write_ha_state()
 
     async def get_lock_state(self) -> str:
         """Return the current lock status from the API."""
@@ -226,6 +228,7 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
             return
 
         self._state = LOCK_STATUS_LOCKED
+        self.async_write_ha_state()
 
     async def async_unlock(self, **kwargs):
         self._force_state(LOCK_STATUS_OPENING)
@@ -245,6 +248,7 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
             return
 
         self._state = LOCK_STATUS_OPEN
+        self.async_write_ha_state()
 
     @property
     def supported_features(self) -> lock.LockEntityFeature:  # type: ignore[override]

@@ -74,15 +74,11 @@ class SecuritasRefreshButton(SecuritasEntity, ButtonEntity):
                 alarm_entity._set_refresh_failed(False)  # pylint: disable=protected-access  # no public API on alarm entity
                 alarm_entity.async_write_ha_state()
 
-            _LOGGER.info("Updating alarm panel entity for %s", self.installation.number)
-            for entity_id in self.hass.states.async_entity_ids("alarm_control_panel"):
-                if "securitas" in entity_id:
-                    await self.hass.services.async_call(
-                        "homeassistant",
-                        "update_entity",
-                        {"entity_id": entity_id},
-                        blocking=True,
-                    )
+            if alarm_entity is not None:
+                _LOGGER.info(
+                    "Updating alarm panel entity for %s", self.installation.number
+                )
+                alarm_entity.async_schedule_update_ha_state(force_refresh=True)
 
         except TimeoutError:
             _LOGGER.warning("Refresh timed out for %s", self.installation.number)

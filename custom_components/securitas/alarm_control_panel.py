@@ -62,8 +62,6 @@ HA_STATE_TO_CONF_KEY: dict[str, str] = {
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL = timedelta(minutes=20)
-
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
@@ -772,15 +770,18 @@ class SecuritasAlarm(SecuritasEntity, alarm.AlarmControlPanelEntity):
         """Return the state of the alarm."""
         if self._state is None:
             return None
+        if isinstance(self._state, AlarmControlPanelState):
+            return self._state
+        # Fallback for any string state values
         try:
-            return getattr(AlarmControlPanelState, self._state.upper())
-        except AttributeError:
+            return AlarmControlPanelState(self._state)
+        except ValueError:
             return None
 
     @property
-    def supported_features(self) -> int:  # type: ignore[override]
+    def supported_features(self) -> AlarmControlPanelEntityFeature:  # type: ignore[override]
         """Return the list of supported features."""
-        features = 0
+        features = AlarmControlPanelEntityFeature(0)
         if AlarmControlPanelState.ARMED_HOME in self._command_map:
             features |= AlarmControlPanelEntityFeature.ARM_HOME
         if AlarmControlPanelState.ARMED_AWAY in self._command_map:

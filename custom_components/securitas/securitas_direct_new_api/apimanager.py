@@ -79,7 +79,6 @@ SMARTLOCK_KEY_TYPE = "0"
 ALARM_STATUS_SERVICE_ID = "11"
 
 # Extra settle delay after a lock-mode change completes (multiples of delay_check_operation)
-LOCK_MODE_SETTLE_MULTIPLIER = 7
 
 # Device type for camera devices in xSDeviceList
 CAMERA_DEVICE_TYPE = "QR"
@@ -799,17 +798,10 @@ class ApiManager(SecuritasHttpClient):
             content, "xSGetSmartlockConfig", installation
         )
 
-        if "errors" in response:
-            _LOGGER.error(response)
+        raw_data = response.get("data", {}).get("xSGetSmartlockConfig")
+        if raw_data is None:
             return SmartLock(None, None, None)
-
-        if "data" in response:
-            raw_data = response["data"]["xSGetSmartlockConfig"]
-            if raw_data is None:
-                return SmartLock(None, None, None)
-            return SmartLock(raw_data["res"], raw_data["location"], raw_data["type"])
-
-        return SmartLock(None, None, None)
+        return SmartLock(raw_data["res"], raw_data["location"], raw_data["type"])
 
     async def get_lock_current_mode(
         self, installation: Installation
@@ -827,61 +819,20 @@ class ApiManager(SecuritasHttpClient):
             content, "xSGetLockCurrentMode", installation
         )
 
-        if "errors" in response:
-            _LOGGER.error(response)
+        raw_data = response.get("data", {}).get("xSGetLockCurrentMode")
+        if raw_data is None:
             return []
-
-        if "data" in response:
-            raw_data = response["data"]["xSGetLockCurrentMode"]
-            if raw_data is None:
-                return []
-            modes: list[SmartLockMode] = []
-            for info in raw_data.get("smartlockInfo") or []:
-                modes.append(
-                    SmartLockMode(
-                        res=raw_data["res"],
-                        lockStatus=info.get("lockStatus", "0"),
-                        deviceId=info.get("deviceId", ""),
-                        statusTimestamp=info.get("statusTimestamp", ""),
-                    )
+        modes: list[SmartLockMode] = []
+        for info in raw_data.get("smartlockInfo") or []:
+            modes.append(
+                SmartLockMode(
+                    res=raw_data["res"],
+                    lockStatus=info.get("lockStatus", "0"),
+                    deviceId=info.get("deviceId", ""),
+                    statusTimestamp=info.get("statusTimestamp", ""),
                 )
-            return modes
-
-        return []
-
-    async def change_lock_mode(
-        self,
-        installation: Installation,
-        lock: bool,
-        device_id: str = SMARTLOCK_DEVICE_ID,
-    ) -> SmartLockModeStatus:
-        """Change the lock/unlock mode of a smart lock."""
-        reference_id = await self.submit_change_lock_mode_request(
-            installation, lock, device_id
-        )
-
-        count = 0
-
-        async def _check():
-            nonlocal count
-            count += 1
-            return await self.check_change_lock_mode(
-                installation,
-                reference_id,
-                count,
-                device_id,
             )
-
-        raw_data = await self._poll_operation(_check)
-
-        await asyncio.sleep(self.delay_check_operation * LOCK_MODE_SETTLE_MULTIPLIER)
-        self.protom_response = raw_data["protomResponse"]
-        return SmartLockModeStatus(
-            raw_data["res"],
-            raw_data["msg"],
-            raw_data["protomResponse"],
-            raw_data["status"],
-        )
+        return modes
 
     async def check_change_lock_mode(
         self,

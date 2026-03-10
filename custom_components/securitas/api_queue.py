@@ -13,7 +13,6 @@ _LOGGER = logging.getLogger(__name__)
 
 # Default intervals
 DEFAULT_INTERVAL: float = 2.0
-DEFAULT_WAF_COOLDOWN: float = 60.0
 
 
 class ApiQueue:

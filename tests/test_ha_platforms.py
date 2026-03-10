@@ -110,6 +110,10 @@ def make_lock(
         initial_status=initial_status,
         danalock_config=danalock_config,
     )
+    lock_entity.entity_id = f"lock.securitas_{installation.number}_{device_id}"
+    # Mock HA state-writing methods (no platform registered in unit tests)
+    lock_entity.async_write_ha_state = MagicMock()
+    lock_entity.async_schedule_update_ha_state = MagicMock()
     return lock_entity
 
 
@@ -597,31 +601,30 @@ class TestSecuritasLockActions:
 
     async def test_async_lock_sets_state_to_locking_then_locked_on_success(self):
         lock = make_lock()
-        lock.async_schedule_update_ha_state = MagicMock()
         lock.client.change_lock_mode = AsyncMock(return_value=SmartLockModeStatus())
 
         await lock.async_lock()
 
         # After successful lock, final state should be "2" (locked)
         assert lock._state == "2"
-        # async_schedule_update_ha_state was called during __force_state("4")
-        lock.async_schedule_update_ha_state.assert_called()
+        # async_schedule_update_ha_state was called during _force_state("4")
+        lock.async_schedule_update_ha_state.assert_called()  # type: ignore[attr-defined]
+        # async_write_ha_state is called after successful state change
+        lock.async_write_ha_state.assert_called()  # type: ignore[attr-defined]
 
     async def test_async_unlock_sets_state_to_opening_then_open_on_success(self):
         lock = make_lock()
-        lock.async_schedule_update_ha_state = MagicMock()
         lock.client.change_lock_mode = AsyncMock(return_value=SmartLockModeStatus())
 
         await lock.async_unlock()
 
         # After successful unlock, final state should be "1" (open)
         assert lock._state == "1"
-        lock.async_schedule_update_ha_state.assert_called()
+        lock.async_schedule_update_ha_state.assert_called()  # type: ignore[attr-defined]
+        lock.async_write_ha_state.assert_called()  # type: ignore[attr-defined]
 
     async def test_async_lock_error_restores_previous_state(self):
         lock = make_lock()
-        lock.async_schedule_update_ha_state = MagicMock()
-        lock.async_write_ha_state = MagicMock()
         lock.client.change_lock_mode = AsyncMock(
             side_effect=SecuritasDirectError("API error")
         )
@@ -633,8 +636,6 @@ class TestSecuritasLockActions:
 
     async def test_async_unlock_error_restores_previous_state(self):
         lock = make_lock()
-        lock.async_schedule_update_ha_state = MagicMock()
-        lock.async_write_ha_state = MagicMock()
         lock.client.change_lock_mode = AsyncMock(
             side_effect=SecuritasDirectError("API error")
         )
@@ -648,9 +649,6 @@ class TestSecuritasLockActions:
         """Verify __force_state is called with '4' (locking) before the API call."""
         lock = make_lock()
         observed_states = []
-
-        original_schedule = MagicMock()
-        lock.async_schedule_update_ha_state = original_schedule
 
         async def capture_state(installation, lock_mode, device_id=None):
             """Capture state at the moment the API call is made."""
@@ -670,8 +668,6 @@ class TestSecuritasLockActions:
         """Verify __force_state is called with '3' (opening) before the API call."""
         lock = make_lock()
         observed_states = []
-
-        lock.async_schedule_update_ha_state = MagicMock()
 
         async def capture_state(installation, lock_mode, device_id=None):
             observed_states.append(lock._state)
@@ -788,13 +784,12 @@ class TestHassNoneGuards:
 
     def test_lock_force_state_skips_schedule_when_hass_is_none(self):
         lock = make_lock()
-        lock.async_schedule_update_ha_state = MagicMock()
         lock.hass = None  # type: ignore[attr-defined]
 
         lock._force_state("1")
 
         assert lock._state == "1"
-        lock.async_schedule_update_ha_state.assert_not_called()
+        lock.async_schedule_update_ha_state.assert_not_called()  # type: ignore[attr-defined]
 
     async def test_temperature_update_skips_when_hass_is_none(self):
         client = make_client()

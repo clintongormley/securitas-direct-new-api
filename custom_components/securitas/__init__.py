@@ -73,9 +73,6 @@ from .securitas_direct_new_api import (
 
 _LOGGER = logging.getLogger(__name__)
 
-HUB = None
-
-
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
@@ -469,6 +466,7 @@ async def _discover_locks(
     entry_data: dict,
 ) -> None:
     """Discover lock devices for an installation and add entities."""
+    from .entity import schedule_initial_updates
     from .lock import (
         DOORLOCK_SERVICE,
         LOCK_STATUS_UNKNOWN,
@@ -515,9 +513,7 @@ async def _discover_locks(
             for mode in lock_modes
         ]
         lock_add(locks, False)
-        # Schedule initial lock update
-        for lock_entity in locks:
-            lock_entity.async_schedule_update_ha_state(force_refresh=True)
+        schedule_initial_updates(hass, locks)
 
 
 async def _async_discover_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
