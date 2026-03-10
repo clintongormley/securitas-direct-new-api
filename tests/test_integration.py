@@ -52,7 +52,7 @@ def _make_entry(hass: HomeAssistant, **overrides) -> MockConfigEntry:
     return entry
 
 
-async def _setup(hass: HomeAssistant, server: MockGraphQLServer) -> MockConfigEntry:
+async def _setup(hass: HomeAssistant, server: MockGraphQLServer) -> tuple[MockConfigEntry, bool]:
     """Create an entry and run full async_setup_entry with the mock server."""
     entry = _make_entry(hass)
     mock_http = server.make_http_client()
@@ -330,7 +330,7 @@ async def test_setup_connection_error_raises_not_ready(
 
     class _FailPost:
         def post(self, url, **kwargs):
-            raise ClientConnectorError(None, OSError("connection refused"))
+            raise ClientConnectorError(None, OSError("connection refused"))  # type: ignore[arg-type]
 
     with patch(
         "custom_components.securitas.async_get_clientsession",

@@ -169,15 +169,15 @@ class TestSentinelTemperature:
         service = make_service()
         installation = make_installation()
         sensor = SentinelTemperature(service, make_client(), installation)
-        assert installation.number in sensor._attr_unique_id
-        assert str(service.id) in sensor._attr_unique_id
-        assert "temperature" in sensor._attr_unique_id
+        assert installation.number in sensor._attr_unique_id  # type: ignore[operator]
+        assert str(service.id) in sensor._attr_unique_id  # type: ignore[operator]
+        assert "temperature" in sensor._attr_unique_id  # type: ignore[operator]
 
     def test_name_contains_installation_alias(self):
         installation = make_installation()
         sensor = SentinelTemperature(make_service(), make_client(), installation)
-        assert installation.alias in sensor._attr_name
-        assert "Temperature" in sensor._attr_name
+        assert installation.alias in sensor._attr_name  # type: ignore[operator]
+        assert "Temperature" in sensor._attr_name  # type: ignore[operator]
 
 
 # ===========================================================================
@@ -231,9 +231,9 @@ class TestSentinelHumidity:
         service = make_service()
         installation = make_installation()
         sensor = SentinelHumidity(service, make_client(), installation)
-        assert installation.number in sensor._attr_unique_id
-        assert str(service.id) in sensor._attr_unique_id
-        assert "humidity" in sensor._attr_unique_id
+        assert installation.number in sensor._attr_unique_id  # type: ignore[operator]
+        assert str(service.id) in sensor._attr_unique_id  # type: ignore[operator]
+        assert "humidity" in sensor._attr_unique_id  # type: ignore[operator]
 
 
 # ===========================================================================
@@ -343,8 +343,8 @@ class TestSentinelAirQuality:
         installation = make_installation()
         fetcher = _make_fetcher(service=service, installation=installation)
         sensor = SentinelAirQuality(fetcher, installation)
-        assert installation.number in sensor._attr_unique_id
-        assert "airquality" in sensor._attr_unique_id
+        assert installation.number in sensor._attr_unique_id  # type: ignore[operator]
+        assert "airquality" in sensor._attr_unique_id  # type: ignore[operator]
 
 
 class TestSentinelAirQualityStatus:
@@ -399,7 +399,7 @@ class TestSentinelAirQualityStatus:
     def test_unique_id_contains_status(self):
         fetcher = _make_fetcher()
         sensor = SentinelAirQualityStatus(fetcher, make_installation())
-        assert "airquality_status" in sensor._attr_unique_id
+        assert "airquality_status" in sensor._attr_unique_id  # type: ignore[operator]
 
     async def test_both_entities_use_same_fetcher(self):
         """Both numeric and status entities get consistent data."""
@@ -523,15 +523,15 @@ class TestSecuritasLockConfig:
         assert lock02._attr_device_info is not None
         # Both locks share the same device identifier
         assert (
-            lock01._attr_device_info["identifiers"]
-            == lock02._attr_device_info["identifiers"]
+            lock01._attr_device_info["identifiers"]  # type: ignore[typeddict-item]
+            == lock02._attr_device_info["identifiers"]  # type: ignore[typeddict-item]
         )
         # Identifier matches the alarm panel's pattern
-        assert lock01._attr_device_info["identifiers"] == {
+        assert lock01._attr_device_info["identifiers"] == {  # type: ignore[typeddict-item]
             ("securitas", "securitas_direct.123456")
         }
         # Device name is the installation alias, not a lock-specific name
-        assert lock01._attr_device_info["name"] == "Home"
+        assert lock01._attr_device_info["name"] == "Home"  # type: ignore[typeddict-item]
 
     def test_initial_status_unknown_defaults_to_locked(self):
         lock = make_lock(initial_status="0")
@@ -783,7 +783,7 @@ class TestHassNoneGuards:
 
     async def test_lock_update_status_skips_when_hass_is_none(self):
         lock = make_lock()
-        lock.hass = None
+        lock.hass = None  # type: ignore[attr-defined]
         lock.client.get_lock_modes = AsyncMock()
 
         await lock.async_update_status()
@@ -793,7 +793,7 @@ class TestHassNoneGuards:
     def test_lock_force_state_skips_schedule_when_hass_is_none(self):
         lock = make_lock()
         lock.async_schedule_update_ha_state = MagicMock()
-        lock.hass = None
+        lock.hass = None  # type: ignore[attr-defined]
 
         lock._force_state("1")
 
@@ -803,7 +803,7 @@ class TestHassNoneGuards:
     async def test_temperature_update_skips_when_hass_is_none(self):
         client = make_client()
         sensor = SentinelTemperature(make_service(), client, make_installation())
-        sensor.hass = None
+        sensor.hass = None  # type: ignore[attr-defined]
         client.get_sentinel = AsyncMock()
 
         await sensor.async_update()
@@ -813,7 +813,7 @@ class TestHassNoneGuards:
     async def test_humidity_update_skips_when_hass_is_none(self):
         client = make_client()
         sensor = SentinelHumidity(make_service(), client, make_installation())
-        sensor.hass = None
+        sensor.hass = None  # type: ignore[attr-defined]
         client.get_sentinel = AsyncMock()
 
         await sensor.async_update()
@@ -824,7 +824,7 @@ class TestHassNoneGuards:
         client = make_client()
         fetcher = _make_fetcher(client=client)
         sensor = SentinelAirQuality(fetcher, make_installation())
-        sensor.hass = None
+        sensor.hass = None  # type: ignore[attr-defined]
         client.get_sentinel = AsyncMock()
 
         await sensor.async_update()

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.components.alarm_control_panel import AlarmControlPanelEntityFeature
+from homeassistant.components.alarm_control_panel import AlarmControlPanelEntityFeature  # type: ignore[attr-defined]
 from homeassistant.components.alarm_control_panel.const import (
     AlarmControlPanelState,
     CodeFormat,
@@ -708,10 +708,10 @@ class TestProperties:
         """device_info contains correct manufacturer, model, and name."""
         alarm = make_alarm()
         info = alarm._attr_device_info
-        assert info["manufacturer"] == "Securitas Direct"
-        assert info["model"] == "SDVFAST"
-        assert info["name"] == "Home"
-        assert info["hw_version"] == "PLUS"
+        assert info["manufacturer"] == "Securitas Direct"  # type: ignore[typeddict-item]
+        assert info["model"] == "SDVFAST"  # type: ignore[typeddict-item]
+        assert info["name"] == "Home"  # type: ignore[typeddict-item]
+        assert info["hw_version"] == "PLUS"  # type: ignore[typeddict-item]
 
 
 # ===========================================================================
@@ -1091,7 +1091,7 @@ class TestAsyncUpdateStatus:
 
         alarm.client.update_overview.assert_called_once_with(alarm.installation)
         assert alarm._state == AlarmControlPanelState.ARMED_AWAY
-        alarm.async_write_ha_state.assert_called_once()
+        alarm.async_write_ha_state.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_success_with_now_parameter(self):
         """async_update_status accepts an optional now parameter (used by timer)."""
@@ -1110,7 +1110,7 @@ class TestAsyncUpdateStatus:
 
         alarm.client.update_overview.assert_called_once_with(alarm.installation)
         assert alarm._state == AlarmControlPanelState.DISARMED
-        alarm.async_write_ha_state.assert_called_once()
+        alarm.async_write_ha_state.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_error_logged_state_unchanged(self):
         """Error: SecuritasDirectError logged, state unchanged, HA state written."""
@@ -1123,7 +1123,7 @@ class TestAsyncUpdateStatus:
 
         alarm.client.update_overview.assert_called_once()
         assert alarm._state == AlarmControlPanelState.DISARMED
-        alarm.async_write_ha_state.assert_called_once()
+        alarm.async_write_ha_state.assert_called_once()  # type: ignore[attr-defined]
         assert "waf_blocked" not in alarm._attr_extra_state_attributes
 
     async def test_403_error_sets_waf_blocked_attribute(self):
@@ -1136,7 +1136,7 @@ class TestAsyncUpdateStatus:
         await alarm.async_update_status()
 
         assert alarm._attr_extra_state_attributes.get("waf_blocked") is True
-        alarm.async_write_ha_state.assert_called_once()
+        alarm.async_write_ha_state.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_successful_update_clears_waf_blocked(self):
         """Successful status check clears waf_blocked and dismisses notification."""
@@ -1155,7 +1155,7 @@ class TestAsyncUpdateStatus:
         await alarm.async_update_status()
 
         assert "waf_blocked" not in alarm._attr_extra_state_attributes
-        alarm.hass.async_create_task.assert_called_once()
+        alarm.hass.async_create_task.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_skips_poll_when_operation_in_progress(self):
         """Status poll is skipped when _operation_in_progress is True."""
@@ -1166,7 +1166,7 @@ class TestAsyncUpdateStatus:
         await alarm.async_update_status()
 
         alarm.client.update_overview.assert_not_called()
-        alarm.async_write_ha_state.assert_not_called()
+        alarm.async_write_ha_state.assert_not_called()  # type: ignore[attr-defined]
 
     async def test_polls_when_operation_not_in_progress(self):
         """Status poll proceeds normally when _operation_in_progress is False."""
@@ -1588,7 +1588,7 @@ class TestForceArmContext:
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_HOME)
 
         # Verify persistent notification was created
-        alarm.hass.async_create_task.assert_called()
+        alarm.hass.async_create_task.assert_called()  # type: ignore[attr-defined]
 
     async def test_arming_exception_notifies_configured_group(self):
         """ArmingExceptionError sends to configured notify group."""
@@ -1603,7 +1603,7 @@ class TestForceArmContext:
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_HOME)
 
         # Should have two async_create_task calls: persistent_notification + notify
-        assert alarm.hass.async_create_task.call_count == 2
+        assert alarm.hass.async_create_task.call_count == 2  # type: ignore[attr-defined]
 
     async def test_arming_exception_no_notify_group_only_persistent(self):
         """Without notify_group configured, only persistent notification fires."""
@@ -1617,7 +1617,7 @@ class TestForceArmContext:
         await alarm.set_arm_state(AlarmControlPanelState.ARMED_HOME)
 
         # Only persistent notification
-        assert alarm.hass.async_create_task.call_count == 1
+        assert alarm.hass.async_create_task.call_count == 1  # type: ignore[attr-defined]
 
     async def test_async_force_arm_uses_stored_context(self):
         """async_force_arm consumes stored context and passes force params."""
@@ -1686,7 +1686,7 @@ class TestForceArmContext:
 
         alarm._handle_mobile_action(event)
 
-        alarm.hass.async_create_task.assert_called_once()
+        alarm.hass.async_create_task.assert_called_once()  # type: ignore[attr-defined]
 
     def test_mobile_action_cancel_dispatches_task(self):
         """SECURITAS_CANCEL_FORCE_ARM_<num> mobile action dispatches async_force_arm_cancel."""
@@ -1708,7 +1708,7 @@ class TestForceArmContext:
         alarm._handle_mobile_action(event)
 
         # _handle_mobile_action creates a task — verify the task was dispatched
-        alarm.hass.async_create_task.assert_called_once()
+        alarm.hass.async_create_task.assert_called_once()  # type: ignore[attr-defined]
 
     def test_mobile_action_unknown_does_nothing(self):
         """Unrecognised mobile action does not affect alarm state."""
@@ -1720,7 +1720,7 @@ class TestForceArmContext:
 
         alarm._handle_mobile_action(event)
 
-        alarm.hass.async_create_task.assert_not_called()
+        alarm.hass.async_create_task.assert_not_called()  # type: ignore[attr-defined]
         assert alarm._force_context is None
 
     def test_mobile_action_wrong_installation_does_nothing(self):
@@ -1739,7 +1739,7 @@ class TestForceArmContext:
 
         alarm._handle_mobile_action(event)
 
-        alarm.hass.async_create_task.assert_not_called()
+        alarm.hass.async_create_task.assert_not_called()  # type: ignore[attr-defined]
         assert alarm._force_context is not None  # untouched
 
 
@@ -1770,7 +1770,7 @@ class TestForceArmCancel:
         assert alarm._force_context is None
         assert "force_arm_available" not in alarm._attr_extra_state_attributes
         assert "arm_exceptions" not in alarm._attr_extra_state_attributes
-        alarm.async_write_ha_state.assert_called()
+        alarm.async_write_ha_state.assert_called()  # type: ignore[attr-defined]
 
     async def test_cancel_no_context_does_nothing(self):
         """force_arm_cancel with no stored context logs warning and returns."""
@@ -1959,7 +1959,7 @@ class TestCompoundArmCommands:
         # Partial state: ARMNIGHT1 succeeded with proto "Q" (partial_night)
         # which maps to ARMED_CUSTOM_BYPASS if unmapped in _night_peri_config,
         # or ARMED_NIGHT if Q is in the status map
-        alarm.async_write_ha_state.assert_called()
+        alarm.async_write_ha_state.assert_called()  # type: ignore[attr-defined]
         alarm._notify_error.assert_called_once()
 
     async def test_all_alternatives_fail_notifies(self):
@@ -2644,8 +2644,8 @@ class TestNotifyError:
         alarm = make_alarm()
         alarm._notify_error("Securitas: Arming failed", "test body")
 
-        alarm.hass.async_create_task.assert_called_once()
-        call_args = alarm.hass.services.async_call.call_args
+        alarm.hass.async_create_task.assert_called_once()  # type: ignore[attr-defined]
+        call_args = alarm.hass.services.async_call.call_args  # type: ignore[attr-defined]
         service_data = call_args[1]["service_data"]
         assert "123456" in service_data["notification_id"]
         assert (
@@ -2675,7 +2675,7 @@ class TestNotificationContent:
         alarm._notify_arm_exceptions(exc)
 
         # Find the persistent_notification.create call
-        calls = alarm.hass.services.async_call.call_args_list
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         pn_call = next(c for c in calls if c[1]["domain"] == "persistent_notification")
         sd = pn_call[1]["service_data"]
         assert sd["title"] == "Securitas: Arm blocked — open sensor(s)"
@@ -2690,7 +2690,7 @@ class TestNotificationContent:
 
         alarm._notify_arm_exceptions(exc)
 
-        calls = alarm.hass.services.async_call.call_args_list
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         mobile_call = next(c for c in calls if c[1]["domain"] == "notify")
         data = mobile_call[1]["service_data"]["data"]
         assert data["tag"] == "securitas.arming_exception_123456"
@@ -2703,7 +2703,7 @@ class TestNotificationContent:
 
         alarm._notify_arm_exceptions(exc)
 
-        calls = alarm.hass.services.async_call.call_args_list
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         mobile_call = next(c for c in calls if c[1]["domain"] == "notify")
         actions = mobile_call[1]["service_data"]["data"]["actions"]
         assert len(actions) == 2
@@ -2720,7 +2720,7 @@ class TestNotificationContent:
 
         alarm._notify_arm_exceptions(exc)
 
-        calls = alarm.hass.services.async_call.call_args_list
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         pn_call = next(c for c in calls if c[1]["domain"] == "persistent_notification")
         mobile_call = next(c for c in calls if c[1]["domain"] == "notify")
         persistent_msg = pn_call[1]["service_data"]["message"]
@@ -2738,7 +2738,7 @@ class TestNotificationContent:
 
         alarm._notify_arm_exceptions(exc)
 
-        calls = alarm.hass.services.async_call.call_args_list
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         pn_call = next(c for c in calls if c[1]["domain"] == "persistent_notification")
         mobile_call = next(c for c in calls if c[1]["domain"] == "notify")
         persistent_msg = pn_call[1]["service_data"]["message"]
@@ -2756,7 +2756,7 @@ class TestNotificationContent:
 
         alarm._notify_arm_exceptions(exc)
 
-        calls = alarm.hass.services.async_call.call_args_list
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         pn_call = next(c for c in calls if c[1]["domain"] == "persistent_notification")
         mobile_call = next(c for c in calls if c[1]["domain"] == "notify")
         assert "unknown" in pn_call[1]["service_data"]["message"]
@@ -2770,9 +2770,9 @@ class TestNotificationContent:
         alarm._notify_arm_exceptions(exc)
 
         # Only 1 async_create_task call (persistent only)
-        assert alarm.hass.async_create_task.call_count == 1
+        assert alarm.hass.async_create_task.call_count == 1  # type: ignore[attr-defined]
         # Verify persistent notification content is still correct
-        calls = alarm.hass.services.async_call.call_args_list
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         assert len(calls) == 1
         sd = calls[0][1]["service_data"]
         assert sd["title"] == "Securitas: Arm blocked — open sensor(s)"
@@ -2794,7 +2794,7 @@ class TestDismissNotification:
 
         alarm._dismiss_arming_exception_notification()
 
-        calls = alarm.hass.services.async_call.call_args_list
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         pn_call = next(c for c in calls if c[1]["domain"] == "persistent_notification")
         assert pn_call[1]["service"] == "dismiss"
         assert pn_call[1]["service_data"] == {
@@ -2808,7 +2808,7 @@ class TestDismissNotification:
 
         alarm._dismiss_arming_exception_notification()
 
-        calls = alarm.hass.services.async_call.call_args_list
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         mobile_call = next(c for c in calls if c[1]["domain"] == "notify")
         assert mobile_call[1]["service"] == "mobile_app_phone"
         assert mobile_call[1]["service_data"] == {
@@ -2823,7 +2823,7 @@ class TestDismissNotification:
         alarm._dismiss_arming_exception_notification()
 
         # Only 1 async_create_task call (persistent dismiss only)
-        assert alarm.hass.async_create_task.call_count == 1
+        assert alarm.hass.async_create_task.call_count == 1  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_force_arm_cancel_dismisses_both(self):
@@ -2841,7 +2841,7 @@ class TestDismissNotification:
 
         await alarm.async_force_arm_cancel()
 
-        calls = alarm.hass.services.async_call.call_args_list
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         # persistent_notification.dismiss
         pn_call = next(c for c in calls if c[1]["domain"] == "persistent_notification")
         assert pn_call[1]["service"] == "dismiss"
@@ -2871,7 +2871,7 @@ class TestAsyncAddedToHass:
 
         await alarm.async_added_to_hass()
 
-        alarm.hass.bus.async_listen.assert_called_once_with(
+        alarm.hass.bus.async_listen.assert_called_once_with(  # type: ignore[attr-defined]
             "mobile_app_notification_action",
             alarm._handle_mobile_action,
         )
@@ -2880,7 +2880,7 @@ class TestAsyncAddedToHass:
         """async_added_to_hass stores the unsubscribe callable from bus.async_listen."""
         alarm = make_alarm()
         sentinel = MagicMock()
-        alarm.hass.bus.async_listen.return_value = sentinel
+        alarm.hass.bus.async_listen.return_value = sentinel  # type: ignore[attr-defined]
 
         await alarm.async_added_to_hass()
 
@@ -2930,8 +2930,8 @@ class TestForceArmWorkflow:
         assert alarm._force_context["mode"] == AlarmControlPanelState.ARMED_HOME
 
         # Notifications should have been sent (persistent + mobile)
-        assert alarm.hass.async_create_task.call_count == 2
-        calls = alarm.hass.services.async_call.call_args_list
+        assert alarm.hass.async_create_task.call_count == 2  # type: ignore[attr-defined]
+        calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         pn_create = next(
             c
             for c in calls
@@ -2941,8 +2941,8 @@ class TestForceArmWorkflow:
         assert "Kitchen Door" in pn_create[1]["service_data"]["message"]
 
         # Reset call tracking for step 2
-        alarm.hass.async_create_task.reset_mock()
-        alarm.hass.services.async_call.reset_mock()
+        alarm.hass.async_create_task.reset_mock()  # type: ignore[attr-defined]
+        alarm.hass.services.async_call.reset_mock()  # type: ignore[attr-defined]
 
         # Step 2: force arm
         await alarm.async_force_arm()
@@ -2961,7 +2961,7 @@ class TestForceArmWorkflow:
         assert alarm._state == AlarmControlPanelState.ARMED_HOME
 
         # Dismiss notifications should have been called
-        dismiss_calls = alarm.hass.services.async_call.call_args_list
+        dismiss_calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         pn_dismiss = next(
             c
             for c in dismiss_calls
@@ -2994,8 +2994,8 @@ class TestForceArmWorkflow:
         assert alarm._force_context is not None
 
         # Reset tracking
-        alarm.hass.async_create_task.reset_mock()
-        alarm.hass.services.async_call.reset_mock()
+        alarm.hass.async_create_task.reset_mock()  # type: ignore[attr-defined]
+        alarm.hass.services.async_call.reset_mock()  # type: ignore[attr-defined]
 
         # Step 2: user cancels
         await alarm.async_force_arm_cancel()
@@ -3005,7 +3005,7 @@ class TestForceArmWorkflow:
         assert "force_arm_available" not in alarm._attr_extra_state_attributes
 
         # Dismiss notifications should have been called for both
-        dismiss_calls = alarm.hass.services.async_call.call_args_list
+        dismiss_calls = alarm.hass.services.async_call.call_args_list  # type: ignore[attr-defined]
         pn_dismiss = next(
             c
             for c in dismiss_calls
@@ -3090,7 +3090,7 @@ class TestHassNoneGuardsAlarm:
 
     async def test_update_status_skips_when_hass_is_none(self):
         alarm = make_alarm()
-        alarm.hass = None
+        alarm.hass = None  # type: ignore[attr-defined]
         alarm.client.update_overview = AsyncMock()
 
         await alarm.async_update_status()
@@ -3100,7 +3100,7 @@ class TestHassNoneGuardsAlarm:
     def test_force_state_skips_schedule_when_hass_is_none(self):
         alarm = make_alarm()
         alarm.async_schedule_update_ha_state = MagicMock()
-        alarm.hass = None
+        alarm.hass = None  # type: ignore[attr-defined]
 
         alarm._force_state(AlarmControlPanelState.ARMING)
 

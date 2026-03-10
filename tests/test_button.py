@@ -59,11 +59,11 @@ class TestSecuritasRefreshButtonInit:
         """device_info contains correct identifiers, manufacturer, and model."""
         button = make_button()
         info = button._attr_device_info
-        assert (DOMAIN, "securitas_direct.123456") in info["identifiers"]
-        assert info["manufacturer"] == "Securitas Direct"
-        assert info["model"] == "SDVFAST"
-        assert info["name"] == "Home"
-        assert info["hw_version"] == "PLUS"
+        assert (DOMAIN, "securitas_direct.123456") in info["identifiers"]  # type: ignore[typeddict-item]
+        assert info["manufacturer"] == "Securitas Direct"  # type: ignore[typeddict-item]
+        assert info["model"] == "SDVFAST"  # type: ignore[typeddict-item]
+        assert info["name"] == "Home"  # type: ignore[typeddict-item]
+        assert info["hw_version"] == "PLUS"  # type: ignore[typeddict-item]
 
     def test_stores_client_reference(self):
         """Button stores the client (SecuritasHub) reference."""
@@ -121,7 +121,7 @@ class TestSecuritasRefreshButtonAsyncPress:
 
         await button.async_press()
 
-        button.hass.services.async_call.assert_called_once_with(
+        button.hass.services.async_call.assert_called_once_with(  # type: ignore[attr-defined]
             "homeassistant",
             "update_entity",
             {"entity_id": "alarm_control_panel.securitas_123"},
@@ -139,7 +139,7 @@ class TestSecuritasRefreshButtonAsyncPress:
         await button.async_press()
 
         # check_alarm_status should never have been called
-        button.client.session.check_alarm_status.assert_not_called()
+        button.client.session.check_alarm_status.assert_not_called()  # type: ignore[attr-defined]
 
     async def test_error_during_check_alarm_status(self):
         """SecuritasDirectError during check_alarm_status is caught gracefully."""
@@ -153,7 +153,7 @@ class TestSecuritasRefreshButtonAsyncPress:
         await button.async_press()
 
         # No update_entity call should happen
-        button.hass.services.async_call.assert_not_called()
+        button.hass.services.async_call.assert_not_called()  # type: ignore[attr-defined]
 
     async def test_403_creates_persistent_notification(self):
         """403 error creates a rate-limited persistent notification."""
@@ -164,8 +164,8 @@ class TestSecuritasRefreshButtonAsyncPress:
 
         await button.async_press()
 
-        button.hass.services.async_call.assert_called_once()
-        call_kwargs = button.hass.services.async_call.call_args
+        button.hass.services.async_call.assert_called_once()  # type: ignore[attr-defined]
+        call_kwargs = button.hass.services.async_call.call_args  # type: ignore[attr-defined]
         assert call_kwargs[1]["domain"] == "persistent_notification"
         assert call_kwargs[1]["service"] == "create"
         assert "Rate limited" in call_kwargs[1]["service_data"]["title"]
@@ -181,7 +181,7 @@ class TestSecuritasRefreshButtonAsyncPress:
         mock_alarm = MagicMock()
         mock_alarm._set_waf_blocked = MagicMock()
         mock_alarm.async_write_ha_state = MagicMock()
-        button.hass.data = {
+        button.hass.data = {  # type: ignore[attr-defined]
             DOMAIN: {"alarm_entities": {button.installation.number: mock_alarm}}
         }
 
@@ -196,12 +196,12 @@ class TestSecuritasRefreshButtonAsyncPress:
         button.client.session.check_alarm = AsyncMock(
             side_effect=SecuritasDirectError("HTTP 403", http_status=403)
         )
-        button.hass.data = {}
+        button.hass.data = {}  # type: ignore[attr-defined]
 
         await button.async_press()
 
         # Should not crash, notification still created
-        button.hass.services.async_call.assert_called_once()
+        button.hass.services.async_call.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_non_403_error_does_not_create_notification(self):
         """Non-403 errors are logged but do not create persistent notifications."""
@@ -212,7 +212,7 @@ class TestSecuritasRefreshButtonAsyncPress:
 
         await button.async_press()
 
-        button.hass.services.async_call.assert_not_called()
+        button.hass.services.async_call.assert_not_called()  # type: ignore[attr-defined]
 
 
 # ===========================================================================
@@ -300,9 +300,9 @@ class TestHassNoneGuardsButton:
 
     async def test_async_press_skips_when_hass_is_none(self):
         button = make_button()
-        button.hass = None
+        button.hass = None  # type: ignore[attr-defined]
 
         # Should not raise or call any API methods
         await button.async_press()
 
-        button.client.session.check_alarm.assert_not_called()
+        button.client.session.check_alarm.assert_not_called()  # type: ignore[attr-defined]

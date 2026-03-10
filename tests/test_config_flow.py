@@ -125,7 +125,7 @@ def _hub_factory(*, two_fa: bool = False, **overrides):
     hub.session.list_installations = AsyncMock(return_value=[make_installation()])
 
     # Start without a token; login() and send_sms_code() set it.
-    _token_holder = {"token": None}
+    _token_holder: dict[str, str | None] = {"token": None}
 
     def _get_token():
         return _token_holder["token"]
@@ -440,7 +440,7 @@ async def test_phone_list_fallback_selection_by_phone_name(hass):
     # Simulate user_input with a key that cannot be parsed as integer index
     result = await flow.async_step_phone_list({"phones": "xxx_555-5678"})
 
-    assert result["step_id"] == "otp_challenge"
+    assert result["step_id"] == "otp_challenge"  # type: ignore[typeddict-item]
     # Should find phone "555-5678" -> id=1
     mock_hub.send_opt.assert_awaited_once_with("otp-hash-abc", 1)
 

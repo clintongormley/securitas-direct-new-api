@@ -216,9 +216,9 @@ class TestGetAllServices:
         assert svc.active is True
         assert svc.request == "CONFORT"
         assert svc.description == "Sentinel"
-        assert len(svc.attributes) == 1
-        assert svc.attributes[0].name == "zone"
-        assert svc.attributes[0].value == "1"
+        assert len(svc.attributes) == 1  # type: ignore[arg-type]
+        assert svc.attributes[0].name == "zone"  # type: ignore[index]
+        assert svc.attributes[0].value == "1"  # type: ignore[index]
 
     async def test_sets_capabilities_and_exp(
         self, authed_api, mock_execute, installation

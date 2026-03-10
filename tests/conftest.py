@@ -186,7 +186,7 @@ def make_installation(**overrides) -> Installation:
         "phone": "555-1234",
     }
     defaults.update(overrides)
-    return Installation(**defaults)
+    return Installation(**defaults)  # type: ignore[arg-type]
 
 
 def make_config_entry_data(
