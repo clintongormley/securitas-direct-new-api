@@ -47,7 +47,6 @@ class SecuritasRefreshButton(SecuritasEntity, ButtonEntity):
         super().__init__(installation, client)
         self._attr_name = f"Refresh {installation.alias}"
         self._attr_unique_id = f"refresh_button_{installation.number}"
-        self.entity_id = f"securitas_direct.{installation.number}_refresh"
         self.hass = hass
 
     def _get_alarm_entity(self):
@@ -138,9 +137,6 @@ class SecuritasCaptureButton(SecuritasEntity, ButtonEntity):
         self._camera_device = camera_device
         self._attr_unique_id = f"{installation.number}_capture_{camera_device.zone_id}"
         self._attr_name = f"{installation.alias} Capture {camera_device.name}"
-        self.entity_id = (
-            f"securitas_direct.{installation.number}_capture_{camera_device.zone_id}"
-        )
 
     async def async_press(self) -> None:
         """Request a new image capture."""

@@ -87,7 +87,6 @@ class SentinelTemperature(SecuritasEntity, SensorEntity):
         super().__init__(installation, client)
         self._attr_unique_id = f"{installation.number}_temperature_{service.id}"
         self._attr_name = f"{installation.alias} Temperature"
-        self.entity_id = f"securitas_direct.{installation.number}_temperature"
         self._service: Service = service
 
     async def async_update(self):
@@ -125,7 +124,6 @@ class SentinelHumidity(SecuritasEntity, SensorEntity):
         super().__init__(installation, client)
         self._attr_unique_id = f"{installation.number}_humidity_{service.id}"
         self._attr_name = f"{installation.alias} Humidity"
-        self.entity_id = f"securitas_direct.{installation.number}_humidity"
         self._service: Service = service
 
     async def async_update(self):
@@ -204,7 +202,6 @@ class SentinelAirQuality(SensorEntity):
         self._installation = installation
         self._attr_unique_id = f"{installation.number}_airquality_{fetcher._service.id}"
         self._attr_name = f"{installation.alias} Air Quality"
-        self.entity_id = f"securitas_direct.{installation.number}_airquality"
         self._attr_device_info = securitas_device_info(installation)
 
     async def async_update(self):
@@ -230,7 +227,6 @@ class SentinelAirQualityStatus(SensorEntity):
             f"{installation.number}_airquality_status_{fetcher._service.id}"
         )
         self._attr_name = f"{installation.alias} Air Quality Status"
-        self.entity_id = f"securitas_direct.{installation.number}_airquality_status"
         self._attr_device_info = securitas_device_info(installation)
 
     async def async_update(self):

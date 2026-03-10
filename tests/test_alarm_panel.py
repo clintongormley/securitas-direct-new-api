@@ -699,10 +699,9 @@ class TestProperties:
         alarm._state = "totally_invalid_state"
         assert alarm.alarm_state is None
 
-    def test_entity_id_and_unique_id(self):
-        """entity_id and unique_id are derived from installation number."""
+    def test_unique_id(self):
+        """unique_id is derived from installation number."""
         alarm = make_alarm()
-        assert alarm.entity_id == "securitas_direct.123456"
         assert alarm._attr_unique_id == "securitas_direct.123456"
 
     def test_device_info(self):

@@ -82,11 +82,11 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
         self._danalock_config: DanalockConfig | None = danalock_config
         self._danalock_config_fetched: bool = danalock_config is not None
 
+        self._attr_name = f"{installation.alias} Lock {device_id}"
         self._attr_unique_id = (
             f"securitas_direct.{installation.number}_lock_{device_id}"
         )
 
-        self.entity_id = f"securitas_direct.{installation.number}_lock_{device_id}"
         self._time: datetime.datetime = datetime.datetime.now()
         self._message: str = ""
         self.hass: HomeAssistant = hass
@@ -98,11 +98,6 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
             )
         else:
             self._update_unsub = None
-
-    @property
-    def name(self) -> str:  # type: ignore[override]
-        """Return the name of the device."""
-        return f"{self.installation.alias} Lock {self._device_id}"
 
     @property
     def changed_by(self) -> str:  # type: ignore[override]

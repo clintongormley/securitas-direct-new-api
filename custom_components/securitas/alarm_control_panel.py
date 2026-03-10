@@ -118,7 +118,7 @@ class SecuritasAlarm(SecuritasEntity, alarm.AlarmControlPanelEntity):
         """Initialize the Securitas alarm panel."""
         super().__init__(installation, client)
         self._device: str = installation.address
-        self.entity_id: str = f"securitas_direct.{installation.number}"
+        self._attr_name = installation.alias
         self._attr_unique_id: str | None = f"securitas_direct.{installation.number}"
         self._time: datetime.datetime = datetime.datetime.now()
         self._message: str = ""
@@ -181,11 +181,6 @@ class SecuritasAlarm(SecuritasEntity, alarm.AlarmControlPanelEntity):
         self._mobile_action_unsub = None
 
         self.update_status_alarm(state)
-
-    @property
-    def name(self) -> str:  # type: ignore[override]
-        """Return the name of the device."""
-        return self.installation.alias
 
     async def async_added_to_hass(self) -> None:
         """Register mobile notification action listener when added to HA."""

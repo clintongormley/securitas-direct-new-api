@@ -44,7 +44,6 @@ class WifiConnectedSensor(SecuritasEntity, BinarySensorEntity):
         super().__init__(installation, client)
         self._attr_unique_id = f"{installation.number}_wifi_connected"
         self._attr_name = f"{installation.alias} WiFi Connected"
-        self.entity_id = f"securitas_direct.{installation.number}_wifi_connected"
 
     async def async_added_to_hass(self) -> None:
         """Register dispatcher listener."""
