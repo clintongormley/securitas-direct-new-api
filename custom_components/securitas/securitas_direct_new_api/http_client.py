@@ -205,9 +205,7 @@ class SecuritasHttpClient:
                     content,
                 ) from err
 
-            _LOGGER.debug(
-                "%s vars=%s response=%s", log_prefix, log_vars, response_text
-            )
+            _LOGGER.debug("%s vars=%s response=%s", log_prefix, log_vars, response_text)
 
             if http_status == 403 and attempt == 0:
                 # Incapsula WAF blocks return HTML — retrying immediately
@@ -313,7 +311,9 @@ class SecuritasHttpClient:
 
                     # Session expired server-side: re-authenticate and retry once
                     if error_status == 403 and not _retried:
-                        _LOGGER.debug("[auth] Session expired server-side, re-authenticating")
+                        _LOGGER.debug(
+                            "[auth] Session expired server-side, re-authenticating"
+                        )
                         self.authentication_token_exp = datetime.min
                         await self._check_authentication_token()
                         if installation is not None:

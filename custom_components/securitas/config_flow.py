@@ -370,9 +370,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         except (IndexError, KeyError, TypeError):
             return False
 
-    async def _show_2fa_error(
-        self, error_key: str
-    ) -> config_entries.ConfigFlowResult:
+    async def _show_2fa_error(self, error_key: str) -> config_entries.ConfigFlowResult:
         """Re-show phone list form with an error."""
         return await self._start_2fa_flow(errors={"base": error_key})
 
@@ -441,7 +439,9 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             services = await self.securitas.get_services(installation)
         except SecuritasDirectError as err:
-            _LOGGER.error("Failed to fetch services for %s: %s", installation.number, err)
+            _LOGGER.error(
+                "Failed to fetch services for %s: %s", installation.number, err
+            )
             return self.async_show_form(
                 step_id="user",
                 data_schema=self._user_schema(self.config),
