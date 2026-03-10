@@ -137,6 +137,7 @@ def _hub_factory(*, two_fa: bool = False, **overrides):
 
     async def _send_sms_code(*_args):
         _token_holder["token"] = FAKE_JWT
+        return (None, None)
 
     hub.get_authentication_token = MagicMock(side_effect=_get_token)
     hub.login = AsyncMock(side_effect=_login)
@@ -477,6 +478,41 @@ async def test_otp_challenge_sends_sms_code(hass):
     mock_hub.send_sms_code.assert_awaited_once_with("otp-hash-abc", "123456")
 
 
+async def test_otp_challenge_wrong_code_shows_error(hass):
+    """Wrong SMS code re-shows OTP form with invalid_otp error."""
+    mock_hub = _hub_factory(two_fa=True)
+    flow_id = await _get_to_otp_step(hass, mock_hub)
+
+    # Wrong code: validate_device returns a new challenge hash instead of (None, None)
+    mock_hub.send_sms_code = AsyncMock(return_value=("new-challenge-hash", []))
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_configure(
+            flow_id, user_input={CONF_CODE: "000000"}
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "otp_challenge"
+    assert result["errors"] == {"base": "invalid_otp"}
+
+
+async def test_otp_challenge_api_error_shows_error(hass):
+    """API error during SMS code validation re-shows OTP form."""
+    mock_hub = _hub_factory(two_fa=True)
+    flow_id = await _get_to_otp_step(hass, mock_hub)
+
+    mock_hub.send_sms_code = AsyncMock(side_effect=SecuritasDirectError("API error"))
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_configure(
+            flow_id, user_input={CONF_CODE: "123456"}
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "otp_challenge"
+    assert result["errors"] == {"base": "invalid_otp"}
+
+
 async def test_otp_challenge_advances_to_options(hass):
     """After sending SMS code, flow should advance to options step."""
     mock_hub = _hub_factory(two_fa=True)
@@ -512,8 +548,8 @@ async def test_finish_setup_logs_in_gets_token_advances_to_options(hass):
     assert result["step_id"] == "options"
     mock_hub.login.assert_awaited_once()
     assert (
-        mock_hub.get_authentication_token.call_count == 2
-    )  # is None check + get token
+        mock_hub.get_authentication_token.call_count == 3
+    )  # debug log + is None check + get token
 
 
 async def test_finish_setup_lists_installations(hass):

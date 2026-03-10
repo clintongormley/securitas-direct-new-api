@@ -156,7 +156,11 @@ class ApiManager(SecuritasHttpClient):
             # the API call fails but we want the phone data in the response
             if len(err.args) > 1 and err.args[1] is not None:
                 try:
-                    return self._extract_otp_data(err.args[1]["errors"][0]["data"])
+                    error_data = err.args[1]["errors"][0]["data"]
+                    # Only return OTP data if it actually contains OTP fields;
+                    # otherwise the error is unrelated (e.g. invalid code format)
+                    if "auth-otp-hash" in error_data or "auth-phones" in error_data:
+                        return self._extract_otp_data(error_data)
                 except (KeyError, IndexError, TypeError):
                     pass
             raise

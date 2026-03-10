@@ -191,7 +191,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Show the list of phones for the OTP challenge."""
         phone_index: int = -1
         assert user_input is not None
-        selected_phone_key = user_input["phones"]
+        selected_phone_key = user_input.get("phones", "")
 
         assert self.otp_challenge is not None
         assert self.securitas is not None
@@ -207,7 +207,14 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     phone_index = phone_item.id
                     break
 
-        await self.securitas.send_opt(self.otp_challenge[0] or "", phone_index)
+        if phone_index < 0:
+            return await self._start_2fa_flow()
+
+        try:
+            await self.securitas.send_opt(self.otp_challenge[0] or "", phone_index)
+        except SecuritasDirectError:
+            return await self._show_2fa_error("otp_send_failed")
+
         return self.async_show_form(
             step_id="otp_challenge",
             data_schema=vol.Schema({vol.Required(CONF_CODE): str}),
@@ -218,9 +225,47 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         assert self.securitas is not None
         assert self.otp_challenge is not None
         assert user_input is not None
-        await self.securitas.send_sms_code(
-            self.otp_challenge[0] or "", user_input[CONF_CODE]
-        )
+        try:
+            result = await self.securitas.send_sms_code(
+                self.otp_challenge[0] or "", user_input[CONF_CODE]
+            )
+            _LOGGER.debug(
+                "send_sms_code returned: %s, token set: %s",
+                result,
+                self.securitas.get_authentication_token() is not None,
+            )
+        except SecuritasDirectError as err:
+            _LOGGER.debug("send_sms_code raised SecuritasDirectError: %s", err)
+            # Check if OTP expired (auth-code 10002) — restart 2FA to get new code
+            if self._is_otp_expired(err):
+                _LOGGER.debug("OTP expired, restarting 2FA flow")
+                return await self._show_2fa_error("otp_expired")
+            return self.async_show_form(
+                step_id="otp_challenge",
+                data_schema=vol.Schema({vol.Required(CONF_CODE): str}),
+                errors={"base": "invalid_otp"},
+            )
+        except Exception as err:
+            _LOGGER.error(
+                "send_sms_code raised unexpected %s: %s", type(err).__name__, err
+            )
+            return self.async_show_form(
+                step_id="otp_challenge",
+                data_schema=vol.Schema({vol.Required(CONF_CODE): str}),
+                errors={"base": "invalid_otp"},
+            )
+        # If validate_device returns a challenge hash, the code was wrong —
+        # the API re-issued a challenge instead of completing authentication.
+        otp_hash, _phones = result
+        if otp_hash is not None:
+            _LOGGER.debug("OTP code wrong: API returned new challenge hash")
+            return self.async_show_form(
+                step_id="otp_challenge",
+                data_schema=vol.Schema({vol.Required(CONF_CODE): str}),
+                errors={"base": "invalid_otp"},
+            )
+        # MFA may succeed without returning a token (hash: null).
+        # finish_setup() will call login() to obtain it.
         return await self.finish_setup()
 
     def _user_schema(self, defaults: dict[str, Any] | None = None) -> vol.Schema:
@@ -261,6 +306,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if username in sessions:
             existing_hub = sessions[username]["hub"]
             if existing_hub.config[CONF_PASSWORD] == password:
+                _LOGGER.debug("Reusing existing session for %s", username)
                 self.securitas = existing_hub
                 self.config[CONF_DEVICE_ID] = existing_hub.config[CONF_DEVICE_ID]
                 self.config[CONF_UNIQUE_ID] = existing_hub.config[CONF_UNIQUE_ID]
@@ -297,10 +343,20 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         # Login succeeded without 2FA — proceed directly
         return await self.finish_setup()
 
-    async def _start_2fa_flow(self) -> config_entries.ConfigFlowResult:
+    async def _start_2fa_flow(
+        self, errors: dict[str, str] | None = None
+    ) -> config_entries.ConfigFlowResult:
         """Call validate_device and show phone selection form."""
         assert self.securitas is not None
-        otp_result = await self.securitas.validate_device()
+        try:
+            otp_result = await self.securitas.validate_device()
+        except SecuritasDirectError as err:
+            _LOGGER.error("2FA device validation failed: %s", err)
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self._user_schema(self.config),
+                errors={"base": "cannot_connect"},
+            )
         self.otp_challenge = otp_result
         otp_phones = otp_result[1] or []
         phone_options = [
@@ -312,13 +368,51 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {"phones": selector({"select": {"options": phone_options}})}
             ),
+            errors=errors,
         )
+
+    @staticmethod
+    def _is_otp_expired(err: SecuritasDirectError) -> bool:
+        """Check if a SecuritasDirectError indicates an expired OTP (auth-code 10002)."""
+        try:
+            return err.args[1]["errors"][0]["data"].get("auth-code") == "10002"
+        except (IndexError, KeyError, TypeError):
+            return False
+
+    async def _show_2fa_error(
+        self, error_key: str
+    ) -> config_entries.ConfigFlowResult:
+        """Re-show phone list form with an error."""
+        return await self._start_2fa_flow(errors={"base": error_key})
 
     async def finish_setup(self):
         """Login, discover installations, detect peri, advance to options."""
         assert self.securitas is not None
-        if self.securitas.get_authentication_token() is None:
-            await self.securitas.login()
+        _LOGGER.debug(
+            "finish_setup: token set=%s",
+            self.securitas.get_authentication_token() is not None,
+        )
+        try:
+            if self.securitas.get_authentication_token() is None:
+                _LOGGER.debug("finish_setup: calling login()")
+                await self.securitas.login()
+        except Login2FAError:
+            _LOGGER.debug("finish_setup: login raised Login2FAError, restarting 2FA")
+            return await self._start_2fa_flow()
+        except LoginError as err:
+            _LOGGER.debug("finish_setup: login raised LoginError: %s", err)
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self._user_schema(self.config),
+                errors={"base": "invalid_auth"},
+            )
+        except SecuritasDirectError as err:
+            _LOGGER.debug("finish_setup: login raised SecuritasDirectError: %s", err)
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self._user_schema(self.config),
+                errors={"base": "cannot_connect"},
+            )
         self.config[CONF_TOKEN] = self.securitas.get_authentication_token()
 
         self.hass.data.setdefault(DOMAIN, {})
@@ -329,7 +423,16 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if username not in sessions:
             sessions[username] = {"hub": self.securitas, "ref_count": 0}
 
-        installations = await self.securitas.session.list_installations()
+        try:
+            _LOGGER.debug("finish_setup: calling list_installations()")
+            installations = await self.securitas.session.list_installations()
+        except SecuritasDirectError as err:
+            _LOGGER.debug("finish_setup: list_installations raised: %s", err)
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self._user_schema(self.config),
+                errors={"base": "cannot_connect"},
+            )
         self.hass.data[DOMAIN]["installations"] = installations
 
         configured_ids = {
@@ -354,7 +457,15 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self._selected_installation = installation
 
         assert self.securitas is not None
-        services = await self.securitas.get_services(installation)
+        try:
+            services = await self.securitas.get_services(installation)
+        except SecuritasDirectError as err:
+            _LOGGER.error("Failed to fetch services for %s: %s", installation.number, err)
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self._user_schema(self.config),
+                errors={"base": "cannot_connect"},
+            )
         self.hass.data.setdefault(DOMAIN, {})
         self.hass.data[DOMAIN]["cached_services"] = {
             installation.number: services,

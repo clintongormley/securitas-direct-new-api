@@ -1,5 +1,13 @@
 {
     "config": {
+        "error": {
+            "invalid_auth": "Nome de utilizador ou palavra-passe inválidos",
+            "cannot_connect": "Não é possível ligar ao Securitas Direct",
+            "invalid_otp": "Código de verificação inválido",
+            "otp_expired": "O código de verificação expirou — um novo código será enviado",
+            "otp_send_failed": "Falha ao enviar o código de verificação — tente novamente",
+            "service_error": "Erro do serviço Securitas Direct: {error}"
+        },
         "abort": {
             "already_configured": "O serviço já está configurado"
         },
@@ -19,8 +27,11 @@
                 "title": "Iniciar sessão"
             },
             "phone_list": {
-                "description": "Selecione o telefone para receber o código 2FA",
-                "title": "Securitas Direct 2FA"
+                "description": "Para qual número de telefone devemos enviar o código por SMS?",
+                "title": "Securitas Direct 2FA",
+                "data": {
+                    "phones": "Número de telefone"
+                }
             },
             "otp_challenge": {
                 "description": "Introduza o código recebido no seu telefone",

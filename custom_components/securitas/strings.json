@@ -2,7 +2,11 @@
     "config": {
         "error": {
             "invalid_auth": "Invalid username or password",
-            "cannot_connect": "Unable to connect to Securitas Direct"
+            "cannot_connect": "Unable to connect to Securitas Direct",
+            "invalid_otp": "Invalid verification code",
+            "otp_expired": "Verification code expired — a new code will be sent",
+            "otp_send_failed": "Failed to send verification code — please try again",
+            "service_error": "Securitas Direct service error: {error}"
         },
         "abort": {
             "already_configured": "Service is already configured"
@@ -18,8 +22,11 @@
                 "title": "Login"
             },
             "phone_list": {
-                "description": "Please select the phone to send the 2FA code",
-                "title": "Securitas Direct 2FA"
+                "description": "Which phone number should we use to send you a code via SMS?",
+                "title": "Securitas Direct 2FA",
+                "data": {
+                    "phones": "Phone number"
+                }
             },
             "otp_challenge": {
                 "description": "Enter the code you received on your phone",
