@@ -40,7 +40,21 @@ class SecuritasHttpClient:
 
     Handles authentication tokens, HTTP request execution with retries,
     GraphQL response extraction, and generic polling.
+
+    Subclasses must implement: login(), refresh_token(), get_all_services().
     """
+
+    async def login(self) -> dict[str, Any] | None:
+        """Login to the API. Implemented by ApiManager."""
+        raise NotImplementedError
+
+    async def refresh_token(self) -> bool:
+        """Refresh the authentication token. Implemented by ApiManager."""
+        raise NotImplementedError
+
+    async def get_all_services(self, installation: Installation) -> Any:
+        """Get all services for an installation. Implemented by ApiManager."""
+        raise NotImplementedError
 
     def __init__(
         self,

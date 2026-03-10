@@ -5,15 +5,11 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 import logging
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from custom_components.securitas.log_filter import SensitiveDataFilter
+import secrets
+from typing import Any
 from uuid import uuid4
 
-from aiohttp import ClientSession
 import jwt
-import secrets
 
 from .dataTypes import (
     AirQuality,
@@ -106,31 +102,6 @@ def generate_device_id(_lang: str) -> str:
 
 class ApiManager(SecuritasHttpClient):
     """Securitas Direct API — business operations."""
-
-    def __init__(
-        self,
-        username: str,
-        password: str,
-        country: str,
-        http_client: ClientSession,
-        device_id: str,
-        uuid: str,
-        id_device_indigitall: str,
-        delay_check_operation: int = 2,
-        log_filter: SensitiveDataFilter | None = None,
-    ) -> None:
-        """Create the object."""
-        super().__init__(
-            username,
-            password,
-            country,
-            http_client,
-            device_id,
-            uuid,
-            id_device_indigitall,
-            delay_check_operation,
-            log_filter,
-        )
 
     async def logout(self):
         """Logout."""
