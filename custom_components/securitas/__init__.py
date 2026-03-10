@@ -1,17 +1,11 @@
 """Support for Securitas Direct alarms."""
 
 import asyncio
-import base64
 from collections import OrderedDict
-import functools
-import json
 import logging
 from pathlib import Path
-import time
-from typing import Any
 from uuid import uuid4
 
-from aiohttp import ClientSession
 import voluptuous as vol
 
 from homeassistant.components import frontend
@@ -25,74 +19,59 @@ from homeassistant.const import (
     CONF_SCAN_INTERVAL,
     CONF_UNIQUE_ID,
     CONF_USERNAME,
-    Platform,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .api_queue import ApiQueue
+from .const import (  # noqa: F401 — re-exported for backwards compatibility
+    API_CACHE_TTL,
+    CARD_BASE_URL,
+    CARD_URL,
+    CONF_ADVANCED,
+    CONF_CODE_ARM_REQUIRED,
+    CONF_COUNTRY,
+    CONF_DELAY_CHECK_OPERATION,
+    CONF_DEVICE_INDIGITALL,
+    CONF_ENTRY_ID,
+    CONF_HAS_PERI,
+    CONF_INSTALLATION,
+    CONF_INSTALLATION_KEY,
+    CONF_MAP_AWAY,
+    CONF_MAP_CUSTOM,
+    CONF_MAP_HOME,
+    CONF_MAP_NIGHT,
+    CONF_MAP_VACATION,
+    CONF_NOTIFY_GROUP,
+    COUNTRY_CODES,
+    DEFAULT_CODE,
+    DEFAULT_CODE_ARM_REQUIRED,
+    DEFAULT_COUNTRY,
+    DEFAULT_DELAY_CHECK_OPERATION,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    PLATFORMS,
+    SIGNAL_CAMERA_UPDATE,
+    SIGNAL_XSSTATUS_UPDATE,
+)
+from .hub import (  # noqa: F401 — re-exported for backwards compatibility
+    SecuritasDirectDevice,
+    SecuritasHub,
+    _notify_error,
+)
 from .log_filter import SensitiveDataFilter
 from .securitas_direct_new_api import (
     ApiDomains,
-    ApiManager,
-    CameraDevice,
-    OperationStatus,
     Installation,
     Login2FAError,
     LoginError,
-    OtpPhone,
-    SStatus,
     SecuritasDirectError,
-    Service,
     generate_device_id,
     generate_uuid,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "securitas"
-SIGNAL_XSSTATUS_UPDATE = f"{DOMAIN}_xsstatus_update"
-SIGNAL_CAMERA_UPDATE = f"{DOMAIN}_camera_update"
-CARD_BASE_URL = "/securitas_panel/securitas-alarm-card.js"
-_MANIFEST = json.loads((Path(__file__).parent / "manifest.json").read_text())
-CARD_URL = f"{CARD_BASE_URL}?v={_MANIFEST['version']}"
-
-CONF_ADVANCED = "advanced"
-CONF_COUNTRY = "country"
-CONF_CODE_ARM_REQUIRED = "code_arm_required"
-CONF_HAS_PERI = "has_peri"
-CONF_DEVICE_INDIGITALL = "idDeviceIndigitall"
-CONF_ENTRY_ID = "entry_id"
-CONF_INSTALLATION_KEY = "instalation"
-CONF_DELAY_CHECK_OPERATION = "delay_check_operation"
-CONF_MAP_HOME = "map_home"
-CONF_MAP_AWAY = "map_away"
-CONF_MAP_NIGHT = "map_night"
-CONF_MAP_CUSTOM = "map_custom"
-CONF_MAP_VACATION = "map_vacation"
-CONF_NOTIFY_GROUP = "notify_group"
-CONF_INSTALLATION = "installation"
-
-DEFAULT_SCAN_INTERVAL = 120
-DEFAULT_CODE_ARM_REQUIRED = False
-DEFAULT_DELAY_CHECK_OPERATION = 2
-DEFAULT_CODE = ""
-DEFAULT_COUNTRY = "ES"
-API_CACHE_TTL = 60  # seconds — sensor data changes hourly at most
-
-COUNTRY_CODES: list[str] = ["AR", "BR", "CL", "ES", "FR", "GB", "IE", "IT", "PT"]
-
-
-PLATFORMS = [
-    Platform.ALARM_CONTROL_PANEL,
-    Platform.BINARY_SENSOR,
-    Platform.BUTTON,
-    Platform.CAMERA,
-    Platform.SENSOR,
-    Platform.LOCK,
-]
 HUB = None
 
 
@@ -226,7 +205,7 @@ def _build_config_dict(entry: ConfigEntry) -> tuple[dict, bool]:
 
 async def _get_or_create_session(
     hass: HomeAssistant, config: dict, entry: ConfigEntry
-) -> "SecuritasHub":
+) -> SecuritasHub:
     """Get or create a shared SecuritasHub session with reference counting.
 
     Multiple config entries for the same username share a single
@@ -280,7 +259,7 @@ async def _get_or_create_session(
 
 def _get_or_create_api_queue(
     hass: HomeAssistant,
-    session: "SecuritasHub",
+    session: SecuritasHub,
     config: dict,
     entry: ConfigEntry,
 ) -> None:
@@ -315,9 +294,9 @@ def _get_or_create_api_queue(
 
 async def _fetch_and_cache_installations(
     hass: HomeAssistant,
-    hub: "SecuritasHub",
+    hub: SecuritasHub,
     entry: ConfigEntry,
-) -> list["SecuritasDirectDevice"]:
+) -> list[SecuritasDirectDevice]:
     """Fetch installations and services, populating caches.
 
     Uses cached data from the config flow when available, otherwise
@@ -441,7 +420,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _discover_cameras(
-    hub: "SecuritasHub",
+    hub: SecuritasHub,
     installation: Installation,
     entry_data: dict,
 ) -> None:
@@ -472,7 +451,7 @@ async def _discover_cameras(
 
 async def _discover_locks(
     hass: HomeAssistant,
-    hub: "SecuritasHub",
+    hub: SecuritasHub,
     installation: Installation,
     entry_data: dict,
 ) -> None:
@@ -639,569 +618,3 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
         hass.data.pop(DOMAIN, None)
 
     return unload_ok
-
-
-def _notify_error(
-    hass: HomeAssistant, notification_id, title: str, message: str
-) -> None:
-    """Notify user with persistent notification."""
-    hass.async_create_task(
-        hass.services.async_call(
-            domain="persistent_notification",
-            service="create",
-            service_data={
-                "title": title,
-                "message": message,
-                "notification_id": f"{DOMAIN}.{notification_id}",
-            },
-        )
-    )
-
-
-class SecuritasDirectDevice:
-    """Securitas direct device instance."""
-
-    def __init__(self, installation: Installation) -> None:
-        """Construct a device wrapper."""
-        self.installation = installation
-        self.name = installation.alias
-        self._available = True
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return True
-
-    @property
-    def device_id(self) -> str:
-        """Return device ID."""
-        return self.installation.number
-
-    @property
-    def address(self) -> str:
-        """Return the address of the instalation."""
-        return self.installation.address
-
-    @property
-    def city(self) -> str:
-        """Return the city of the instalation."""
-        return self.installation.city
-
-    @property
-    def postal_code(self) -> str:
-        """Return the postalCode of the instalation."""
-        return self.installation.postalCode
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return a device description for device registry."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, f"{self.installation.alias}")},
-            manufacturer="Securitas Direct",
-            model=self.installation.type,
-            hw_version=self.installation.panel,
-            name=self.name,
-        )
-
-
-class SecuritasHub:
-    """A Securitas hub wrapper class."""
-
-    def __init__(
-        self,
-        domain_config: dict,
-        config_entry: ConfigEntry | None,
-        http_client: ClientSession,
-        hass: HomeAssistant,
-    ) -> None:
-        """Initialize the Securitas hub."""
-        self.overview: OperationStatus | dict = {}
-        self.xsstatus: dict[str, SStatus] = {}
-        self.config = domain_config
-        self.config_entry: ConfigEntry | None = config_entry
-        self.sentinel_services: list[Service] = []
-        self.country: str = domain_config[CONF_COUNTRY].upper()
-        self.lang: str = ApiDomains().get_language(self.country)
-        self.hass: HomeAssistant = hass
-        self.services: dict[int, list[Service]] = {1: []}
-        self._services_cache: dict[str, list[Service]] = {}
-        self.log_filter: SensitiveDataFilter | None = hass.data.get(DOMAIN, {}).get(
-            "log_filter"
-        )
-        self.session: ApiManager = ApiManager(
-            domain_config[CONF_USERNAME],
-            domain_config[CONF_PASSWORD],
-            self.country,
-            http_client,
-            domain_config[CONF_DEVICE_ID],
-            domain_config[CONF_UNIQUE_ID],
-            domain_config[CONF_DEVICE_INDIGITALL],
-            domain_config[CONF_DELAY_CHECK_OPERATION],
-            log_filter=self.log_filter,
-        )
-        self.installations: list[Installation] = []
-        self._api_queue = ApiQueue(
-            interval=domain_config[CONF_DELAY_CHECK_OPERATION],
-        )
-        self._lock_modes: dict[
-            str, list
-        ] = {}  # installation.number -> SmartLockMode list
-        self._lock_modes_time: dict[str, float] = {}  # last fetch time per installation
-        self._api_cache: dict[str, Any] = {}  # generic cache: key -> result
-        self._api_cache_time: dict[str, float] = {}  # generic cache: key -> timestamp
-        self.camera_images: dict[str, bytes] = {}
-        self.camera_timestamps: dict[str, str] = {}
-        self._camera_devices_cache: dict[str, list[CameraDevice]] = {}
-
-    async def login(self):
-        """Login to Securitas."""
-        await self.session.login()
-
-    async def validate_device(self) -> tuple[str | None, list[OtpPhone] | None]:
-        """Validate the current device."""
-        return await self.session.validate_device(False, "", "")
-
-    async def send_sms_code(
-        self, auth_otp_hash: str, sms_code: str
-    ) -> tuple[str | None, list[OtpPhone] | None]:
-        """Send the SMS."""
-        return await self.session.validate_device(True, auth_otp_hash, sms_code)
-
-    async def refresh_token(self) -> bool:
-        """Refresh the token."""
-        return await self.session.refresh_token()
-
-    async def send_opt(self, challange: str, phone_index: int):
-        """Call for the SMS challange."""
-        return await self.session.send_otp(phone_index, challange)
-
-    async def get_services(
-        self, instalation: Installation, priority=None
-    ) -> list[Service]:
-        """Get the list of services from the installation (cached)."""
-        if priority is None:
-            priority = ApiQueue.BACKGROUND
-        key = instalation.number
-        if key in self._services_cache:
-            return self._services_cache[key]
-        services = await self._api_queue.submit(
-            self.session.get_all_services,
-            instalation,
-            priority=priority,
-        )
-        self._services_cache[key] = services
-        return services
-
-    async def get_camera_devices(
-        self, installation: Installation
-    ) -> list[CameraDevice]:
-        """Get camera devices for an installation (cached)."""
-        key = installation.number
-        if key in self._camera_devices_cache:
-            return self._camera_devices_cache[key]
-        devices = await self._api_queue.submit(
-            self.session.get_device_list,
-            installation,
-            priority=ApiQueue.BACKGROUND,
-        )
-        self._camera_devices_cache[key] = devices
-        return devices
-
-    async def capture_image(
-        self, installation: Installation, camera_device: CameraDevice
-    ) -> bytes | None:
-        """Request a new image capture and fetch the result."""
-        device = camera_device
-
-        # Get the baseline thumbnail idSignal so we can detect when it changes
-        baseline = await self._api_queue.submit(
-            self.session.get_thumbnail,
-            installation,
-            device.name,
-            device.zone_id,
-            priority=ApiQueue.FOREGROUND,
-        )
-        baseline_id = baseline.id_signal
-
-        reference_id = await self._api_queue.submit(
-            self.session.request_images,
-            installation,
-            device.code,
-            priority=ApiQueue.FOREGROUND,
-        )
-
-        # Poll for completion — continue while "processing" (image not yet ready)
-        max_attempts = self._max_poll_attempts(timeout_seconds=60)
-        try:
-            for attempt in range(1, max_attempts + 1):
-                raw = await self._api_queue.submit(
-                    self.session.check_request_images_status,
-                    installation,
-                    device.code,
-                    reference_id,
-                    attempt,
-                    priority=ApiQueue.FOREGROUND,
-                )
-                msg = raw.get("msg", "")
-                if "processing" not in msg and raw.get("res") != "WAIT":
-                    break
-            else:
-                raise TimeoutError("Image request poll timed out")
-        except (TimeoutError, SecuritasDirectError):
-            _LOGGER.warning(
-                "Image request polling timed out for %s, fetching thumbnail anyway",
-                device.name,
-            )
-
-        # Poll the thumbnail until idSignal changes (CDN propagation delay)
-        thumbnail = None
-        for attempt in range(max_attempts):
-            if attempt > 0:
-                await asyncio.sleep(max(5, self.session.delay_check_operation))
-            thumbnail = await self._api_queue.submit(
-                self.session.get_thumbnail,
-                installation,
-                device.name,
-                device.zone_id,
-                priority=ApiQueue.FOREGROUND,
-            )
-            if thumbnail.id_signal != baseline_id:
-                break
-        else:
-            _LOGGER.warning(
-                "Thumbnail idSignal did not change for %s after capture",
-                device.name,
-            )
-
-        image_bytes = self._validate_and_store_image(
-            thumbnail, installation, device, log_warnings=True
-        )
-
-        if image_bytes is not None:
-            async_dispatcher_send(
-                self.hass, SIGNAL_CAMERA_UPDATE, installation.number, device.zone_id
-            )
-        return image_bytes
-
-    async def fetch_latest_thumbnail(
-        self, installation: Installation, camera_device: CameraDevice
-    ) -> None:
-        """Fetch the current thumbnail from the API and store it."""
-        try:
-            thumbnail = await self._api_queue.submit(
-                self.session.get_thumbnail,
-                installation,
-                camera_device.name,
-                camera_device.zone_id,
-                priority=ApiQueue.BACKGROUND,
-            )
-        except Exception:  # pylint: disable=broad-exception-caught  # API call may raise anything
-            _LOGGER.debug(
-                "Could not fetch thumbnail for %s on startup",
-                camera_device.name,
-            )
-            return
-
-        image_bytes = self._validate_and_store_image(
-            thumbnail, installation, camera_device, log_warnings=False
-        )
-        if image_bytes is not None:
-            async_dispatcher_send(
-                self.hass,
-                SIGNAL_CAMERA_UPDATE,
-                installation.number,
-                camera_device.zone_id,
-            )
-
-    def _validate_and_store_image(
-        self,
-        thumbnail,
-        installation: Installation,
-        camera_device,
-        *,
-        log_warnings: bool = True,
-    ) -> bytes | None:
-        """Decode, validate JPEG, and cache a thumbnail image."""
-        if thumbnail is None or thumbnail.image is None:
-            return None
-        image_bytes = base64.b64decode(thumbnail.image)
-        if not image_bytes.startswith(b"\xff\xd8"):
-            if log_warnings:
-                _LOGGER.warning(
-                    "Thumbnail for %s is not JPEG data (got %d bytes starting with %r)",
-                    camera_device.name,
-                    len(image_bytes),
-                    image_bytes[:40],
-                )
-            return None
-        key = f"{installation.number}_{camera_device.zone_id}"
-        self.camera_images[key] = image_bytes
-        if thumbnail.timestamp:
-            self.camera_timestamps[key] = thumbnail.timestamp
-        return image_bytes
-
-    def get_camera_image(self, installation_number: str, zone_id: str) -> bytes | None:
-        """Return the last captured image for a camera."""
-        return self.camera_images.get(f"{installation_number}_{zone_id}")
-
-    def get_camera_timestamp(
-        self, installation_number: str, zone_id: str
-    ) -> str | None:
-        """Return the timestamp of the last captured image."""
-        return self.camera_timestamps.get(f"{installation_number}_{zone_id}")
-
-    def _max_poll_attempts(self, timeout_seconds: int = 30) -> int:
-        """Calculate max polling attempts for a given timeout."""
-        return max(
-            10, round(timeout_seconds / max(1, self.session.delay_check_operation))
-        )
-
-    def get_authentication_token(self) -> str | None:
-        """Get the authentication token."""
-        return self.session.authentication_token
-
-    def set_authentication_token(self, value: str):
-        """Set the authentication token."""
-        self.session.authentication_token = value
-
-    async def logout(self):
-        """Logout from Securitas."""
-        ret = await self.session.logout()
-        if not ret:
-            _LOGGER.error("Could not log out from Securitas: %s", ret)
-            return False
-        return True
-
-    async def get_lock_modes(self, installation: Installation) -> list:
-        """Get lock modes with caching, submitted via queue."""
-        from .securitas_direct_new_api import SmartLockMode
-
-        _CACHE_TTL = API_CACHE_TTL
-        now = time.monotonic()
-        cached_time = self._lock_modes_time.get(installation.number, 0)
-        if now - cached_time < _CACHE_TTL and installation.number in self._lock_modes:
-            return self._lock_modes[installation.number]
-
-        try:
-            modes: list[SmartLockMode] = await self._api_queue.submit(
-                self.session.get_lock_current_mode,
-                installation,
-                priority=ApiQueue.BACKGROUND,
-            )
-        except SecuritasDirectError as err:
-            _LOGGER.warning(
-                "Error fetching lock modes for %s: %s",
-                installation.number,
-                err.log_detail(),
-            )
-            modes = []
-
-        self._lock_modes[installation.number] = modes
-        self._lock_modes_time[installation.number] = time.monotonic()
-        return modes
-
-    async def _cached_api_call(self, cache_key: str, coro_fn, *args, priority=None):
-        """Execute an API call with caching, submitted via queue.
-
-        The cache is checked twice: once before queuing (fast path) and once
-        inside the queue-submitted wrapper (after serialization).  This
-        prevents duplicate API calls when multiple entities concurrently
-        request the same cached data — they all miss the cache, queue up,
-        but only the first actually calls the API; the rest see the freshly
-        populated cache.
-        """
-        if priority is None:
-            priority = ApiQueue.BACKGROUND
-        _CACHE_TTL = API_CACHE_TTL
-        now = time.monotonic()
-        if (
-            now - self._api_cache_time.get(cache_key, 0) < _CACHE_TTL
-            and cache_key in self._api_cache
-        ):
-            return self._api_cache[cache_key]
-
-        _sentinel = object()
-
-        async def _call_with_cache_recheck(*call_args):
-            # Re-check cache after queue serialization — another caller
-            # may have populated it while we were waiting.
-            now_inner = time.monotonic()
-            if (
-                now_inner - self._api_cache_time.get(cache_key, 0) < _CACHE_TTL
-                and cache_key in self._api_cache
-            ):
-                return _sentinel  # signal: used cache, no API call made
-            return await coro_fn(*call_args)
-
-        result = await self._api_queue.submit(
-            _call_with_cache_recheck, *args, priority=priority
-        )
-
-        if result is _sentinel:
-            return self._api_cache[cache_key]
-
-        if result is not None:
-            self._api_cache[cache_key] = result
-            self._api_cache_time[cache_key] = time.monotonic()
-        return result
-
-    async def get_sentinel(self, installation: Installation, service: Service) -> Any:
-        """Get sentinel data with rate-limit serialization and caching."""
-        cache_key = f"sentinel_{installation.number}_{service.id}"
-        return await self._cached_api_call(
-            cache_key,
-            self.session.get_sentinel_data,
-            installation,
-            service,
-        )
-
-    async def get_air_quality(self, installation: Installation, zone: str) -> Any:
-        """Get air quality data with rate-limit serialization and caching."""
-        cache_key = f"air_quality_{installation.number}_{zone}"
-        return await self._cached_api_call(
-            cache_key,
-            self.session.get_air_quality_data,
-            installation,
-            zone,
-        )
-
-    async def arm_alarm(
-        self, installation: Installation, command: str, **force_params: str
-    ) -> Any:
-        """Arm the alarm via queue-submitted API calls."""
-        reference_id = await self._api_queue.submit(
-            functools.partial(
-                self.session.submit_arm_request, installation, command, **force_params
-            ),
-            priority=ApiQueue.FOREGROUND,
-        )
-
-        max_attempts = self._max_poll_attempts(timeout_seconds=30)
-        for attempt in range(1, max_attempts + 1):
-            raw = await self._api_queue.submit(
-                self.session.check_arm_status,
-                installation,
-                reference_id,
-                command,
-                attempt,
-                priority=ApiQueue.FOREGROUND,
-            )
-            if raw.get("res") != "WAIT":
-                return await self.session.process_arm_result(raw, installation)
-
-        raise TimeoutError("Arm status poll timed out")
-
-    async def disarm_alarm(self, installation: Installation, command: str) -> Any:
-        """Disarm the alarm via queue-submitted API calls."""
-        reference_id = await self._api_queue.submit(
-            self.session.submit_disarm_request,
-            installation,
-            command,
-            priority=ApiQueue.FOREGROUND,
-        )
-
-        max_attempts = self._max_poll_attempts(timeout_seconds=30)
-        for attempt in range(1, max_attempts + 1):
-            raw = await self._api_queue.submit(
-                self.session.check_disarm_status,
-                installation,
-                reference_id,
-                command,
-                attempt,
-                priority=ApiQueue.FOREGROUND,
-            )
-            if raw.get("res") != "WAIT":
-                return self.session.process_disarm_result(raw)
-
-        raise TimeoutError("Disarm status poll timed out")
-
-    async def update_overview(self, installation: Installation) -> OperationStatus:
-        """Poll alarm status via check_general_status (single API call).
-
-        Periodic polling always uses xSStatus for efficiency.  The more
-        expensive CheckAlarm path (protom round-trip) is used only for
-        arm/disarm operations and the manual refresh button.
-        """
-        try:
-            status = await self._api_queue.submit(
-                self.session.check_general_status,
-                installation,
-                priority=ApiQueue.BACKGROUND,
-            )
-        except SecuritasDirectError as err:
-            _LOGGER.warning(
-                "Error checking general status for %s: %s",
-                installation.number,
-                err.log_detail(),
-            )
-            if getattr(err, "http_status", None) == 403:
-                raise
-            return OperationStatus()
-        self.xsstatus[installation.number] = status
-        async_dispatcher_send(self.hass, SIGNAL_XSSTATUS_UPDATE, installation.number)
-        return OperationStatus(
-            operation_status=status.status or "",
-            message="",
-            status=status.status or "",
-            installation_number=installation.number,
-            protomResponse=status.status or "",
-            protomResponseData=status.timestampUpdate or "",
-        )
-
-    async def change_lock_mode(
-        self, installation: Installation, lock_state: bool, device_id: str
-    ) -> Any:
-        """Change lock mode via queue-submitted API calls."""
-        reference_id = await self._api_queue.submit(
-            self.session.submit_change_lock_mode_request,
-            installation,
-            lock_state,
-            device_id,
-            priority=ApiQueue.FOREGROUND,
-        )
-
-        max_attempts = self._max_poll_attempts(timeout_seconds=30)
-        for attempt in range(1, max_attempts + 1):
-            raw = await self._api_queue.submit(
-                self.session.check_change_lock_mode,
-                installation,
-                reference_id,
-                attempt,
-                device_id,
-                priority=ApiQueue.FOREGROUND,
-            )
-            if raw.get("res") != "WAIT":
-                return self.session.process_lock_mode_result(raw)
-
-        raise TimeoutError("Lock mode change timed out")
-
-    async def get_danalock_config(
-        self, installation: Installation, device_id: str
-    ) -> Any:
-        """Fetch danalock config via queue-submitted API calls."""
-        return await self._api_queue.submit(
-            self.session.get_danalock_config,
-            installation,
-            device_id,
-            priority=ApiQueue.FOREGROUND,
-        )
-
-    @property
-    def api_queue(self) -> ApiQueue:
-        """Return the API queue."""
-        return self._api_queue
-
-    @api_queue.setter
-    def api_queue(self, value: ApiQueue) -> None:
-        """Set the API queue."""
-        self._api_queue = value
-
-    @property
-    def services_cache(self) -> dict[str, list[Service]]:
-        """Return the services cache."""
-        return self._services_cache
-
-    @property
-    def get_config_entry(self) -> ConfigEntry | None:
-        """Return the config entry."""
-        return self.config_entry
