@@ -168,9 +168,14 @@ class SecuritasHttpClient:
             }
             headers["security"] = json.dumps(authorization_value)
 
+        log_prefix = (
+            f"[{operation}:{installation.alias}]"
+            if installation is not None
+            else f"[{operation}]"
+        )
         _LOGGER.debug(
-            "[%s] Request vars: %s",
-            operation,
+            "%s Request vars: %s",
+            log_prefix,
             {
                 k: v
                 for k, v in content.get("variables", {}).items()
@@ -190,8 +195,8 @@ class SecuritasHttpClient:
             except ClientConnectorError as err:
                 os_err = err.os_error or err.strerror or "unknown"
                 _LOGGER.debug(
-                    "[%s] ClientConnectorError: %s (os_error=%r, type=%s)",
-                    operation,
+                    "%s ClientConnectorError: %s (os_error=%r, type=%s)",
+                    log_prefix,
                     err,
                     err.os_error,
                     type(err.os_error).__name__ if err.os_error else "None",
@@ -203,7 +208,7 @@ class SecuritasHttpClient:
                     content,
                 ) from err
 
-            _LOGGER.debug("[%s] Response: %s", operation, response_text)
+            _LOGGER.debug("%s Response: %s", log_prefix, response_text)
 
             if http_status == 403 and attempt == 0:
                 # Incapsula WAF blocks return HTML — retrying immediately
@@ -212,8 +217,8 @@ class SecuritasHttpClient:
                 # Retry-After header).
                 if "_Incapsula_Resource" in response_text:
                     _LOGGER.warning(
-                        "[%s] HTTP 403 WAF block (not retrying — WAF blocks require longer backoff)",
-                        operation,
+                        "%s HTTP 403 WAF block (not retrying — WAF blocks require longer backoff)",
+                        log_prefix,
                     )
                     raise SecuritasDirectError(
                         f"HTTP {http_status} from Securitas API ({operation})",
@@ -228,8 +233,8 @@ class SecuritasHttpClient:
                 except (ValueError, TypeError):
                     delay = 2
                 _LOGGER.warning(
-                    "[%s] HTTP 403, retrying in %ds",
-                    operation,
+                    "%s HTTP 403, retrying in %ds",
+                    log_prefix,
                     delay,
                 )
                 await asyncio.sleep(delay)
@@ -237,8 +242,8 @@ class SecuritasHttpClient:
 
             if http_status >= 400:
                 _LOGGER.debug(
-                    "[%s] HTTP %d error: %s",
-                    operation,
+                    "%s HTTP %d error: %s",
+                    log_prefix,
                     http_status,
                     response_text[:500],
                 )
