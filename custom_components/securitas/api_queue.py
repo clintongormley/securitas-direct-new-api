@@ -84,8 +84,7 @@ class ApiQueue:
                     if elapsed < interval:
                         delay = interval - elapsed
                         _LOGGER.debug(
-                            "ApiQueue(%s) throttling %.1fs (%s) for %s",
-                            id(self),
+                            "[queue] Throttling %.1fs (%s) for %s",
                             delay,
                             "fg" if priority == self.FOREGROUND else "bg",
                             getattr(coro_fn, "__name__", coro_fn),

@@ -559,13 +559,13 @@ async def _register_card_resource(hass: HomeAssistant) -> None:
                 return
     except Exception:  # pylint: disable=broad-exception-caught  # HA internals may raise anything
         _LOGGER.debug(
-            "Could not register as Lovelace resource, falling back to add_extra_js_url"
+            "[setup] Could not register as Lovelace resource, falling back to add_extra_js_url"
         )
     # Fallback: YAML mode or Lovelace not available
     try:
         frontend.add_extra_js_url(hass, CARD_URL)
     except (KeyError, Exception):  # pylint: disable=broad-exception-caught
-        _LOGGER.debug("Could not register card via add_extra_js_url")
+        _LOGGER.debug("[setup] Could not register card via add_extra_js_url")
 
 
 async def _unregister_card_resource(hass: HomeAssistant) -> None:
@@ -585,7 +585,7 @@ async def _unregister_card_resource(hass: HomeAssistant) -> None:
             if hasattr(resources, "async_delete_item"):
                 await resources.async_delete_item(resource_id)
     except Exception:  # pylint: disable=broad-exception-caught  # HA internals may raise anything
-        _LOGGER.debug("Could not remove Lovelace resource %s", resource_id)
+        _LOGGER.debug("[setup] Could not remove Lovelace resource %s", resource_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:

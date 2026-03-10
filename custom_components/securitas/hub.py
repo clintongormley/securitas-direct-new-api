@@ -302,7 +302,7 @@ class SecuritasHub:
             )
         except Exception:  # pylint: disable=broad-exception-caught  # API call may raise anything
             _LOGGER.debug(
-                "Could not fetch thumbnail for %s on startup",
+                "[hub] Could not fetch thumbnail for %s on startup",
                 camera_device.name,
             )
             return
