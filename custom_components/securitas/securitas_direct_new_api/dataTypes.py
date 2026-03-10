@@ -42,7 +42,6 @@ class OperationStatus:
     numinst: str = ""
 
 
-
 class ArmType(Enum):
     """Define an Securitas Direct Arm Type."""
 
