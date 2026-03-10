@@ -171,7 +171,11 @@ class SecuritasHttpClient:
         _LOGGER.debug(
             "[%s] Request vars: %s",
             operation,
-            content.get("variables", {}),
+            {
+                k: v
+                for k, v in content.get("variables", {}).items()
+                if k not in ("numinst", "panel")
+            },
         )
 
         # Retry once on HTTP 403 (Incapsula WAF rate limiting)
@@ -368,12 +372,6 @@ class SecuritasHttpClient:
     async def _check_capabilities_token(self, installation: Installation) -> None:
         """Check the capabilities token and get a new one if needed."""
 
-        _LOGGER.debug(
-            "[auth] Capabilities token expires %s (now %s)",
-            self.authentication_token_exp,
-            datetime.now(),
-        )
-
         if (installation.capabilities == "") or (
             datetime.now() + timedelta(minutes=1) > installation.capabilities_exp
         ):
@@ -382,12 +380,6 @@ class SecuritasHttpClient:
 
     async def _check_authentication_token(self) -> None:
         """Check expiration of the authentication token and get a new one if needed."""
-
-        _LOGGER.debug(
-            "[auth] Auth token expires %s (now %s)",
-            self.authentication_token_exp,
-            datetime.now(),
-        )
 
         if (self.authentication_token is None) or (
             datetime.now() + timedelta(minutes=1) > self.authentication_token_exp
