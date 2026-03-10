@@ -173,15 +173,11 @@ class SecuritasHttpClient:
             if installation is not None
             else f"[{operation}]"
         )
-        _LOGGER.debug(
-            "%s Request vars: %s",
-            log_prefix,
-            {
-                k: v
-                for k, v in content.get("variables", {}).items()
-                if k not in ("numinst", "panel")
-            },
-        )
+        log_vars = {
+            k: v
+            for k, v in content.get("variables", {}).items()
+            if k not in ("numinst", "panel")
+        }
 
         # Retry once on HTTP 403 (Incapsula WAF rate limiting)
         response_text = ""
@@ -208,7 +204,9 @@ class SecuritasHttpClient:
                     content,
                 ) from err
 
-            _LOGGER.debug("%s Response: %s", log_prefix, response_text)
+            _LOGGER.debug(
+                "%s vars=%s response=%s", log_prefix, log_vars, response_text
+            )
 
             if http_status == 403 and attempt == 0:
                 # Incapsula WAF blocks return HTML — retrying immediately
