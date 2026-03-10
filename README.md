@@ -23,6 +23,7 @@ A Home Assistant custom integration for [Securitas Direct](https://www.securitas
 
 **You will need to delete your existing installations and to re-add them after upgrading.**
 
+- **Entity IDs** have changed and sensors and locks are now listed as entities under the installation, rather than as top-level devices.
 - **"Check alarm panel" option removed** — The integration now always uses the lightweight server-side status check for periodic polling. The more expensive panel query is still used for arm/disarm operations and the manual refresh button. If you had automations or scripts referencing this option, they will need to be updated.
 - **"Use 2FA" checkbox removed** — 2FA is now handled automatically during setup. If your account requires 2FA, you will be prompted; if not, the step is skipped.
 - **Per-installation config entries** — The integration now creates one config entry per installation instead of one per account. If your account has multiple installations, you add each one separately via the setup wizard (which now includes an installation picker step). Accounts with multiple installations previously had all installations bundled into a single config entry — this is no longer supported.
