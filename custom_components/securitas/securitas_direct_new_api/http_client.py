@@ -183,10 +183,6 @@ class SecuritasHttpClient:
                 ) as response:
                     http_status: int = response.status
                     response_text: str = await response.text()
-                    try:
-                        response_headers: dict[str, str] = dict(response.headers)
-                    except Exception:
-                        response_headers = {}
             except ClientConnectorError as err:
                 os_err = err.os_error or err.strerror or "unknown"
                 _LOGGER.debug(
@@ -204,14 +200,6 @@ class SecuritasHttpClient:
                 ) from err
 
             _LOGGER.debug("[%s] Response: %s", operation, response_text)
-
-            if http_status >= 400 or "errors" in response_text:
-                _LOGGER.debug(
-                    "[%s] Response headers (HTTP %d): %s",
-                    operation,
-                    http_status,
-                    response_headers,
-                )
 
             if http_status == 403 and attempt == 0:
                 # Incapsula WAF blocks return HTML — retrying immediately
