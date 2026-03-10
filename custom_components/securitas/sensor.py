@@ -182,8 +182,8 @@ class AirQualityFetcher:
             return await self._client.get_air_quality(self._installation, zone)
         except SecuritasDirectError:
             _LOGGER.debug(
-                "Air quality data not available for installation %s",
-                self._installation.number,
+                "[%s] Air quality data not available",
+                self._installation.alias,
             )
             return None
 

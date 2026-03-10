@@ -219,8 +219,8 @@ class SecuritasAlarm(SecuritasEntity, alarm.AlarmControlPanelEntity):
             return
         if self._operation_in_progress:
             _LOGGER.debug(
-                "Skipping status poll for %s - arm/disarm operation in progress",
-                self.installation.number,
+                "[%s] Skipping status poll - arm/disarm operation in progress",
+                self.entity_id,
             )
             return
         self._clear_force_context()
@@ -234,8 +234,8 @@ class SecuritasAlarm(SecuritasEntity, alarm.AlarmControlPanelEntity):
         except SecuritasDirectError as err:
             if self._operation_epoch != epoch_before:
                 _LOGGER.debug(
-                    "Discarding stale poll error for %s - operation occurred during poll",
-                    self.installation.number,
+                    "[%s] Discarding stale poll error - operation occurred during poll",
+                    self.entity_id,
                 )
                 return
             _LOGGER.warning(
@@ -249,8 +249,8 @@ class SecuritasAlarm(SecuritasEntity, alarm.AlarmControlPanelEntity):
         else:
             if self._operation_epoch != epoch_before:
                 _LOGGER.debug(
-                    "Discarding stale poll result for %s - operation occurred during poll",
-                    self.installation.number,
+                    "[%s] Discarding stale poll result - operation occurred during poll",
+                    self.entity_id,
                 )
                 return
             self._set_waf_blocked(False)
@@ -268,10 +268,10 @@ class SecuritasAlarm(SecuritasEntity, alarm.AlarmControlPanelEntity):
 
             if not status.protomResponse:
                 _LOGGER.debug(
-                    "Received empty protomResponse for %s"
+                    "[%s] Received empty protomResponse"
                     " (operation_status: %s, message: %s, status: %s,"
                     " protomResponseData: %s), ignoring",
-                    self.installation.number,
+                    self.entity_id,
                     status.operation_status,
                     status.message,
                     status.status,

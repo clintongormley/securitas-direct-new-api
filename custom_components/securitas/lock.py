@@ -137,8 +137,8 @@ class SecuritasLock(SecuritasEntity, lock.LockEntity):
                     )
             except (SecuritasDirectError, KeyError, TypeError):
                 _LOGGER.debug(
-                    "Could not fetch Danalock config for %s device %s",
-                    self.installation.number,
+                    "[%s] Could not fetch Danalock config for device %s",
+                    self.entity_id,
                     self._device_id,
                 )
 
