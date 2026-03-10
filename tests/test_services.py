@@ -6,10 +6,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
-    ArmStatus,
     Attribute,
-    DisarmStatus,
     Installation,
+    OperationStatus,
     Sentinel,
     Service,
     SmartLockMode,
@@ -632,9 +631,9 @@ class TestCheckAlarmStatus:
     async def test_check_alarm_status_returns_status(
         self, authed_api, mock_execute, installation
     ):
-        """check_alarm_status returns CheckAlarmStatus dataclass."""
+        """check_alarm_status returns OperationStatus dataclass."""
         from custom_components.securitas.securitas_direct_new_api.dataTypes import (
-            CheckAlarmStatus,
+            OperationStatus,
         )
 
         # Return immediate (non-WAIT) response so no loop
@@ -653,7 +652,7 @@ class TestCheckAlarmStatus:
 
         result = await authed_api.check_alarm_status(installation, "ref-abc-123")
 
-        assert isinstance(result, CheckAlarmStatus)
+        assert isinstance(result, OperationStatus)
         assert result.operation_status == "OK"
         assert result.status == "ARM1"
         assert result.installation_number == "123456"
@@ -821,7 +820,7 @@ class TestResultProcessing:
             "error": None,
         }
         result = await authed_api.process_arm_result(raw, installation)
-        assert isinstance(result, ArmStatus)
+        assert isinstance(result, OperationStatus)
         assert result.protomResponse == "P"
         assert authed_api.protom_response == "P"
 
@@ -878,7 +877,7 @@ class TestResultProcessing:
             "error": None,
         }
         result = authed_api.process_disarm_result(raw)
-        assert isinstance(result, DisarmStatus)
+        assert isinstance(result, OperationStatus)
         assert result.protomResponse == "D"
         assert authed_api.protom_response == "D"
 

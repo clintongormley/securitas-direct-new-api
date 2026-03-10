@@ -16,13 +16,10 @@ from .const import (  # noqa: F401
     SecuritasState,
 )
 from .dataTypes import (  # noqa: F401
-    ArmStatus,
     Attribute,
     Attributes,
     CameraDevice,
-    CheckAlarmStatus,
     DanalockConfig,
-    DisarmStatus,
     Installation,
     OperationStatus,
     OtpPhone,

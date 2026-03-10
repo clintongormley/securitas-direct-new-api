@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from custom_components.securitas.button import SecuritasRefreshButton, async_setup_entry
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
-    CheckAlarmStatus,
+    OperationStatus,
 )
 from custom_components.securitas.securitas_direct_new_api.exceptions import (
     SecuritasDirectError,
@@ -85,7 +85,7 @@ class TestSecuritasRefreshButtonAsyncPress:
         """Success: calls check_alarm + check_alarm_status, sets protom_response."""
         button = make_button()
 
-        alarm_status = CheckAlarmStatus(
+        alarm_status = OperationStatus(
             operation_status="OK",
             message="All good",
             status="",
@@ -108,7 +108,7 @@ class TestSecuritasRefreshButtonAsyncPress:
         """Success: updates alarm entities via hass.services.async_call."""
         button = make_button()
 
-        alarm_status = CheckAlarmStatus(
+        alarm_status = OperationStatus(
             operation_status="OK",
             message="",
             status="",

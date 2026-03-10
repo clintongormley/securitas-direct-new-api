@@ -5,10 +5,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
-    ArmStatus,
-    CheckAlarmStatus,
-    DisarmStatus,
     Installation,
+    OperationStatus,
     SStatus,
 )
 from custom_components.securitas.securitas_direct_new_api.exceptions import (
@@ -112,7 +110,7 @@ class TestCheckAlarmStatus:
 
         result = await authed_api.check_alarm_status(installation, "ref-123")
 
-        assert isinstance(result, CheckAlarmStatus)
+        assert isinstance(result, OperationStatus)
         assert result.operation_status == "OK"
         assert result.status == "ARMED"
         assert result.installation_number == "123456"
@@ -198,7 +196,7 @@ class TestArmAlarm:
 
         result = await authed_api.arm_alarm(installation, "ARM1")
 
-        assert isinstance(result, ArmStatus)
+        assert isinstance(result, OperationStatus)
         assert result.operation_status == "OK"
         assert result.status == "ARMED_TOTAL"
         assert result.installation_number == "123456"
@@ -397,7 +395,7 @@ class TestArmAlarm:
         assert arm_variables["forceArmingRemoteId"] == "ref-original"
         assert arm_variables["suid"] == "123456VI4ucRGS5Q=="
 
-        # Check the ArmStatus poll also included forceArmingRemoteId
+        # Check the OperationStatus poll also included forceArmingRemoteId
         status_call = mock_execute.call_args_list[1]
         status_variables = status_call[0][0]["variables"]
         assert status_variables["forceArmingRemoteId"] == "ref-original"
@@ -537,7 +535,7 @@ class TestDisarmAlarm:
 
         result = await authed_api.disarm_alarm(installation, "DARM1")
 
-        assert isinstance(result, DisarmStatus)
+        assert isinstance(result, OperationStatus)
         assert result.operation_status == "OK"
         assert result.status == "DISARMED"
         assert result.numinst == "123456"

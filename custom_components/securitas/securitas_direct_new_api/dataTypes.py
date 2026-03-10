@@ -42,11 +42,6 @@ class OperationStatus:
     numinst: str = ""
 
 
-# Backward-compatible aliases (to be removed in Phase 2)
-ArmStatus = OperationStatus
-DisarmStatus = OperationStatus
-CheckAlarmStatus = OperationStatus
-
 
 class ArmType(Enum):
     """Define an Securitas Direct Arm Type."""

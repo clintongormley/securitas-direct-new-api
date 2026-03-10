@@ -13,10 +13,8 @@ from homeassistant.components.alarm_control_panel.const import (
 from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
-    ArmStatus,
-    CheckAlarmStatus,
-    DisarmStatus,
     Installation,
+    OperationStatus,
 )
 from custom_components.securitas.securitas_direct_new_api.const import (
     PERI_DEFAULTS,
@@ -87,7 +85,7 @@ def make_alarm(
     hass.services = MagicMock()
 
     if initial_status is None:
-        initial_status = CheckAlarmStatus(
+        initial_status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -129,7 +127,7 @@ class TestUpdateStatusAlarm:
     def test_disarmed(self):
         """protomResponse 'D' sets state to DISARMED."""
         alarm = make_alarm()
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -143,7 +141,7 @@ class TestUpdateStatusAlarm:
     def test_total_maps_to_armed_away(self):
         """protomResponse 'T' (total) maps to ARMED_AWAY with STD defaults."""
         alarm = make_alarm()
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -157,7 +155,7 @@ class TestUpdateStatusAlarm:
     def test_partial_day_maps_to_armed_home(self):
         """protomResponse 'P' (partial_day) maps to ARMED_HOME with STD defaults."""
         alarm = make_alarm()
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -171,7 +169,7 @@ class TestUpdateStatusAlarm:
     def test_partial_night_maps_to_armed_night(self):
         """protomResponse 'Q' (partial_night) maps to ARMED_NIGHT with STD defaults."""
         alarm = make_alarm()
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -186,7 +184,7 @@ class TestUpdateStatusAlarm:
         """Unknown protomResponse code sets ARMED_CUSTOM_BYPASS."""
         alarm = make_alarm()
 
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -202,7 +200,7 @@ class TestUpdateStatusAlarm:
         alarm = make_alarm()
         assert alarm._state == AlarmControlPanelState.DISARMED
 
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -223,7 +221,7 @@ class TestUpdateStatusAlarm:
     def test_status_message_stored_in_extra_attributes(self):
         """Status message and protomResponseData are stored in extra_state_attributes."""
         alarm = make_alarm()
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="Panel ok",
             status="",
@@ -247,7 +245,7 @@ class TestUpdateStatusAlarmPeri:
     def test_total_peri_maps_to_armed_away(self):
         """protomResponse 'A' (total_peri) maps to ARMED_AWAY with PERI defaults."""
         alarm = make_alarm(has_peri=True)
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -261,7 +259,7 @@ class TestUpdateStatusAlarmPeri:
     def test_peri_only_maps_to_armed_custom_bypass(self):
         """protomResponse 'E' (peri_only) maps to ARMED_CUSTOM_BYPASS with PERI defaults."""
         alarm = make_alarm(has_peri=True)
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -281,7 +279,7 @@ class TestUpdateStatusAlarmPeri:
         Users can explicitly map it to a button via the options flow.
         """
         alarm = make_alarm(has_peri=True)
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -298,7 +296,7 @@ class TestUpdateStatusAlarmPeri:
         With PERI defaults, map_night = partial_night (proto 'Q').
         """
         alarm = make_alarm(has_peri=True)
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -426,7 +424,7 @@ class TestAsyncAlarmDisarm:
         alarm._last_proto_code = "T"  # resolver needs armed proto to issue disarm
 
         alarm.client.disarm_alarm = AsyncMock(
-            return_value=DisarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -479,7 +477,7 @@ class TestAsyncAlarmDisarm:
         alarm._last_proto_code = "A"  # total_peri = peri armed
 
         alarm.client.disarm_alarm = AsyncMock(
-            return_value=DisarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -506,7 +504,7 @@ class TestAsyncAlarmDisarm:
         alarm._last_proto_code = "T"  # total = no peri currently
 
         alarm.client.disarm_alarm = AsyncMock(
-            return_value=DisarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -536,7 +534,7 @@ class TestSetArmState:
         alarm._state = AlarmControlPanelState.DISARMED
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -561,10 +559,10 @@ class TestSetArmState:
         alarm._last_proto_code = "P"  # partial_day = currently armed home
 
         alarm.client.disarm_alarm = AsyncMock(
-            return_value=DisarmStatus(protomResponse="D", operation_status="OK")
+            return_value=OperationStatus(protomResponse="D", operation_status="OK")
         )
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -604,7 +602,7 @@ class TestSetArmState:
             side_effect=SecuritasDirectError("connection lost")
         )
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -798,7 +796,7 @@ class TestForceState:
         observed_states = []
 
         original_disarm = AsyncMock(
-            return_value=DisarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -829,7 +827,7 @@ class TestForceState:
         observed_states = []
 
         original_arm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -859,7 +857,7 @@ class TestForceState:
         observed_flags = []
 
         original_disarm = AsyncMock(
-            return_value=DisarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -890,7 +888,7 @@ class TestForceState:
         observed_flags = []
 
         original_arm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -986,7 +984,7 @@ class TestForceState:
         alarm._attr_extra_state_attributes["waf_blocked"] = True
 
         alarm.client.disarm_alarm = AsyncMock(
-            return_value=DisarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1007,7 +1005,7 @@ class TestForceState:
         alarm._attr_extra_state_attributes["waf_blocked"] = True
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1080,7 +1078,7 @@ class TestAsyncUpdateStatus:
     async def test_success_calls_update_overview_and_writes_state(self):
         """Success: calls update_overview, update_status_alarm, writes HA state."""
         alarm = make_alarm()
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="Armed total",
             status="",
@@ -1099,7 +1097,7 @@ class TestAsyncUpdateStatus:
     async def test_success_with_now_parameter(self):
         """async_update_status accepts an optional now parameter (used by timer)."""
         alarm = make_alarm()
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -1145,7 +1143,7 @@ class TestAsyncUpdateStatus:
         """Successful status check clears waf_blocked and dismisses notification."""
         alarm = make_alarm()
         alarm._attr_extra_state_attributes["waf_blocked"] = True
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -1174,7 +1172,7 @@ class TestAsyncUpdateStatus:
     async def test_polls_when_operation_not_in_progress(self):
         """Status poll proceeds normally when _operation_in_progress is False."""
         alarm = make_alarm()
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -1291,7 +1289,7 @@ class TestArmMethods:
         alarm._state = AlarmControlPanelState.DISARMED
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1315,7 +1313,7 @@ class TestArmMethods:
         alarm._state = AlarmControlPanelState.DISARMED
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1338,7 +1336,7 @@ class TestArmMethods:
         alarm._state = AlarmControlPanelState.DISARMED
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1373,7 +1371,7 @@ class TestArmMethods:
         alarm._state = AlarmControlPanelState.DISARMED
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1400,7 +1398,7 @@ class TestArmMethods:
         observed_states = []
 
         original_arm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1476,7 +1474,7 @@ class TestForceArmContext:
         alarm._attr_extra_state_attributes["arm_exceptions"] = ["Door"]
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1511,7 +1509,7 @@ class TestForceArmContext:
         alarm._attr_extra_state_attributes["arm_exceptions"] = ["Door"]
 
         alarm.client.update_overview = AsyncMock(
-            return_value=CheckAlarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1541,7 +1539,7 @@ class TestForceArmContext:
         alarm._attr_extra_state_attributes["arm_exceptions"] = ["Door"]
 
         alarm.client.update_overview = AsyncMock(
-            return_value=CheckAlarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1564,7 +1562,7 @@ class TestForceArmContext:
         alarm._force_context = None
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1637,7 +1635,7 @@ class TestForceArmContext:
         alarm._attr_extra_state_attributes["arm_exceptions"] = ["Window"]
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1820,7 +1818,7 @@ class TestCompoundArmCommands:
             if command == "ARMNIGHT1PERI1":
                 raise SecuritasDirectError("does not exist", http_status=400)
             proto = "Q" if command == "ARMNIGHT1" else "C"
-            return ArmStatus(
+            return OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1844,7 +1842,7 @@ class TestCompoundArmCommands:
         alarm._state = AlarmControlPanelState.DISARMED
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1873,7 +1871,7 @@ class TestCompoundArmCommands:
         async def track_arm(installation, command, **kwargs):
             calls.append((command, kwargs))
             proto = "Q" if command == "ARMNIGHT1" else "C"
-            return ArmStatus(
+            return OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1905,7 +1903,7 @@ class TestCompoundArmCommands:
 
         async def track_arm(installation, command, **kwargs):
             calls.append((command, kwargs))
-            return ArmStatus(
+            return OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -1944,7 +1942,7 @@ class TestCompoundArmCommands:
             nonlocal call_count
             call_count += 1
             if command == "ARMNIGHT1":
-                return ArmStatus(
+                return OperationStatus(
                     operation_status="OK",
                     message="",
                     status="",
@@ -1990,7 +1988,7 @@ class TestCompoundArmCommands:
         alarm._state = AlarmControlPanelState.DISARMED
 
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -2041,7 +2039,7 @@ class TestCompoundArmCommands:
                     http_status=400,
                 )
             proto = "Q" if command == "ARMNIGHT1" else "C"
-            return ArmStatus(
+            return OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -2074,7 +2072,7 @@ class TestCompoundArmCommands:
             if command in ("ARMINTEXT1", "ARM1PERI1"):
                 raise SecuritasDirectError("does not exist", http_status=400)
             proto = "T" if command == "ARM1" else "A"
-            return ArmStatus(
+            return OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -2112,7 +2110,7 @@ class TestCompoundArmCommands:
             if command == "ARMDAY1PERI1":
                 raise SecuritasDirectError("does not exist", http_status=400)
             proto = "P" if command == "ARMDAY1" else "B"
-            return ArmStatus(
+            return OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -2146,7 +2144,7 @@ class TestDynamicDisarm:
         alarm._state = AlarmControlPanelState.ARMED_NIGHT
 
         alarm.client.disarm_alarm = AsyncMock(
-            return_value=DisarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -2175,7 +2173,7 @@ class TestDynamicDisarm:
             calls.append(command)
             if command == "DARM1DARMPERI":
                 raise SecuritasDirectError("404 not found", http_status=400)
-            return DisarmStatus(
+            return OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -2202,7 +2200,7 @@ class TestDynamicDisarm:
         alarm._state = AlarmControlPanelState.ARMED_NIGHT
 
         alarm.client.disarm_alarm = AsyncMock(
-            return_value=DisarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -2239,7 +2237,7 @@ class TestDynamicDisarm:
         alarm._resolver.mark_unsupported("DARMPERI")
 
         alarm.client.disarm_alarm = AsyncMock(
-            return_value=DisarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -2334,11 +2332,11 @@ class TestDynamicDisarm:
             disarm_calls.append(command)
             if command == "DARM1DARMPERI":
                 raise SecuritasDirectError("404 not found", http_status=400)
-            return DisarmStatus(protomResponse="D", operation_status="OK")
+            return OperationStatus(protomResponse="D", operation_status="OK")
 
         alarm.client.disarm_alarm = track_disarm
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
@@ -2372,7 +2370,7 @@ class TestExecuteTransition:
         alarm = make_alarm(has_peri=False)
         alarm._last_proto_code = "T"
         alarm.client.disarm_alarm = AsyncMock(
-            return_value=DisarmStatus(protomResponse="D", operation_status="OK")
+            return_value=OperationStatus(protomResponse="D", operation_status="OK")
         )
         await alarm._execute_transition(AlarmState(InteriorMode.OFF, PerimeterMode.OFF))
         alarm.client.disarm_alarm.assert_called_once_with(alarm.installation, "DARM1")
@@ -2384,7 +2382,7 @@ class TestExecuteTransition:
         alarm.client.disarm_alarm = AsyncMock(
             side_effect=[
                 SecuritasDirectError("unsupported", http_status=400),
-                DisarmStatus(protomResponse="D", operation_status="OK"),
+                OperationStatus(protomResponse="D", operation_status="OK"),
             ]
         )
         await alarm._execute_transition(AlarmState(InteriorMode.OFF, PerimeterMode.OFF))
@@ -2399,7 +2397,7 @@ class TestExecuteTransition:
         alarm.client.disarm_alarm = AsyncMock(
             side_effect=[
                 SecuritasDirectError("unsupported", http_status=400),
-                DisarmStatus(protomResponse="D", operation_status="OK"),
+                OperationStatus(protomResponse="D", operation_status="OK"),
             ]
         )
         await alarm._execute_transition(AlarmState(InteriorMode.OFF, PerimeterMode.OFF))
@@ -2472,10 +2470,10 @@ class TestExecuteTransition:
         alarm = make_alarm(has_peri=False)
         alarm._last_proto_code = "P"
         alarm.client.disarm_alarm = AsyncMock(
-            return_value=DisarmStatus(protomResponse="D", operation_status="OK")
+            return_value=OperationStatus(protomResponse="D", operation_status="OK")
         )
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(protomResponse="Q", operation_status="OK")
+            return_value=OperationStatus(protomResponse="Q", operation_status="OK")
         )
         await alarm._execute_transition(
             AlarmState(InteriorMode.NIGHT, PerimeterMode.OFF)
@@ -2491,8 +2489,8 @@ class TestExecuteTransition:
         alarm._resolver.mark_unsupported("ARM1PERI1")
         alarm.client.arm_alarm = AsyncMock(
             side_effect=[
-                ArmStatus(protomResponse="T", operation_status="OK"),
-                ArmStatus(protomResponse="A", operation_status="OK"),
+                OperationStatus(protomResponse="T", operation_status="OK"),
+                OperationStatus(protomResponse="A", operation_status="OK"),
             ]
         )
         await alarm._execute_transition(
@@ -2516,8 +2514,8 @@ class TestExecuteTransition:
         # Second call: PERI1 (from "T") → result is "A" (target reached)
         alarm.client.arm_alarm = AsyncMock(
             side_effect=[
-                ArmStatus(protomResponse="T", operation_status="OK"),
-                ArmStatus(protomResponse="A", operation_status="OK"),
+                OperationStatus(protomResponse="T", operation_status="OK"),
+                OperationStatus(protomResponse="A", operation_status="OK"),
             ]
         )
         result = await alarm._execute_transition(
@@ -2537,7 +2535,7 @@ class TestExecuteTransition:
         alarm._last_proto_code = "D"
         # Both attempts return wrong state — should not loop forever
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(protomResponse="T", operation_status="OK")
+            return_value=OperationStatus(protomResponse="T", operation_status="OK")
         )
         result = await alarm._execute_transition(
             AlarmState(InteriorMode.TOTAL, PerimeterMode.ON)
@@ -2552,7 +2550,7 @@ class TestExecuteTransition:
         alarm = make_alarm(has_peri=False)
         alarm._last_proto_code = "D"
         alarm.client.arm_alarm = AsyncMock(
-            return_value=ArmStatus(protomResponse="T", operation_status="OK")
+            return_value=OperationStatus(protomResponse="T", operation_status="OK")
         )
         result = await alarm._execute_transition(
             AlarmState(InteriorMode.TOTAL, PerimeterMode.OFF)
@@ -2572,7 +2570,7 @@ class TestLastProtoCode:
     def test_proto_code_stored(self):
         """update_status_alarm stores the proto code."""
         alarm = make_alarm()
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -2587,7 +2585,7 @@ class TestLastProtoCode:
         """'D' (disarmed) is also stored."""
         alarm = make_alarm()
         alarm._last_proto_code = "A"
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -2602,7 +2600,7 @@ class TestLastProtoCode:
         """Empty protomResponse does not update _last_proto_code."""
         alarm = make_alarm()
         alarm._last_proto_code = "T"
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -2622,7 +2620,7 @@ class TestLastProtoCode:
         """
         alarm = make_alarm()
         alarm._last_proto_code = "A"
-        status = CheckAlarmStatus(
+        status = OperationStatus(
             operation_status="OK",
             message="",
             status="ARMED_TOTAL",
@@ -2911,7 +2909,7 @@ class TestForceArmWorkflow:
             "suid-force-123",
             [{"status": "0", "deviceType": "MG", "alias": "Kitchen Door"}],
         )
-        success_result = ArmStatus(
+        success_result = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -3034,7 +3032,7 @@ class TestForceArmWorkflow:
             "suid-refresh-123",
             [{"status": "0", "deviceType": "MG", "alias": "Kitchen Door"}],
         )
-        success_result = ArmStatus(
+        success_result = OperationStatus(
             operation_status="OK",
             message="",
             status="",
@@ -3053,7 +3051,7 @@ class TestForceArmWorkflow:
 
         # Step 2: status refresh returns disarmed (HA auto-refreshes after service calls)
         alarm.client.update_overview = AsyncMock(
-            return_value=CheckAlarmStatus(
+            return_value=OperationStatus(
                 operation_status="OK",
                 message="",
                 status="",
