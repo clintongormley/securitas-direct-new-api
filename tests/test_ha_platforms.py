@@ -795,7 +795,7 @@ class TestHassNoneGuards:
         lock.async_schedule_update_ha_state = MagicMock()
         lock.hass = None
 
-        lock._SecuritasLock__force_state("1")
+        lock._force_state("1")
 
         assert lock._state == "1"
         lock.async_schedule_update_ha_state.assert_not_called()

@@ -42,6 +42,8 @@ class SecuritasEntity(Entity):
         self._installation = installation
         self._client = client
         self._attr_device_info = securitas_device_info(installation)
+        self._state: str | None = None
+        self._last_state: str | None = None
 
     @property
     def installation(self) -> Installation:
@@ -52,6 +54,13 @@ class SecuritasEntity(Entity):
     def client(self) -> SecuritasHub:
         """Return the client hub."""
         return self._client
+
+    def _force_state(self, state) -> None:
+        """Force entity state and schedule HA update."""
+        self._last_state = self._state
+        self._state = state
+        if self.hass is not None:
+            self.async_schedule_update_ha_state()
 
     def _notify_error(self, title: str, message: str) -> None:
         """Send persistent notification with auto-generated ID."""

@@ -555,7 +555,7 @@ class TestSetArmState:
         """When previously armed (mode change), resolver disarms first then arms."""
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.ARMED_HOME
-        alarm._last_status = AlarmControlPanelState.ARMED_HOME
+        alarm._last_state = AlarmControlPanelState.ARMED_HOME
         alarm._last_proto_code = "P"  # partial_day = currently armed home
 
         alarm.client.disarm_alarm = AsyncMock(
@@ -582,7 +582,7 @@ class TestSetArmState:
         """Error from arm_alarm causes early return, state unchanged from arm_alarm perspective."""
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.DISARMED
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
 
         alarm.client.arm_alarm = AsyncMock(side_effect=SecuritasDirectError("timeout"))
 
@@ -596,7 +596,7 @@ class TestSetArmState:
         """Error from disarm_alarm during re-arm logs warning and continues to arm."""
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.ARMED_HOME
-        alarm._last_status = AlarmControlPanelState.ARMED_HOME
+        alarm._last_state = AlarmControlPanelState.ARMED_HOME
 
         alarm.client.disarm_alarm = AsyncMock(
             side_effect=SecuritasDirectError("connection lost")
@@ -960,7 +960,7 @@ class TestForceState:
         """403 on arm sets waf_blocked, shows rate-limited but NOT generic error."""
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.DISARMED
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
         alarm._notify_error = MagicMock()
 
         alarm.client.arm_alarm = AsyncMock(
@@ -1441,7 +1441,7 @@ class TestForceArmContext:
         """ArmingExceptionError during arm stores force context and reverts state."""
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.ARMING
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
 
         exc = self._make_arming_exception()
         alarm.client.arm_alarm = AsyncMock(side_effect=exc)
@@ -1581,7 +1581,7 @@ class TestForceArmContext:
         """ArmingExceptionError triggers persistent notification."""
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.ARMING
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
 
         exc = self._make_arming_exception()
         alarm.client.arm_alarm = AsyncMock(side_effect=exc)
@@ -1596,7 +1596,7 @@ class TestForceArmContext:
         alarm = make_alarm()
         alarm.client.config["notify_group"] = "mobile_app_phone"
         alarm._state = AlarmControlPanelState.ARMING
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
 
         exc = self._make_arming_exception()
         alarm.client.arm_alarm = AsyncMock(side_effect=exc)
@@ -1610,7 +1610,7 @@ class TestForceArmContext:
         """Without notify_group configured, only persistent notification fires."""
         alarm = make_alarm()
         alarm._state = AlarmControlPanelState.ARMING
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
 
         exc = self._make_arming_exception()
         alarm.client.arm_alarm = AsyncMock(side_effect=exc)
@@ -1932,7 +1932,7 @@ class TestCompoundArmCommands:
         """If step 1 of a multi-step command succeeds but step 2 fails, state reflects partial arming."""
         alarm = make_alarm(config=_night_peri_config())
         alarm._state = AlarmControlPanelState.ARMING
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
         alarm._resolver.mark_unsupported("ARMNIGHT1PERI1")
         alarm._notify_error = MagicMock()
 
@@ -1967,7 +1967,7 @@ class TestCompoundArmCommands:
         """When compound and multi-step alternatives all fail, error is reported."""
         alarm = make_alarm(config=_night_peri_config())
         alarm._state = AlarmControlPanelState.ARMING
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
         alarm._notify_error = MagicMock()
 
         alarm.client.arm_alarm = AsyncMock(
@@ -2007,7 +2007,7 @@ class TestCompoundArmCommands:
         """409 (server busy) should re-raise, not try alternatives."""
         alarm = make_alarm(config=_night_peri_config())
         alarm._state = AlarmControlPanelState.ARMING
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
         alarm._notify_error = MagicMock()
 
         alarm.client.arm_alarm = AsyncMock(
@@ -2256,7 +2256,7 @@ class TestDynamicDisarm:
         alarm = make_alarm(has_peri=True)
         alarm._last_proto_code = "B"  # partial_day_peri
         alarm._state = AlarmControlPanelState.ARMED_HOME
-        alarm._last_status = AlarmControlPanelState.ARMED_HOME
+        alarm._last_state = AlarmControlPanelState.ARMED_HOME
         alarm._notify_error = MagicMock()
 
         alarm.client.disarm_alarm = AsyncMock(
@@ -2274,7 +2274,7 @@ class TestDynamicDisarm:
         alarm = make_alarm(has_peri=True)
         alarm._last_proto_code = "A"  # total_peri = peri armed
         alarm._state = AlarmControlPanelState.ARMED_AWAY
-        alarm._last_status = AlarmControlPanelState.ARMED_AWAY
+        alarm._last_state = AlarmControlPanelState.ARMED_AWAY
         alarm._notify_error = MagicMock()
 
         alarm.client.disarm_alarm = AsyncMock(
@@ -2299,7 +2299,7 @@ class TestDynamicDisarm:
         """Error notification should show just the message, not the full error tuple."""
         alarm = make_alarm(has_peri=False)
         alarm._state = AlarmControlPanelState.ARMED_AWAY
-        alarm._last_status = AlarmControlPanelState.ARMED_AWAY
+        alarm._last_state = AlarmControlPanelState.ARMED_AWAY
         alarm._last_proto_code = "T"  # resolver needs armed proto
         alarm._notify_error = MagicMock()
 
@@ -2324,7 +2324,7 @@ class TestDynamicDisarm:
         alarm = make_alarm(has_peri=True)
         alarm._last_proto_code = "B"  # partial_day_peri = AlarmState(DAY, ON)
         alarm._state = AlarmControlPanelState.ARMED_HOME
-        alarm._last_status = AlarmControlPanelState.ARMED_HOME
+        alarm._last_state = AlarmControlPanelState.ARMED_HOME
 
         disarm_calls = []
 
@@ -2902,7 +2902,7 @@ class TestForceArmWorkflow:
         alarm = make_alarm()
         alarm.client.config["notify_group"] = "mobile_app_phone"
         alarm._state = AlarmControlPanelState.DISARMED
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
 
         exc = ArmingExceptionError(
             "ref-force-123",
@@ -2979,7 +2979,7 @@ class TestForceArmWorkflow:
         alarm = make_alarm()
         alarm.client.config["notify_group"] = "mobile_app_phone"
         alarm._state = AlarmControlPanelState.DISARMED
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
 
         exc = ArmingExceptionError(
             "ref-cancel-123",
@@ -3025,7 +3025,7 @@ class TestForceArmWorkflow:
         alarm = make_alarm()
         alarm.client.config["notify_group"] = "mobile_app_phone"
         alarm._state = AlarmControlPanelState.DISARMED
-        alarm._last_status = AlarmControlPanelState.DISARMED
+        alarm._last_state = AlarmControlPanelState.DISARMED
 
         exc = ArmingExceptionError(
             "ref-refresh-123",
@@ -3103,7 +3103,7 @@ class TestHassNoneGuardsAlarm:
         alarm.async_schedule_update_ha_state = MagicMock()
         alarm.hass = None
 
-        alarm._SecuritasAlarm__force_state(AlarmControlPanelState.ARMING)
+        alarm._force_state(AlarmControlPanelState.ARMING)
 
         assert alarm._state == AlarmControlPanelState.ARMING
         alarm.async_schedule_update_ha_state.assert_not_called()

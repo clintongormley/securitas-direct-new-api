@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DOMAIN, SecuritasDirectDevice, SecuritasHub
-from .entity import securitas_device_info
+from .entity import SecuritasEntity
 from .securitas_direct_new_api import (
     Installation,
     SecuritasDirectError,
@@ -34,7 +34,7 @@ async def async_setup_entry(
     entry_data["button_add_entities"] = async_add_entities
 
 
-class SecuritasRefreshButton(ButtonEntity):
+class SecuritasRefreshButton(SecuritasEntity, ButtonEntity):
     """Representation of a Securitas refresh button."""
 
     def __init__(
@@ -44,12 +44,10 @@ class SecuritasRefreshButton(ButtonEntity):
         hass: HomeAssistant,
     ) -> None:
         """Initialize the refresh button."""
+        super().__init__(installation, client)
         self._attr_name = f"Refresh {installation.alias}"
         self._attr_unique_id = f"refresh_button_{installation.number}"
-        self.installation = installation
-        self.client = client
         self.hass = hass
-        self._attr_device_info = securitas_device_info(installation)
 
     def _get_alarm_entity(self):
         """Return the alarm entity for this installation, if available."""
@@ -123,7 +121,7 @@ class SecuritasRefreshButton(ButtonEntity):
                     alarm_entity.async_write_ha_state()
 
 
-class SecuritasCaptureButton(ButtonEntity):
+class SecuritasCaptureButton(SecuritasEntity, ButtonEntity):
     """Button to capture a new image from a Securitas camera."""
 
     _attr_icon = "mdi:camera"
@@ -135,12 +133,10 @@ class SecuritasCaptureButton(ButtonEntity):
         camera_device: CameraDevice,
     ) -> None:
         """Initialize the capture button."""
-        self._client = client
-        self._installation = installation
+        super().__init__(installation, client)
         self._camera_device = camera_device
         self._attr_unique_id = f"{installation.number}_capture_{camera_device.zone_id}"
         self._attr_name = f"{installation.alias} Capture {camera_device.name}"
-        self._attr_device_info = securitas_device_info(installation)
 
     async def async_press(self) -> None:
         """Request a new image capture."""

@@ -18,7 +18,7 @@ from . import (
     DOMAIN,
     SecuritasHub,
 )
-from .entity import securitas_device_info
+from .entity import SecuritasEntity
 from .securitas_direct_new_api import (
     DanalockConfig,
     Installation,
@@ -56,7 +56,7 @@ async def async_setup_entry(
     entry_data["lock_add_entities"] = async_add_entities
 
 
-class SecuritasLock(lock.LockEntity):
+class SecuritasLock(SecuritasEntity, lock.LockEntity):
     """Representation of a Securitas Direct smart lock."""
 
     def __init__(
@@ -68,6 +68,7 @@ class SecuritasLock(lock.LockEntity):
         initial_status: str = LOCK_STATUS_LOCKED,
         danalock_config: DanalockConfig | None = None,
     ) -> None:
+        super().__init__(installation, client)
         self._state = (
             initial_status
             if initial_status != LOCK_STATUS_UNKNOWN
@@ -88,8 +89,6 @@ class SecuritasLock(lock.LockEntity):
         self.entity_id = f"securitas_direct.{installation.number}_lock_{device_id}"
         self._time: datetime.datetime = datetime.datetime.now()
         self._message: str = ""
-        self.installation: Installation = installation
-        self.client: SecuritasHub = client
         self.hass: HomeAssistant = hass
         scan_seconds = client.config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         self._update_interval: timedelta = timedelta(seconds=scan_seconds)
@@ -99,29 +98,6 @@ class SecuritasLock(lock.LockEntity):
             )
         else:
             self._update_unsub = None
-
-        # Group under the installation device (shared with alarm panel)
-        self._attr_device_info = securitas_device_info(installation)
-
-    def __force_state(self, state: str) -> None:
-        self._last_state = self._state
-        self._state = state
-        if self.hass is not None:
-            self.async_schedule_update_ha_state()
-
-    def _notify_error(self, notification_id, title: str, message: str) -> None:
-        """Notify user with persistent notification."""
-        self.hass.async_create_task(
-            self.hass.services.async_call(
-                domain="persistent_notification",
-                service="create",
-                service_data={
-                    "title": title,
-                    "message": message,
-                    "notification_id": f"{DOMAIN}.{notification_id}",
-                },
-            )
-        )
 
     @property
     def name(self) -> str:  # type: ignore[override]
@@ -237,7 +213,7 @@ class SecuritasLock(lock.LockEntity):
         return attrs
 
     async def async_lock(self, **kwargs):
-        self.__force_state(LOCK_STATUS_LOCKING)
+        self._force_state(LOCK_STATUS_LOCKING)
         try:
             await self.client.change_lock_mode(self.installation, True, self._device_id)
         except SecuritasDirectError as err:
@@ -252,7 +228,7 @@ class SecuritasLock(lock.LockEntity):
         self._state = LOCK_STATUS_LOCKED
 
     async def async_unlock(self, **kwargs):
-        self.__force_state(LOCK_STATUS_OPENING)
+        self._force_state(LOCK_STATUS_OPENING)
         try:
             await self.client.change_lock_mode(
                 self.installation, False, self._device_id

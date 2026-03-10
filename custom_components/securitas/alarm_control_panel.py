@@ -1,7 +1,6 @@
 """Support for Securitas Direct (AKA Verisure EU) alarm control panels."""
 
 import datetime
-import re
 from datetime import timedelta
 import logging
 from typing import Any
@@ -31,7 +30,7 @@ from . import (
     SecuritasDirectDevice,
     SecuritasHub,
 )
-from .entity import schedule_initial_updates, securitas_device_info
+from .entity import SecuritasEntity, schedule_initial_updates
 from .securitas_direct_new_api import (
     ArmingExceptionError,
     Installation,
@@ -106,7 +105,7 @@ async def async_setup_entry(
     )
 
 
-class SecuritasAlarm(alarm.AlarmControlPanelEntity):
+class SecuritasAlarm(SecuritasEntity, alarm.AlarmControlPanelEntity):
     """Representation of a Securitas alarm status."""
 
     def __init__(
@@ -117,16 +116,13 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         hass: HomeAssistant,
     ) -> None:
         """Initialize the Securitas alarm panel."""
-        self._state: str | None = None
-        self._last_status: str | None = None
+        super().__init__(installation, client)
         self._device: str = installation.address
         self.entity_id: str = f"securitas_direct.{installation.number}"
         self._attr_unique_id: str | None = f"securitas_direct.{installation.number}"
         self._time: datetime.datetime = datetime.datetime.now()
         self._message: str = ""
-        self.installation: Installation = installation
         self._attr_extra_state_attributes: dict[str, Any] = {}
-        self.client: SecuritasHub = client
         self.hass: HomeAssistant = hass
         self._has_peri = self.client.config.get(CONF_HAS_PERI, False)
         self._last_proto_code: str | None = None
@@ -184,29 +180,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         self._force_context: dict[str, Any] | None = None
         self._mobile_action_unsub = None
 
-        self._attr_device_info = securitas_device_info(installation)
         self.update_status_alarm(state)
-
-    def __force_state(self, state: str) -> None:
-        self._last_status = self._state
-        self._state = state
-        if self.hass is not None:
-            self.async_schedule_update_ha_state()
-
-    def _notify_error(self, title: str, message: str) -> None:
-        """Notify user with persistent notification."""
-        notification_id = re.sub(r"\W+", "_", title.lower()).strip("_")
-        self.hass.async_create_task(
-            self.hass.services.async_call(
-                domain="persistent_notification",
-                service="create",
-                service_data={
-                    "title": title,
-                    "message": message,
-                    "notification_id": f"{DOMAIN}.{notification_id}_{self.installation.number}",
-                },
-            )
-        )
 
     @property
     def name(self) -> str:  # type: ignore[override]
@@ -370,7 +344,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
     ) -> None:
         """Arm the alarm in the specified mode."""
         if self._check_code_for_arm_if_required(code):
-            self.__force_state(AlarmControlPanelState.ARMING)
+            self._force_state(AlarmControlPanelState.ARMING)
             await self.set_arm_state(state)
 
     async def _execute_transition(
@@ -547,7 +521,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         """Send disarm command."""
         if not self._check_code(code):
             return
-        self.__force_state(AlarmControlPanelState.DISARMING)
+        self._force_state(AlarmControlPanelState.DISARMING)
         self._operation_in_progress = True
         self._operation_epoch += 1
         try:
@@ -557,7 +531,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             self.update_status_alarm(self._build_operation_status(result))
             self.async_write_ha_state()
         except SecuritasDirectError as err:
-            self._state = self._last_status
+            self._state = self._last_state
             _LOGGER.error(
                 "Disarm failed for %s: %s", self.installation.number, err.log_detail()
             )
@@ -592,7 +566,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
             self.async_write_ha_state()
         except ArmingExceptionError as exc:
             self._set_force_context(exc, mode)
-            self._state = self._last_status
+            self._state = self._last_state
             self._notify_arm_exceptions(exc)
         except SecuritasDirectError as err:
             if self._last_arm_result.protomResponse:
@@ -600,7 +574,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
                     self._build_operation_status(self._last_arm_result)
                 )
             else:
-                self._state = self._last_status
+                self._state = self._last_state
             _LOGGER.error(
                 "Arm failed for %s: %s", self.installation.number, err.log_detail()
             )
@@ -775,7 +749,7 @@ class SecuritasAlarm(alarm.AlarmControlPanelEntity):
         )
         self._clear_force_context(force=True)
         self._dismiss_arming_exception_notification()
-        self.__force_state(AlarmControlPanelState.ARMING)
+        self._force_state(AlarmControlPanelState.ARMING)
         await self.set_arm_state(mode, force_arming_remote_id=ref_id, suid=suid)
 
     async def async_alarm_arm_home(self, code: str | None = None):
