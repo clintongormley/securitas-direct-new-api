@@ -5,8 +5,6 @@ from unittest.mock import AsyncMock
 
 from custom_components.securitas.securitas_direct_new_api.dataTypes import (
     Installation,
-    LockAutolock,
-    LockFeatures,
     SmartLock,
     SmartLockMode,
 )
@@ -135,7 +133,9 @@ class TestGetSmartLockConfig:
         assert result.res is None
         assert result.location is None
 
-    async def test_features_parsed_from_response(self, authed_api, mock_execute, installation):
+    async def test_features_parsed_from_response(
+        self, authed_api, mock_execute, installation
+    ):
         """Features from xSGetSmartlockConfig are parsed into SmartLock."""
         mock_execute.return_value = {
             "data": {
@@ -166,7 +166,9 @@ class TestGetSmartLockConfig:
         assert result.features.autolock.active is True
         assert result.features.autolock.timeout == "1800"
 
-    async def test_no_features_in_response(self, authed_api, mock_execute, installation):
+    async def test_no_features_in_response(
+        self, authed_api, mock_execute, installation
+    ):
         """SmartLock with no features field returns features=None."""
         mock_execute.return_value = {
             "data": {

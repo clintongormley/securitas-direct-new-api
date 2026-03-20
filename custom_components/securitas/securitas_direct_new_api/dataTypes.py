@@ -126,6 +126,23 @@ class OtpPhone:
 
 
 @dataclass
+class LockAutolock:
+    """Lock auto-lock configuration."""
+
+    active: bool | None = None
+    timeout: str | int | None = None
+
+
+@dataclass
+class LockFeatures:
+    """Lock feature configuration."""
+
+    holdBackLatchTime: int = 0
+    calibrationType: int = 0
+    autolock: LockAutolock | None = None
+
+
+@dataclass
 class SmartLock:
     """Smart lock discovery response."""
 
@@ -158,23 +175,6 @@ class SmartLockModeStatus:
     message: str = ""
     protomResponse: str = ""
     status: str = ""
-
-
-@dataclass
-class LockAutolock:
-    """Lock auto-lock configuration."""
-
-    active: bool | None = None
-    timeout: str | int | None = None
-
-
-@dataclass
-class LockFeatures:
-    """Lock feature configuration."""
-
-    holdBackLatchTime: int = 0
-    calibrationType: int = 0
-    autolock: LockAutolock | None = None
 
 
 @dataclass
