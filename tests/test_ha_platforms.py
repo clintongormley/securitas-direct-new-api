@@ -576,7 +576,7 @@ class TestSecuritasLockConfig:
         lock = make_lock(initial_status="1")
         assert lock._state == "1"
 
-    def test_extra_state_attributes_empty_without_danalock_config(self):
+    def test_extra_state_attributes_empty_without_lock_features(self):
         lock = make_lock()
         assert lock.extra_state_attributes == {}
 
