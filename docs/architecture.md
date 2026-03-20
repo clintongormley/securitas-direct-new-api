@@ -171,9 +171,8 @@ Dataclasses for API responses. The most important ones:
 - `SmartLockMode` — Lock mode with `deviceId` field for multi-lock support
 - `CameraDevice` — Camera device (id, code, zone_id, name, serial_number)
 - `ThumbnailResponse` — Thumbnail data (id_signal, device_code, device_alias, timestamp, signal_type, image as base64)
-- `DanalockConfig` — Full Danalock configuration (battery threshold, auto-lock time, arm-lock policies, latch hold-back)
-- `DanalockFeatures` — Nested features (holdBackLatchTime, calibrationType, autolock)
-- `DanalockAutolock` — Autolock settings (active, timeout)
+- `LockFeatures` — Lock features (holdBackLatchTime, calibrationType, autolock)
+- `LockAutolock` — Autolock settings (active, timeout)
 
 ### Exceptions (`exceptions.py`)
 
@@ -205,7 +204,7 @@ The central coordinator. It owns an `ApiManager` session and is shared by all en
 - **Status polling** — `update_overview()` checks the alarm status using `check_general_status()` which returns the last known cloud status without waking the panel
 - **API call cooldown** — All API calls are submitted via `ApiQueue`, which enforces a minimum gap between calls to avoid triggering the Incapsula WAF rate limiter. See [ApiQueue](#apiqueue) below.
 - **Camera management** — `get_camera_devices()` discovers cameras, `capture_image()` requests new captures and polls for completion, `fetch_latest_thumbnail()` lazy-fetches on first frontend request. Cached images stored per installation+zone with `get_camera_image()` / `get_camera_timestamp()`.
-- **Lock management** — `get_lock_modes()` discovers locks (cached with TTL), `change_lock_mode()` performs lock/unlock via queue, `get_danalock_config()` fetches Danalock-specific settings.
+- **Lock management** — `get_lock_modes()` discovers locks (cached with TTL), `change_lock_mode()` performs lock/unlock via queue.
 - **Caching** — `_cached_api_call()` provides a generic caching wrapper with a double-check pattern (cache checked before queue submit + after serialization) to prevent duplicate API calls when multiple entities request the same data.
 - **Session sharing** — Multiple config entries for the same username share a single `SecuritasHub` instance via reference counting in `hass.data[DOMAIN]["sessions"]`. This prevents duplicate logins and reduces WAF pressure.
 - **403 re-raise** — `update_overview()` re-raises 403 `SecuritasDirectError` so the calling alarm entity can set `waf_blocked`. Non-403 errors are swallowed and return an empty `CheckAlarmStatus`.
@@ -433,7 +432,7 @@ Sentinel sensors are discovered during platform setup by scanning services for o
 
 Lock and unlock operations use `change_lock_mode(lock=True/False)` which follows the same polling pattern as arm/disarm. Status is polled via `get_lock_current_mode()` on the scan interval.
 
-**Danalock configuration:** On first update, each lock lazily fetches its `DanalockConfig` via `get_danalock_config()`. This exposes battery threshold, arm-lock policies (lock before full/partial arm, unlock after disarm), auto-lock timeout, and `holdBackLatchTime` (latch hold-back for door opening) as `extra_state_attributes`. Config fetch is optional — errors are tolerated and logged. When `holdBackLatchTime > 0`, the entity advertises `LockEntityFeature.OPEN` so users can trigger door unlatching from the UI even when the lock is already unlocked. The `async_open()` method sends the same `change_lock_mode(lock=False)` command — there is no separate API mutation for opening.
+**Lock features:** Lock features are fetched via `xSGetSmartlockConfig` and exposed as `extra_state_attributes`, including `holdBackLatchTime` (latch hold-back for door opening). When `holdBackLatchTime > 0`, the entity advertises `LockEntityFeature.OPEN` so users can trigger door unlatching from the UI even when the lock is already unlocked. The `async_open()` method sends the same `change_lock_mode(lock=False)` command — there is no separate API mutation for opening.
 
 ### Camera (`camera.py`)
 
@@ -740,7 +739,7 @@ Three parallel jobs run on every PR and push to main:
 | `alarm_control_panel.py` | 794 | Alarm entity with state mapping, arm/disarm, force arm, PIN validation, WAF tracking |
 | `sensor.py` | 247 | Sentinel temperature, humidity, air quality sensors |
 | `binary_sensor.py` | 64 | WiFi connection status diagnostic sensor (dispatcher-based, no polling) |
-| `lock.py` | 246 | Multi-lock entity with Danalock config attributes |
+| `lock.py` | 246 | Multi-lock entity with lock feature attributes |
 | `camera.py` | 98 | Camera entity with lazy thumbnail fetching |
 | `button.py` | 150 | Refresh button with WAF notification, capture button |
 | `api_queue.py` | 104 | Priority-based rate-limited API queue (FOREGROUND/BACKGROUND) |
@@ -751,7 +750,7 @@ Three parallel jobs run on every PR and push to main:
 | `securitas_direct_new_api/graphql_queries.py` | 256 | GraphQL query and mutation string constants |
 | `securitas_direct_new_api/command_resolver.py` | 207 | `CommandResolver`, `AlarmState`, `CommandStep` — state transition logic |
 | `securitas_direct_new_api/const.py` | 107 | `SecuritasState`, command/protocol mappings, defaults |
-| `securitas_direct_new_api/dataTypes.py` | 211 | Response dataclasses (including Danalock, Camera, SStatus) |
+| `securitas_direct_new_api/dataTypes.py` | 211 | Response dataclasses (including LockFeatures, Camera, SStatus) |
 | `securitas_direct_new_api/domains.py` | 49 | Country-to-URL routing |
 | `securitas_direct_new_api/exceptions.py` | 84 | Exception hierarchy with `http_status` and `ArmingExceptionError` |
 | `www/securitas-alarm-card.js` | 1175 | Custom Lovelace alarm card with WAF warning banner, multi-language |
