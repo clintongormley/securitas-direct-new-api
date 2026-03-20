@@ -131,13 +131,13 @@ class SmartLock:
 
     res: str | None = None
     location: str | None = None
-    type: int | None = None
     deviceId: str = ""
     referenceId: str = ""
     zoneId: str = ""
     serialNumber: str = ""
     family: str = ""
     label: str = ""
+    features: LockFeatures | None = None
 
 
 @dataclass
@@ -161,37 +161,20 @@ class SmartLockModeStatus:
 
 
 @dataclass
-class DanalockAutolock:
-    """Danalock auto-lock configuration."""
+class LockAutolock:
+    """Lock auto-lock configuration."""
 
     active: bool | None = None
-    timeout: int | None = None
+    timeout: str | int | None = None
 
 
 @dataclass
-class DanalockFeatures:
-    """Danalock feature configuration."""
+class LockFeatures:
+    """Lock feature configuration."""
 
     holdBackLatchTime: int = 0
     calibrationType: int = 0
-    autolock: DanalockAutolock | None = None
-
-
-@dataclass
-class DanalockConfig:
-    """Full Danalock configuration from xSGetDanalockConfig."""
-
-    action: str = ""
-    deviceNumber: str = ""
-    asyncCylinder: str | None = None
-    batteryLowPercentage: str = ""
-    lockBeforePartialArm: str = ""
-    lockBeforeFullArm: str = ""
-    unlockAfterDisarm: str = ""
-    lockBeforePerimeterArm: str = ""
-    periodicBitExtension: str = ""
-    autoLockTime: str = ""
-    features: DanalockFeatures | None = None
+    autolock: LockAutolock | None = None
 
 
 @dataclass
