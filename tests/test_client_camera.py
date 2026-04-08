@@ -436,3 +436,131 @@ class TestGetFullImage:
         result = await client.get_full_image(inst, "sig-100", "IMG")
 
         assert result is None
+
+
+# ── Golden contract tests ───────────────────────────────────────────────────
+
+
+class TestCameraRequestContracts:
+    """Assert exact wire-protocol payloads for camera methods."""
+
+    async def test_get_camera_devices_payload(self, client, transport):
+        """get_camera_devices sends xSDeviceList with correct variables."""
+        transport.execute.return_value = device_list_response(devices=[])
+
+        inst = _make_installation()
+        await client.get_camera_devices(inst)
+
+        content = transport.execute.call_args_list[0][0][0]
+        assert content["operationName"] == "xSDeviceList"
+        assert content["variables"]["numinst"] == "123456"
+        assert content["variables"]["panel"] == "SDVFAST"
+
+    async def test_capture_image_submit_payload(self, client, transport):
+        """capture_image submit call sends RequestImages with correct variables."""
+        transport.execute.side_effect = [
+            thumbnail_response(),
+            request_images_response("ref-img-1"),
+            request_images_status_response(res="OK"),
+            thumbnail_response(id_signal="new-signal"),
+        ]
+
+        inst = _make_installation()
+        await client.capture_image(inst, 101, "QR", "QR01")
+
+        # Call 0 = baseline get_thumbnail, Call 1 = RequestImages submit
+        submit = transport.execute.call_args_list[1][0][0]
+        assert submit["operationName"] == "RequestImages"
+        assert submit["variables"]["numinst"] == "123456"
+        assert submit["variables"]["panel"] == "SDVFAST"
+        assert submit["variables"]["devices"] == [101]
+        assert submit["variables"]["resolution"] == 0
+        assert submit["variables"]["mediaType"] == 1
+        assert submit["variables"]["deviceType"] == 106
+
+    async def test_capture_image_device_type_mapping(self, client, transport):
+        """capture_image maps device types to correct integer codes."""
+        mapping = {"QR": 106, "YR": 106, "YP": 103, "QP": 107}
+
+        for device_type, expected_code in mapping.items():
+            transport.execute.reset_mock()
+            transport.execute.side_effect = [
+                thumbnail_response(),
+                request_images_response("ref-img-1"),
+                request_images_status_response(res="OK"),
+                thumbnail_response(id_signal="new-signal"),
+            ]
+
+            inst = _make_installation()
+            await client.capture_image(inst, 1, device_type, f"{device_type}01")
+
+            submit = transport.execute.call_args_list[1][0][0]
+            assert submit["variables"]["deviceType"] == expected_code, (
+                f"device_type={device_type} should map to {expected_code}"
+            )
+
+    async def test_capture_image_status_poll_payload(self, client, transport):
+        """capture_image status poll sends RequestImagesStatus with counter."""
+        transport.execute.side_effect = [
+            thumbnail_response(),
+            request_images_response("ref-img-1"),
+            request_images_status_response(res="WAIT", msg="processing image"),
+            request_images_status_response(res="OK"),
+            thumbnail_response(id_signal="new-signal"),
+        ]
+
+        inst = _make_installation()
+        await client.capture_image(inst, 101, "QR", "QR01")
+
+        # Call 2 = first status poll (counter=1)
+        status_call = transport.execute.call_args_list[2][0][0]
+        assert status_call["operationName"] == "RequestImagesStatus"
+        assert status_call["variables"]["numinst"] == "123456"
+        assert status_call["variables"]["panel"] == "SDVFAST"
+        assert status_call["variables"]["devices"] == [101]
+        assert status_call["variables"]["referenceId"] == "ref-img-1"
+        assert status_call["variables"]["counter"] == 1
+
+    async def test_get_thumbnail_payload(self, client, transport):
+        """get_thumbnail sends mkGetThumbnail with correct variables."""
+        transport.execute.return_value = thumbnail_response()
+
+        inst = _make_installation()
+        await client.get_thumbnail(inst, "QR", "QR01")
+
+        content = transport.execute.call_args_list[0][0][0]
+        assert content["operationName"] == "mkGetThumbnail"
+        assert content["variables"]["numinst"] == "123456"
+        assert content["variables"]["panel"] == "SDVFAST"
+        assert content["variables"]["device"] == "QR"
+        assert content["variables"]["zoneId"] == "QR01"
+
+    async def test_get_full_image_payload(self, client, transport):
+        """get_full_image sends mkGetPhotoImages with correct variables."""
+        jpeg_data = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+        encoded = base64.b64encode(jpeg_data).decode()
+
+        transport.execute.return_value = photo_images_response(
+            devices=[
+                {
+                    "id": "1",
+                    "idSignal": "signal-123",
+                    "code": "01",
+                    "name": "Camera 1",
+                    "quality": "HIGH",
+                    "images": [
+                        {"id": "img-1", "image": encoded, "type": "BINARY"},
+                    ],
+                }
+            ]
+        )
+
+        inst = _make_installation()
+        await client.get_full_image(inst, "signal-123", "ALARM")
+
+        content = transport.execute.call_args_list[0][0][0]
+        assert content["operationName"] == "mkGetPhotoImages"
+        assert content["variables"]["numinst"] == "123456"
+        assert content["variables"]["idSignal"] == "signal-123"
+        assert content["variables"]["signalType"] == "ALARM"
+        assert content["variables"]["panel"] == "SDVFAST"
