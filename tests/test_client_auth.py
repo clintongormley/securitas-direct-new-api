@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -573,3 +574,239 @@ class TestLogout:
         # State should still be cleared by the finally block
         assert client.authentication_token is None
         assert client.refresh_token_value == ""
+
+
+# ── Helper for pre-authenticating a client ──────────────────────────────────
+
+
+def _pre_auth(client) -> None:
+    """Set a client into a valid authenticated state for testing."""
+    client.authentication_token = FAKE_JWT
+    client._authentication_token_exp = datetime.now() + timedelta(hours=1)
+    client.refresh_token_value = FAKE_REFRESH_TOKEN
+    client.login_timestamp = 1234567890
+
+
+# ── Auth request contract tests ─────────────────────────────────────────────
+
+
+class TestAuthRequestContracts:
+    """Golden-contract tests verifying exact wire-protocol payloads for auth operations.
+
+    Every assertion uses hardcoded literal strings (never imported constants)
+    so these tests catch constant-drift or hallucinated values.
+    """
+
+    # ── 1. login payload ────────────────────────────────────────────────
+
+    async def test_login_payload(self, client, transport):
+        """login() sends mkLoginToken with correct variables and device strings."""
+        transport.execute.return_value = {
+            "data": {
+                "xSLoginToken": {
+                    "res": "OK",
+                    "hash": FAKE_JWT,
+                    "refreshToken": "fake-refresh",
+                    "needDeviceAuthorization": False,
+                }
+            }
+        }
+
+        await client.login()
+
+        content = transport.execute.call_args[0][0]
+        assert content["operationName"] == "mkLoginToken"
+
+        v = content["variables"]
+        assert v["user"] == "test@example.com"
+        assert v["password"] == "test-password"
+        assert v["country"] == "ES"
+        assert v["callby"] == "OWA_10"
+        assert v["lang"] == "es"
+        assert v["idDevice"] == "test-device-id"
+        assert v["idDeviceIndigitall"] == "test-indigitall"
+        assert v["uuid"] == "test-uuid"
+
+        # Device strings — hardcoded literals, never imported constants
+        assert v["deviceBrand"] == "samsung"
+        assert v["deviceName"] == "SM-S901U"
+        assert v["deviceOsVersion"] == "12"
+        assert v["deviceVersion"] == "10.102.0"
+        assert v["deviceType"] == ""
+        assert v["deviceResolution"] == ""
+
+    # ── 2. refresh token payload ────────────────────────────────────────
+
+    async def test_refresh_token_payload(self, client, transport):
+        """refresh_token() sends RefreshLogin with correct variables and device strings."""
+        transport.execute.return_value = {
+            "data": {
+                "xSRefreshLogin": {
+                    "res": "OK",
+                    "hash": FAKE_JWT,
+                    "refreshToken": "new-refresh",
+                }
+            }
+        }
+        client.refresh_token_value = "fake-refresh"
+
+        await client.refresh_token()
+
+        content = transport.execute.call_args[0][0]
+        assert content["operationName"] == "RefreshLogin"
+
+        v = content["variables"]
+        assert v["refreshToken"] == "fake-refresh"
+        assert v["country"] == "ES"
+        assert v["lang"] == "es"
+        assert v["callby"] == "OWA_10"
+        assert v["idDevice"] == "test-device-id"
+        assert v["idDeviceIndigitall"] == "test-indigitall"
+        assert v["uuid"] == "test-uuid"
+
+        # Device strings
+        assert v["deviceBrand"] == "samsung"
+        assert v["deviceName"] == "SM-S901U"
+        assert v["deviceOsVersion"] == "12"
+        assert v["deviceVersion"] == "10.102.0"
+        assert v["deviceType"] == ""
+        assert v["deviceResolution"] == ""
+
+    # ── 3. validate device payload ──────────────────────────────────────
+
+    async def test_validate_device_payload(self, client, transport):
+        """validate_device() sends mkValidateDevice with correct variables and device strings."""
+        transport.execute.return_value = {
+            "data": {
+                "xSValidateDevice": {
+                    "res": "OK",
+                    "hash": FAKE_JWT,
+                    "refreshToken": "new-refresh",
+                }
+            }
+        }
+
+        await client.validate_device(
+            otp_succeed=True, auth_otp_hash="test-hash", sms_code="123456"
+        )
+
+        content = transport.execute.call_args[0][0]
+        assert content["operationName"] == "mkValidateDevice"
+
+        v = content["variables"]
+        assert v["idDevice"] == "test-device-id"
+        assert v["idDeviceIndigitall"] == "test-indigitall"
+        assert v["uuid"] == "test-uuid"
+
+        # Device strings
+        assert v["deviceBrand"] == "samsung"
+        assert v["deviceName"] == "SM-S901U"
+        assert v["deviceOsVersion"] == "12"
+        assert v["deviceVersion"] == "10.102.0"
+
+    # ── 4. send OTP payload ─────────────────────────────────────────────
+
+    async def test_send_otp_payload(self, client, transport):
+        """send_otp() sends mkSendOTP with recordId and otpHash."""
+        transport.execute.return_value = {
+            "data": {
+                "xSSendOtp": {"res": "OK"}
+            }
+        }
+
+        await client.send_otp(device_id=42, auth_otp_hash="otp-hash-value")
+
+        content = transport.execute.call_args[0][0]
+        assert content["operationName"] == "mkSendOTP"
+
+        v = content["variables"]
+        assert v["recordId"] == 42
+        assert v["otpHash"] == "otp-hash-value"
+
+    # ── 5. logout payload ───────────────────────────────────────────────
+
+    async def test_logout_payload(self, client, transport):
+        """logout() sends Logout with empty variables."""
+        transport.execute.return_value = {"data": {"xSLogout": True}}
+
+        # Must be authenticated to have headers built
+        _pre_auth(client)
+
+        await client.logout()
+
+        content = transport.execute.call_args[0][0]
+        assert content["operationName"] == "Logout"
+        assert content["variables"] == {}
+
+    # ── 6. login sends no auth header ───────────────────────────────────
+
+    async def test_login_sends_no_auth_header(self, client, transport):
+        """login() does NOT send an auth header (token is None before login)."""
+        transport.execute.return_value = {
+            "data": {
+                "xSLoginToken": {
+                    "res": "OK",
+                    "hash": FAKE_JWT,
+                    "refreshToken": "fake-refresh",
+                    "needDeviceAuthorization": False,
+                }
+            }
+        }
+
+        await client.login()
+
+        headers = transport.execute.call_args[0][1]
+        assert "auth" not in headers
+
+    # ── 7. refresh sends empty hash header ──────────────────────────────
+
+    async def test_refresh_sends_empty_hash_header(self, client, transport):
+        """refresh_token() sends auth header with hash='' and refreshToken=''."""
+        transport.execute.return_value = {
+            "data": {
+                "xSRefreshLogin": {
+                    "res": "OK",
+                    "hash": FAKE_JWT,
+                    "refreshToken": "new-refresh",
+                }
+            }
+        }
+        client.refresh_token_value = "fake-refresh"
+
+        await client.refresh_token()
+
+        headers = transport.execute.call_args[0][1]
+        auth = json.loads(headers["auth"])
+        assert auth["hash"] == ""
+        assert auth["refreshToken"] == ""
+        assert auth["callby"] == "OWA_10"
+
+    # ── 8. normal op sends token in auth header ─────────────────────────
+
+    async def test_normal_op_sends_token_in_auth_header(self, client, transport):
+        """get_general_status() sends auth header with hash=<token> and no refreshToken key."""
+        _pre_auth(client)
+
+        # Also need capabilities cached so _ensure_capabilities doesn't trigger
+        inst = _make_installation()
+        client._capabilities[inst.number] = (
+            "cap-token-123",
+            datetime.now() + timedelta(hours=1),
+        )
+
+        transport.execute.return_value = {
+            "data": {
+                "xSStatus": {
+                    "status": "T",
+                    "timestampUpdate": "2024-01-01",
+                    "wifiConnected": True,
+                }
+            }
+        }
+
+        await client.get_general_status(inst)
+
+        headers = transport.execute.call_args[0][1]
+        auth = json.loads(headers["auth"])
+        assert auth["hash"] == FAKE_JWT
+        assert "refreshToken" not in auth
