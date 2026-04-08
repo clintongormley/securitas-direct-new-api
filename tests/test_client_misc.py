@@ -539,3 +539,78 @@ class TestGetServices:
         result = await client_no_caps.get_services(inst)
 
         assert result == []
+
+
+# ── Golden contract tests ───────────────────────────────────────────────────
+
+
+class TestMiscRequestContracts:
+    """Golden contract tests asserting exact payloads sent to the transport."""
+
+    async def test_list_installations_payload(self, client, transport):
+        """list_installations sends correct operationName."""
+        transport.execute.return_value = installation_list_response([])
+
+        await client.list_installations()
+
+        call_args = transport.execute.call_args[0][0]
+        assert call_args["operationName"] == "mkInstallationList"
+
+    async def test_get_services_payload(self, client_no_caps, transport):
+        """get_services sends correct operationName and variables."""
+        transport.execute.return_value = services_response(
+            numinst="123456",
+            capabilities=FAKE_CAPABILITIES_JWT,
+            services=[],
+        )
+
+        inst = _make_installation()
+        await client_no_caps.get_services(inst)
+
+        call_args = transport.execute.call_args[0][0]
+        assert call_args["operationName"] == "Srv"
+        assert call_args["variables"]["numinst"] == "123456"
+        assert call_args["variables"]["uuid"] == "test-uuid"
+
+    async def test_get_sentinel_data_payload(self, client, transport):
+        """get_sentinel_data sends correct operationName and variables."""
+        transport.execute.return_value = sentinel_response(
+            devices=[
+                {
+                    "alias": "Sentinel",
+                    "status": {
+                        "airQualityCode": 1,
+                        "humidity": 45,
+                        "temperature": 22,
+                    },
+                    "zone": "Z1",
+                },
+            ],
+        )
+
+        inst = _make_installation()
+        service = _make_service(
+            attributes=[Attribute(name="zone", value="Z1", active=True)]
+        )
+        await client.get_sentinel_data(inst, service)
+
+        call_args = transport.execute.call_args[0][0]
+        assert call_args["operationName"] == "Sentinel"
+        assert call_args["variables"] == {"numinst": "123456"}
+
+    async def test_get_air_quality_data_payload(self, client, transport):
+        """get_air_quality_data sends correct operationName and variables."""
+        transport.execute.return_value = air_quality_response(
+            data={
+                "hours": [{"value": 42}],
+                "status": {"current": 1},
+            },
+        )
+
+        inst = _make_installation()
+        await client.get_air_quality_data(inst, "Z1")
+
+        call_args = transport.execute.call_args[0][0]
+        assert call_args["operationName"] == "AirQuality"
+        assert call_args["variables"]["numinst"] == "123456"
+        assert call_args["variables"]["zone"] == "Z1"
