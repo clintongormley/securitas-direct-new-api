@@ -9,8 +9,6 @@ import jwt
 import pytest
 
 from custom_components.securitas.securitas_direct_new_api.client import (
-    SMARTLOCK_DEVICE_ID,
-    SMARTLOCK_DEVICE_TYPE,
     SecuritasClient,
 )
 from custom_components.securitas.securitas_direct_new_api.exceptions import (
@@ -393,6 +391,18 @@ class TestGetLockConfig:
         call_args = transport.execute.call_args[0][0]
         assert call_args["variables"]["deviceId"] == "5"
 
+    async def test_default_request_variables(self, client, transport):
+        """Default request sends correct API contract values for device constants."""
+        transport.execute.return_value = smartlock_config_response(res="OK")
+
+        inst = _make_installation()
+        await client.get_lock_config(inst)
+
+        call_args = transport.execute.call_args[0][0]
+        assert call_args["variables"]["deviceType"] == "DR"
+        assert call_args["variables"]["deviceId"] == "01"
+        assert call_args["variables"]["keytype"] == "0"
+
 
 # ── change_lock_mode tests ──────────────────────────────────────────────────
 
@@ -457,8 +467,8 @@ class TestChangeLockMode:
         submit_call = transport.execute.call_args_list[0]
         content = submit_call[0][0]
         assert content["variables"]["lock"] is False
-        assert content["variables"]["deviceType"] == SMARTLOCK_DEVICE_TYPE
-        assert content["variables"]["deviceId"] == SMARTLOCK_DEVICE_ID
+        assert content["variables"]["deviceType"] == "DR"
+        assert content["variables"]["deviceId"] == "01"
 
     async def test_custom_device_id(self, client, transport):
         """Custom device_id is passed in submit and poll variables."""

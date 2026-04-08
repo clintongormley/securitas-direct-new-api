@@ -16,6 +16,7 @@ import secrets
 from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import uuid4
 
+from aiohttp import ClientConnectorError
 from pydantic import BaseModel, ValidationError
 import jwt
 
@@ -105,9 +106,9 @@ API_ID_PREFIX = "OWA_______________"
 ALARM_STATUS_SERVICE_ID = "11"
 
 # Lock device constants
-SMARTLOCK_DEVICE_ID = "1"
+SMARTLOCK_DEVICE_ID = "01"
 SMARTLOCK_DEVICE_TYPE = "DR"
-SMARTLOCK_KEY_TYPE = "MASTER"
+SMARTLOCK_KEY_TYPE = "0"
 
 # Camera / image constants
 CAMERA_DEVICE_TYPES = {"QR", "YR", "YP", "QP"}
@@ -180,8 +181,8 @@ class SecuritasClient:
         self.device_id: str = device_id
         self.uuid: str = uuid
         self.id_device_indigitall: str = id_device_indigitall
-        self.device_brand: str = "Samsung"
-        self.device_name: str = "S22"
+        self.device_brand: str = "samsung"
+        self.device_name: str = "SM-S901U"
         self.device_os_version: str = "12"
         self.device_resolution: str = ""
         self.device_type: str = ""
@@ -797,7 +798,7 @@ class SecuritasClient:
                 await asyncio.sleep(self.poll_delay)
             try:
                 result = await check_fn()
-            except asyncio.TimeoutError as err:
+            except (ClientConnectorError, asyncio.TimeoutError) as err:
                 _LOGGER.warning("Transient error during poll, retrying: %s", err)
                 first = False
                 continue
@@ -1452,7 +1453,7 @@ class SecuritasClient:
                     return
                 if baseline_id is None and thumbnail.image != baseline_image:
                     return
-                await asyncio.sleep(max(self.poll_delay, 1.0))
+                await asyncio.sleep(max(5, self.poll_delay))
 
         try:
             await asyncio.wait_for(_poll_capture_result(), timeout=capture_timeout)
