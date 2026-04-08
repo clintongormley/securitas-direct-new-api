@@ -489,3 +489,63 @@ class TestChangeLockMode:
         poll_call = transport.execute.call_args_list[1]
         poll_content = poll_call[0][0]
         assert poll_content["variables"]["deviceId"] == "3"
+
+
+# ── Lock request contract tests ────────────────────────────────────────────
+
+
+class TestLockRequestContracts:
+    """Golden contract tests asserting exact payloads sent to the transport."""
+
+    async def test_get_lock_modes_payload(self, client, transport):
+        """get_lock_modes sends correct operationName and variables."""
+        transport.execute.return_value = lock_mode_response(
+            res="OK", smartlock_info=[]
+        )
+
+        inst = _make_installation()
+        await client.get_lock_modes(inst)
+
+        call_args = transport.execute.call_args_list[0][0][0]
+        assert call_args["operationName"] == "xSGetLockCurrentMode"
+        assert call_args["variables"] == {"numinst": "123456"}
+
+    async def test_change_lock_mode_submit_payload(self, client, transport):
+        """change_lock_mode submit call sends correct operationName and variables."""
+        transport.execute.side_effect = [
+            change_lock_submit_response("ref-lock-1"),
+            change_lock_status_response(
+                res="OK", protom_response="L", status="LOCKED"
+            ),
+        ]
+
+        inst = _make_installation()
+        await client.change_lock_mode(inst, lock=True)
+
+        submit = transport.execute.call_args_list[0][0][0]
+        assert submit["operationName"] == "xSChangeSmartlockMode"
+        assert submit["variables"]["numinst"] == "123456"
+        assert submit["variables"]["panel"] == "SDVFAST"
+        assert submit["variables"]["deviceType"] == "DR"
+        assert submit["variables"]["deviceId"] == "01"
+        assert submit["variables"]["lock"] is True
+
+    async def test_change_lock_mode_poll_payload(self, client, transport):
+        """change_lock_mode poll call sends correct operationName and variables."""
+        transport.execute.side_effect = [
+            change_lock_submit_response("ref-lock-1"),
+            change_lock_status_response(
+                res="OK", protom_response="L", status="LOCKED"
+            ),
+        ]
+
+        inst = _make_installation()
+        await client.change_lock_mode(inst, lock=True)
+
+        poll = transport.execute.call_args_list[1][0][0]
+        assert poll["operationName"] == "xSChangeSmartlockModeStatus"
+        assert poll["variables"]["numinst"] == "123456"
+        assert poll["variables"]["panel"] == "SDVFAST"
+        assert poll["variables"]["referenceId"] == "ref-lock-1"
+        assert poll["variables"]["deviceId"] == "01"
+        assert "counter" in poll["variables"]
