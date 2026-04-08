@@ -454,3 +454,163 @@ class TestGetGeneralStatus:
         assert result.wifi_connected is True
         # Only one transport call — no polling
         assert transport.execute.call_count == 1
+
+
+# ── Golden contract tests ──────────────────────────────────────────────────
+
+
+class TestAlarmRequestContracts:
+    """Assert exact wire-protocol payloads for alarm GraphQL operations.
+
+    These golden contract tests verify that the client sends the correct
+    operationName, variables, and structure in every request, using hardcoded
+    literal values to catch any drift or hallucination in the refactored code.
+    """
+
+    async def test_check_alarm_submit_payload(self, client, transport):
+        """check_alarm sends correct CheckAlarm submit and CheckAlarmStatus poll payloads."""
+        submit_response = {
+            "data": {
+                "xSCheckAlarm": {
+                    "res": "OK",
+                    "msg": "",
+                    "referenceId": "ref-1",
+                }
+            }
+        }
+        poll_response = {
+            "data": {
+                "xSCheckAlarmStatus": {
+                    "res": "OK",
+                    "msg": "",
+                    "status": "",
+                    "numinst": "123456",
+                    "protomResponse": "T",
+                    "protomResponseDate": "",
+                    "requestId": "req-1",
+                    "error": None,
+                }
+            }
+        }
+        transport.execute.side_effect = [submit_response, poll_response]
+
+        inst = _make_installation()
+        await client.check_alarm(inst)
+
+        assert transport.execute.call_count == 2
+
+        # ── Submit call ──
+        submit_content = transport.execute.call_args_list[0][0][0]
+        assert submit_content["operationName"] == "CheckAlarm"
+        assert submit_content["variables"]["numinst"] == "123456"
+        assert submit_content["variables"]["panel"] == "SDVFAST"
+
+        # ── Poll call ──
+        poll_content = transport.execute.call_args_list[1][0][0]
+        assert poll_content["operationName"] == "CheckAlarmStatus"
+        assert poll_content["variables"]["numinst"] == "123456"
+        assert poll_content["variables"]["panel"] == "SDVFAST"
+        assert poll_content["variables"]["referenceId"] == "ref-1"
+        assert poll_content["variables"]["idService"] == "11"
+
+    async def test_arm_submit_payload(self, client, transport):
+        """arm sends correct xSArmPanel submit payload with currentStatus and armAndLock."""
+        client.protom_response = "D"
+
+        submit_response = {
+            "data": {
+                "xSArmPanel": {
+                    "res": "OK",
+                    "msg": "",
+                    "referenceId": "ref-arm",
+                }
+            }
+        }
+        poll_response = {
+            "data": {
+                "xSArmStatus": {
+                    "res": "OK",
+                    "msg": "",
+                    "status": "",
+                    "numinst": "123456",
+                    "protomResponse": "T",
+                    "protomResponseDate": "",
+                    "requestId": "req-1",
+                    "error": None,
+                }
+            }
+        }
+        transport.execute.side_effect = [submit_response, poll_response]
+
+        inst = _make_installation()
+        await client.arm(inst, "ARM1")
+
+        # ── Submit call ──
+        submit_content = transport.execute.call_args_list[0][0][0]
+        assert submit_content["operationName"] == "xSArmPanel"
+        assert submit_content["variables"]["request"] == "ARM1"
+        assert submit_content["variables"]["numinst"] == "123456"
+        assert submit_content["variables"]["panel"] == "SDVFAST"
+        assert submit_content["variables"]["currentStatus"] == "D"
+        assert submit_content["variables"]["armAndLock"] is False
+
+    async def test_disarm_submit_payload(self, client, transport):
+        """disarm sends correct xSDisarmPanel submit payload with currentStatus."""
+        client.protom_response = "T"
+
+        submit_response = {
+            "data": {
+                "xSDisarmPanel": {
+                    "res": "OK",
+                    "msg": "",
+                    "referenceId": "ref-dis",
+                }
+            }
+        }
+        poll_response = {
+            "data": {
+                "xSDisarmStatus": {
+                    "res": "OK",
+                    "msg": "",
+                    "status": "",
+                    "numinst": "123456",
+                    "protomResponse": "D",
+                    "protomResponseDate": "",
+                    "requestId": "req-1",
+                    "error": None,
+                }
+            }
+        }
+        transport.execute.side_effect = [submit_response, poll_response]
+
+        inst = _make_installation()
+        await client.disarm(inst, "DARM1")
+
+        # ── Submit call ──
+        submit_content = transport.execute.call_args_list[0][0][0]
+        assert submit_content["operationName"] == "xSDisarmPanel"
+        assert submit_content["variables"]["request"] == "DARM1"
+        assert submit_content["variables"]["numinst"] == "123456"
+        assert submit_content["variables"]["panel"] == "SDVFAST"
+        assert submit_content["variables"]["currentStatus"] == "T"
+
+    async def test_get_general_status_payload(self, client, transport):
+        """get_general_status sends correct Status query with numinst only."""
+        transport.execute.return_value = {
+            "data": {
+                "xSStatus": {
+                    "status": "T",
+                    "timestampUpdate": "2024-01-01",
+                    "wifiConnected": True,
+                }
+            }
+        }
+
+        inst = _make_installation()
+        await client.get_general_status(inst)
+
+        assert transport.execute.call_count == 1
+
+        content = transport.execute.call_args[0][0]
+        assert content["operationName"] == "Status"
+        assert content["variables"] == {"numinst": "123456"}
