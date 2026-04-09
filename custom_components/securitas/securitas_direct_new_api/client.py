@@ -1428,8 +1428,12 @@ class SecuritasClient:
             nonlocal thumbnail
             counter = 0
 
-            # Poll status until not processing
-            while True:
+            # Poll status — but cap at 5 attempts (~10s). The status
+            # endpoint often returns "processing" indefinitely for some
+            # camera types (e.g. YR/PIRCAM).  Thumbnail polling is the
+            # reliable signal, so don't let status polling starve it.
+            max_status_polls = 5
+            while counter < max_status_polls:
                 counter += 1
                 status_content = {
                     "operationName": "RequestImagesStatus",
@@ -1451,14 +1455,14 @@ class SecuritasClient:
                 inner = status_envelope.data.xSRequestImagesStatus
                 msg = inner.msg or ""
                 _LOGGER.debug(
-                    "[capture:%s] status poll #%d: res=%s, msg=%r, status=%s",
-                    zone_id, counter, inner.res, msg, inner.status,
+                    "[capture:%s] status poll #%d/%d: res=%s, msg=%r, status=%s",
+                    zone_id, counter, max_status_polls, inner.res, msg, inner.status,
                 )
                 if "processing" not in msg and inner.res != "WAIT":
                     break
                 await asyncio.sleep(self.poll_delay)
 
-            _LOGGER.debug("[capture:%s] status complete, polling thumbnail", zone_id)
+            _LOGGER.debug("[capture:%s] moving to thumbnail polling", zone_id)
 
             # Poll thumbnail until idSignal changes
             poll_count = 0
