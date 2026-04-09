@@ -614,21 +614,42 @@ class SecuritasAlarm(  # type: ignore[override]
         ]
         self._attr_extra_state_attributes["force_arm_available"] = True
 
+    _FORCE_ARM_TTL = datetime.timedelta(seconds=180)
+
     def _clear_force_context(self, force: bool = False) -> None:
         """Clear stored force-arm context and related attributes.
 
-        When called from async_update_status (force=False), only clears if
-        the context has aged past one scan interval.  HA triggers an immediate
-        status refresh after every service call, so without this guard the
-        context would be wiped before the user can re-arm.
+        When called from coordinator updates (force=False), only clears if
+        the context has aged past _FORCE_ARM_TTL (180s).  On expiry, the
+        notification is updated to inform the user the alarm was not armed.
         """
         if not force and self._force_context is not None:
             age = datetime.datetime.now() - self._force_context["created_at"]
-            if age < self._update_interval:
+            if age < self._FORCE_ARM_TTL:
                 return
+            # Expired — update notification to inform user
+            self._notify_force_arm_expired()
         self._force_context = None
         self._attr_extra_state_attributes.pop("arm_exceptions", None)
         self._attr_extra_state_attributes.pop("force_arm_available", None)
+
+    def _notify_force_arm_expired(self) -> None:
+        """Update the persistent notification to indicate force-arm expired."""
+        self.hass.async_create_task(
+            self.hass.services.async_call(
+                domain="persistent_notification",
+                service="create",
+                service_data={
+                    "title": "Securitas: Alarm not armed",
+                    "message": (
+                        "The force-arm option has expired. "
+                        "The alarm was **not armed**. "
+                        "Please try arming again."
+                    ),
+                    "notification_id": self._arming_exception_notification_id,
+                },
+            )
+        )
 
     @property
     def _arming_exception_notification_id(self) -> str:
