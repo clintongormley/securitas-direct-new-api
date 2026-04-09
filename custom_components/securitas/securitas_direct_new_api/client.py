@@ -1428,14 +1428,14 @@ class SecuritasClient:
             nonlocal thumbnail
             counter = 0
 
-            # DEBUG: Poll status for the full timeout at 10s intervals
-            # to discover whether the endpoint ever returns a useful
-            # completion signal.  Also poll thumbnail in parallel to see
-            # which one fires first.
+            # Interleaved polling: check both status and thumbnail each
+            # iteration at 10s intervals.  The status endpoint transitions
+            # from "processing" to a done message around the same time the
+            # thumbnail CDN updates (~40-60s for YR/PIR cameras).
             while True:
                 counter += 1
 
-                # Check status
+                # Check capture status
                 status_content = {
                     "operationName": "RequestImagesStatus",
                     "variables": {
@@ -1456,28 +1456,22 @@ class SecuritasClient:
                 inner = status_envelope.data.xSRequestImagesStatus
                 msg = inner.msg or ""
                 _LOGGER.debug(
-                    "[capture:%s] status poll #%d: res=%s, msg=%r, status=%s",
-                    zone_id, counter, inner.res, msg, inner.status,
+                    "[capture:%s] poll #%d: status res=%s msg=%r",
+                    zone_id, counter, inner.res, msg,
                 )
-                status_done = "processing" not in msg and inner.res != "WAIT"
-                if status_done:
-                    _LOGGER.debug("[capture:%s] status endpoint signalled done", zone_id)
 
-                # Also check thumbnail each time
+                # Check thumbnail
                 thumbnail = await self.get_thumbnail(installation, device_type, zone_id)
                 thumb_changed = (
                     thumbnail.id_signal != baseline_id
                     or (baseline_id is None and thumbnail.image != baseline_image)
                 )
                 _LOGGER.debug(
-                    "[capture:%s] thumbnail check #%d: id_signal=%s (baseline=%s), "
+                    "[capture:%s] poll #%d: thumbnail id_signal=%s (baseline=%s) "
                     "changed=%s",
                     zone_id, counter, thumbnail.id_signal, baseline_id, thumb_changed,
                 )
                 if thumb_changed:
-                    _LOGGER.debug(
-                        "[capture:%s] thumbnail updated at poll #%d", zone_id, counter,
-                    )
                     return
 
                 await asyncio.sleep(10)
