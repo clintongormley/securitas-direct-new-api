@@ -189,6 +189,23 @@ class OperationStatus(BaseModel):
     request_id: str = Field(default="", validation_alias="requestId")
     error: dict[str, Any] | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_nulls(cls, data: Any) -> Any:
+        """Coerce None to empty string for str fields.
+
+        The API returns null for fields like status, numinst,
+        protomResponse when they are not yet available during polling.
+        """
+        if isinstance(data, dict):
+            for key in (
+                "res", "msg", "status", "numinst", "protomResponse",
+                "protomResponseDate", "requestId",
+            ):
+                if key in data and data[key] is None:
+                    data[key] = ""
+        return data
+
     @field_validator("error", mode="before")
     @classmethod
     def _coerce_error(cls, v: Any) -> dict[str, Any] | None:
