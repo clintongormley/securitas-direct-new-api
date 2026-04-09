@@ -584,6 +584,7 @@ class SecuritasAlarm(  # type: ignore[override]
             self._set_force_context(exc, mode)
             self._state = self._last_state
             self._notify_arm_exceptions(exc)
+            self.async_write_ha_state()
         except SecuritasDirectError as err:
             if self._last_arm_result.protom_response:
                 self.update_status_alarm(
