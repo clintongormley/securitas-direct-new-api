@@ -6,29 +6,56 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .models import Installation, LockFeatures, SmartLock, ThumbnailResponse
+
+
+# ── Null-safe base ────────────────────────────────────────────────────────────
+#
+# The Securitas API returns null for string fields (res, msg, status, etc.)
+# during polling or when fields are not applicable.  Pydantic rejects None
+# for str fields even with a default.  This base class coerces None → "" for
+# all string-typed fields before validation.
+
+
+class _NullSafeBase(BaseModel):
+    """Base that coerces None to '' for any str field with a default."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_null_strings(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        for name, field_info in cls.model_fields.items():
+            # Check both python name and alias
+            keys = [name]
+            if field_info.validation_alias and isinstance(field_info.validation_alias, str):
+                keys.append(field_info.validation_alias)
+            for key in keys:
+                if key in data and data[key] is None and field_info.annotation is str:
+                    data[key] = ""
+        return data
 
 
 # ── Shared inner models ────────────────────────────────────────────────────────
 
 
-class _ResMsg(BaseModel):
+class _ResMsg(_NullSafeBase):
     """Simple result + message pair."""
 
-    res: str
+    res: str = ""
     msg: str | None = None
 
 
-class _ResMsgRef(BaseModel):
+class _ResMsgRef(_NullSafeBase):
     """Result, message, and reference ID."""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    res: str
+    res: str = ""
     msg: str | None = None
-    reference_id: str = Field(validation_alias="referenceId")
+    reference_id: str = Field(default="", validation_alias="referenceId")
 
 
 class PanelError(BaseModel):
@@ -46,12 +73,12 @@ class PanelError(BaseModel):
     suid: str | None = None
 
 
-class _OperationResult(BaseModel):
+class _OperationResult(_NullSafeBase):
     """Result of an alarm or lock operation."""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    res: str
+    res: str = ""
     msg: str | None = None
     status: str | None = None
     numinst: str | None = None
@@ -82,10 +109,10 @@ class _GeneralStatus(BaseModel):
 class LoginEnvelope(BaseModel):
     """Response envelope for xSLoginToken."""
 
-    class _Inner(BaseModel):
+    class _Inner(_NullSafeBase):
         model_config = ConfigDict(populate_by_name=True)
 
-        res: str
+        res: str = ""
         msg: str | None = None
         hash: str | None = None  # noqa: A003
         refresh_token: str | None = Field(default=None, validation_alias="refreshToken")
@@ -107,10 +134,10 @@ class LoginEnvelope(BaseModel):
 class RefreshLoginEnvelope(BaseModel):
     """Response envelope for xSRefreshLogin."""
 
-    class _Inner(BaseModel):
+    class _Inner(_NullSafeBase):
         model_config = ConfigDict(populate_by_name=True)
 
-        res: str
+        res: str = ""
         msg: str | None = None
         hash: str | None = None  # noqa: A003
         refresh_token: str | None = Field(default=None, validation_alias="refreshToken")
@@ -132,10 +159,10 @@ class RefreshLoginEnvelope(BaseModel):
 class ValidateDeviceEnvelope(BaseModel):
     """Response envelope for xSValidateDevice."""
 
-    class _Inner(BaseModel):
+    class _Inner(_NullSafeBase):
         model_config = ConfigDict(populate_by_name=True)
 
-        res: str
+        res: str = ""
         msg: str | None = None
         hash: str | None = None  # noqa: A003
         refresh_token: str | None = Field(default=None, validation_alias="refreshToken")
@@ -162,7 +189,7 @@ class SendOtpEnvelope(BaseModel):
 class InstallationListEnvelope(BaseModel):
     """Response envelope for xSInstallations."""
 
-    class _Inner(BaseModel):
+    class _Inner(_NullSafeBase):
         installations: list[Installation]
 
     class Data(BaseModel):
@@ -184,8 +211,8 @@ class ServicesEnvelope(BaseModel):
             None, validation_alias="configRepoUser"
         )
 
-    class _Inner(BaseModel):
-        res: str
+    class _Inner(_NullSafeBase):
+        res: str = ""
         msg: str | None = None
         installation: "ServicesEnvelope._Installation | None" = None
 
@@ -271,8 +298,8 @@ class GetExceptionsEnvelope(BaseModel):
         device_type: str | None = Field(default=None, validation_alias="deviceType")
         alias: str | None = None
 
-    class _Inner(BaseModel):
-        res: str
+    class _Inner(_NullSafeBase):
+        res: str = ""
         msg: str | None = None
         exceptions: "list[GetExceptionsEnvelope._ZoneException] | None" = None
 
@@ -306,10 +333,10 @@ class DanalockConfigEnvelope(BaseModel):
 class DanalockConfigStatusEnvelope(BaseModel):
     """Response envelope for xSGetDanalockConfigStatus."""
 
-    class _Inner(BaseModel):
+    class _Inner(_NullSafeBase):
         model_config = ConfigDict(populate_by_name=True)
 
-        res: str
+        res: str = ""
         msg: str | None = None
         device_number: str | None = Field(default=None, validation_alias="deviceNumber")
         features: LockFeatures | None = None
@@ -323,10 +350,10 @@ class DanalockConfigStatusEnvelope(BaseModel):
 class LockModeEnvelope(BaseModel):
     """Response envelope for xSGetLockCurrentMode."""
 
-    class _Inner(BaseModel):
+    class _Inner(_NullSafeBase):
         model_config = ConfigDict(populate_by_name=True)
 
-        res: str
+        res: str = ""
         smartlock_info: list[dict[str, Any]] | None = Field(
             None, validation_alias="smartlockInfo"
         )
@@ -349,10 +376,10 @@ class ChangeLockModeEnvelope(BaseModel):
 class ChangeLockModeStatusEnvelope(BaseModel):
     """Response envelope for xSChangeSmartlockModeStatus."""
 
-    class _Inner(BaseModel):
+    class _Inner(_NullSafeBase):
         model_config = ConfigDict(populate_by_name=True)
 
-        res: str
+        res: str = ""
         msg: str | None = None
         protom_response: str | None = Field(
             default=None, validation_alias="protomResponse"
@@ -371,8 +398,8 @@ class ChangeLockModeStatusEnvelope(BaseModel):
 class DeviceListEnvelope(BaseModel):
     """Response envelope for xSDeviceList."""
 
-    class _Inner(BaseModel):
-        res: str
+    class _Inner(_NullSafeBase):
+        res: str = ""
         devices: list[dict[str, Any]] | None = None
 
     class Data(BaseModel):
@@ -393,8 +420,8 @@ class RequestImagesEnvelope(BaseModel):
 class RequestImagesStatusEnvelope(BaseModel):
     """Response envelope for xSRequestImagesStatus."""
 
-    class _Inner(BaseModel):
-        res: str
+    class _Inner(_NullSafeBase):
+        res: str = ""
         msg: str | None = None
         numinst: str | None = None
         status: str | None = None
@@ -417,7 +444,7 @@ class ThumbnailEnvelope(BaseModel):
 class PhotoImagesEnvelope(BaseModel):
     """Response envelope for xSGetPhotoImages."""
 
-    class _Inner(BaseModel):
+    class _Inner(_NullSafeBase):
         devices: list[dict[str, Any]] | None = None
 
     class Data(BaseModel):
@@ -432,8 +459,8 @@ class PhotoImagesEnvelope(BaseModel):
 class SentinelEnvelope(BaseModel):
     """Response envelope for xSComfort."""
 
-    class _Inner(BaseModel):
-        res: str
+    class _Inner(_NullSafeBase):
+        res: str = ""
         devices: list[dict[str, Any]] | None = None
         forecast: dict[str, Any] | None = None
 
@@ -446,8 +473,8 @@ class SentinelEnvelope(BaseModel):
 class AirQualityEnvelope(BaseModel):
     """Response envelope for xSAirQuality."""
 
-    class _Inner(BaseModel):
-        res: str
+    class _Inner(_NullSafeBase):
+        res: str = ""
         data: dict[str, Any] | None = None
 
     class Data(BaseModel):

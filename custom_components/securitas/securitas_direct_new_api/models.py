@@ -11,6 +11,31 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .exceptions import UnexpectedStateError
 
 
+# ── Null-safe base ───────────────────────────────────────────────────────────
+#
+# The Securitas API returns null for string fields during polling or when
+# fields are not applicable.  Pydantic rejects None for str fields even
+# with a default.  This base class coerces None → "" for any str field.
+
+
+class _NullSafeBase(BaseModel):
+    """Base that coerces None to '' for any str field with a default."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_null_strings(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        for name, field_info in cls.model_fields.items():
+            keys = [name]
+            if field_info.validation_alias and isinstance(field_info.validation_alias, str):
+                keys.append(field_info.validation_alias)
+            for key in keys:
+                if key in data and data[key] is None and field_info.annotation is str:
+                    data[key] = ""
+        return data
+
+
 # ── Enums ─────────────────────────────────────────────────────────────────────
 
 
@@ -153,7 +178,7 @@ STATE_TO_COMMAND: dict[AlarmState, ArmCommand] = {
 # ── Domain models ─────────────────────────────────────────────────────────────
 
 
-class Installation(BaseModel):
+class Installation(_NullSafeBase):
     """A Securitas Direct installation (customer site)."""
 
     model_config = ConfigDict(populate_by_name=True)
@@ -175,7 +200,7 @@ class Installation(BaseModel):
     alarm_partitions: list[dict[str, Any]] = Field(default_factory=list)
 
 
-class OperationStatus(BaseModel):
+class OperationStatus(_NullSafeBase):
     """Result of an alarm or lock operation (arm, disarm, check)."""
 
     model_config = ConfigDict(populate_by_name=True)
@@ -188,23 +213,6 @@ class OperationStatus(BaseModel):
     protom_response_data: str = Field(default="", validation_alias="protomResponseDate")
     request_id: str = Field(default="", validation_alias="requestId")
     error: dict[str, Any] | None = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def _coerce_nulls(cls, data: Any) -> Any:
-        """Coerce None to empty string for str fields.
-
-        The API returns null for fields like status, numinst,
-        protomResponse when they are not yet available during polling.
-        """
-        if isinstance(data, dict):
-            for key in (
-                "res", "msg", "status", "numinst", "protomResponse",
-                "protomResponseDate", "requestId",
-            ):
-                if key in data and data[key] is None:
-                    data[key] = ""
-        return data
 
     @field_validator("error", mode="before")
     @classmethod
@@ -251,7 +259,7 @@ class LockFeatures(BaseModel):
     autolock: LockAutolock | None = None
 
 
-class SmartLock(BaseModel):
+class SmartLock(_NullSafeBase):
     """Smart lock discovery response."""
 
     model_config = ConfigDict(populate_by_name=True)
@@ -266,29 +274,8 @@ class SmartLock(BaseModel):
     label: str = ""
     features: LockFeatures | None = None
 
-    @model_validator(mode="before")
-    @classmethod
-    def _coerce_none_strings(cls, data: Any) -> Any:
-        """Coerce None values to empty strings for required str fields."""
-        if isinstance(data, dict):
-            for key in (
-                "deviceId",
-                "device_id",
-                "referenceId",
-                "reference_id",
-                "zoneId",
-                "zone_id",
-                "serialNumber",
-                "serial_number",
-                "family",
-                "label",
-            ):
-                if key in data and data[key] is None:
-                    data[key] = ""
-        return data
 
-
-class SmartLockMode(BaseModel):
+class SmartLockMode(_NullSafeBase):
     """Smart lock mode and status."""
 
     model_config = ConfigDict(populate_by_name=True)
@@ -299,7 +286,7 @@ class SmartLockMode(BaseModel):
     status_timestamp: str = Field(default="", validation_alias="statusTimestamp")
 
 
-class SmartLockModeStatus(BaseModel):
+class SmartLockModeStatus(_NullSafeBase):
     """Smart lock mode change operation status."""
 
     model_config = ConfigDict(populate_by_name=True)
