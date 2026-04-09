@@ -1428,14 +1428,11 @@ class SecuritasClient:
             nonlocal thumbnail
             counter = 0
 
-            # Interleaved polling: check both status and thumbnail each
-            # iteration at 10s intervals.  The status endpoint transitions
-            # from "processing" to a done message around the same time the
-            # thumbnail CDN updates (~40-60s for YR/PIR cameras).
+            # Poll status at 10s intervals until it transitions from
+            # "processing" to done (~40-60s for YR/PIR cameras).
+            # Then fetch the thumbnail once.
             while True:
                 counter += 1
-
-                # Check capture status
                 status_content = {
                     "operationName": "RequestImagesStatus",
                     "variables": {
@@ -1456,25 +1453,20 @@ class SecuritasClient:
                 inner = status_envelope.data.xSRequestImagesStatus
                 msg = inner.msg or ""
                 _LOGGER.debug(
-                    "[capture:%s] poll #%d: status res=%s msg=%r",
+                    "[capture:%s] status poll #%d: res=%s msg=%r",
                     zone_id, counter, inner.res, msg,
                 )
-
-                # Check thumbnail
-                thumbnail = await self.get_thumbnail(installation, device_type, zone_id)
-                thumb_changed = (
-                    thumbnail.id_signal != baseline_id
-                    or (baseline_id is None and thumbnail.image != baseline_image)
-                )
-                _LOGGER.debug(
-                    "[capture:%s] poll #%d: thumbnail id_signal=%s (baseline=%s) "
-                    "changed=%s",
-                    zone_id, counter, thumbnail.id_signal, baseline_id, thumb_changed,
-                )
-                if thumb_changed:
-                    return
-
+                if "processing" not in msg and inner.res != "WAIT":
+                    break
                 await asyncio.sleep(10)
+
+            # Status done — fetch the updated thumbnail
+            thumbnail = await self.get_thumbnail(installation, device_type, zone_id)
+            _LOGGER.debug(
+                "[capture:%s] thumbnail after status done: id_signal=%s "
+                "(baseline=%s)",
+                zone_id, thumbnail.id_signal, baseline_id,
+            )
 
         try:
             await asyncio.wait_for(_poll_capture_result(), timeout=capture_timeout)

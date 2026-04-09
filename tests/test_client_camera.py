@@ -262,19 +262,17 @@ class TestGetCameraDevices:
 
 class TestCaptureImage:
     async def test_full_flow(self, client, transport):
-        """baseline -> submit -> interleaved (status+thumbnail) polling -> done."""
+        """baseline -> submit -> status polls -> status done -> fetch thumbnail."""
         transport.execute.side_effect = [
             # 1. Baseline thumbnail
             thumbnail_response(id_signal="old-sig"),
             # 2. Submit capture request
             request_images_response("ref-img-001"),
-            # 3. Poll iteration 1: status still processing
+            # 3. Status poll: still processing
             request_images_status_response(res="WAIT", msg="processing image"),
-            # 4. Poll iteration 1: thumbnail still old
-            thumbnail_response(id_signal="old-sig"),
-            # 5. Poll iteration 2: status done
+            # 4. Status poll: done
             request_images_status_response(res="OK", msg="completed"),
-            # 6. Poll iteration 2: thumbnail updated!
+            # 5. Fetch thumbnail after status done
             thumbnail_response(id_signal="new-sig", image="new-image-data"),
         ]
 
@@ -286,19 +284,16 @@ class TestCaptureImage:
         assert result.image == "new-image-data"
 
     async def test_timeout_fetches_final_thumbnail(self, client, transport):
-        """When capture times out, fetches one final thumbnail (CDN may have caught up)."""
+        """When status polling times out, fetches one final thumbnail."""
         call_count = 0
 
         async def _side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                # Baseline thumbnail
                 return thumbnail_response(id_signal="old-sig")
             if call_count == 2:
-                # Submit capture request
                 return request_images_response("ref-img-001")
-            # Interleaved: status then thumbnail each iteration
             content = args[0] if args else {}
             if isinstance(content, dict) and content.get("operationName") == "mkGetThumbnail":
                 # Final thumbnail fetch after timeout — CDN has caught up
@@ -309,10 +304,8 @@ class TestCaptureImage:
         transport.execute.side_effect = _side_effect
 
         inst = _make_installation()
-        # Use a very short timeout so it triggers quickly
         result = await client.capture_image(inst, 1, "QR", "QR01", capture_timeout=0.1)
 
-        # Should return the final thumbnail fetch, not the baseline
         assert isinstance(result, ThumbnailResponse)
         assert result.id_signal == "new-sig"
 
@@ -505,19 +498,17 @@ class TestCameraRequestContracts:
             )
 
     async def test_capture_image_status_poll_payload(self, client, transport):
-        """capture_image interleaved poll sends status + thumbnail each iteration."""
+        """capture_image status poll sends correct variables with counter."""
         transport.execute.side_effect = [
             # 1. Baseline thumbnail
             thumbnail_response(),
             # 2. Submit capture request
             request_images_response("ref-img-1"),
-            # 3. Poll iteration 1: status (WAIT)
+            # 3. Status poll: still processing
             request_images_status_response(res="WAIT", msg="processing image"),
-            # 4. Poll iteration 1: thumbnail (unchanged)
-            thumbnail_response(),
-            # 5. Poll iteration 2: status (OK)
+            # 4. Status poll: done
             request_images_status_response(res="OK"),
-            # 6. Poll iteration 2: thumbnail (updated!)
+            # 5. Fetch thumbnail after status done
             thumbnail_response(id_signal="new-signal"),
         ]
 
