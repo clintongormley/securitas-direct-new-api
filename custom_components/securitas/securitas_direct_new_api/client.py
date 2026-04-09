@@ -1390,10 +1390,6 @@ class SecuritasClient:
         baseline = await self.get_thumbnail(installation, device_type, zone_id)
         baseline_id = baseline.id_signal
         baseline_image = baseline.image
-        _LOGGER.debug(
-            "[capture:%s] baseline: id_signal=%s, has_image=%s, timestamp=%s",
-            zone_id, baseline_id, baseline.image is not None, baseline.timestamp,
-        )
 
         # Submit capture request
         submit_content = {
@@ -1415,10 +1411,6 @@ class SecuritasClient:
             installation=installation,
         )
         reference_id = submit_envelope.data.xSRequestImages.reference_id
-        _LOGGER.debug(
-            "[capture:%s] submit OK: referenceId=%s, res=%s",
-            zone_id, reference_id, submit_envelope.data.xSRequestImages.res,
-        )
 
         thumbnail: ThumbnailResponse | None = None
 
@@ -1450,40 +1442,23 @@ class SecuritasClient:
                 )
                 inner = status_envelope.data.xSRequestImagesStatus
                 msg = inner.msg or ""
-                _LOGGER.debug(
-                    "[capture:%s] status poll #%d: res=%s msg=%r",
-                    zone_id, counter, inner.res, msg,
-                )
                 if "processing" not in msg and inner.res != "WAIT":
                     break
                 await asyncio.sleep(10)
 
             # Status done — fetch the updated thumbnail
             thumbnail = await self.get_thumbnail(installation, device_type, zone_id)
-            _LOGGER.debug(
-                "[capture:%s] thumbnail after status done: id_signal=%s "
-                "(baseline=%s)",
-                zone_id, thumbnail.id_signal, baseline_id,
-            )
 
         try:
             await asyncio.wait_for(_poll_capture_result(), timeout=capture_timeout)
-            _LOGGER.debug(
-                "[capture:%s] completed: id_signal=%s, has_image=%s",
-                zone_id,
-                thumbnail.id_signal if thumbnail else None,
-                thumbnail.image is not None if thumbnail else None,
-            )
         except (TimeoutError, asyncio.TimeoutError):
             _LOGGER.warning(
-                "[capture:%s] timed out after %.0f seconds (baseline_id=%s)",
-                zone_id, capture_timeout, baseline_id,
+                "Image capture timed out after %.0f seconds for %s",
+                capture_timeout, zone_id,
             )
             if thumbnail is None:
-                # Status polling consumed the entire timeout — thumbnail
-                # polling never ran.  Fetch one final thumbnail: the CDN
-                # has had ~30 s to propagate, so the image is likely ready.
-                _LOGGER.debug("[capture:%s] fetching final thumbnail after timeout", zone_id)
+                # Status polling consumed the entire timeout — fetch one
+                # final thumbnail as the CDN may have caught up.
                 thumbnail = await self.get_thumbnail(
                     installation, device_type, zone_id
                 )
@@ -1560,38 +1535,22 @@ class SecuritasClient:
             installation=installation,
         )
         devices = envelope.data.xSGetPhotoImages.devices or []
-        _LOGGER.debug(
-            "[full_image] devices=%d, id_signal=%s", len(devices), id_signal,
-        )
         if not devices:
-            _LOGGER.debug("[full_image] no devices in response")
             return None
         images = devices[0].get("images") or []
         binary_images = [
             img for img in images if img.get("type") == "BINARY" and img.get("image")
         ]
-        _LOGGER.debug(
-            "[full_image] total images=%d, binary images=%d, types=%s",
-            len(images), len(binary_images),
-            [img.get("type") for img in images],
-        )
         if not binary_images:
-            _LOGGER.debug("[full_image] no BINARY images found")
             return None
         best = max(binary_images, key=lambda img: len(img["image"]))
-        _LOGGER.debug("[full_image] best image: %d chars base64", len(best["image"]))
         try:
             decoded = base64.b64decode(best["image"])
         except (ValueError, TypeError):
-            _LOGGER.warning("[full_image] base64 decode failed")
             return None
         # Validate JPEG magic bytes
         if not decoded[:2] == b"\xff\xd8":
-            _LOGGER.warning(
-                "[full_image] not JPEG: magic=%r, size=%d", decoded[:4], len(decoded),
-            )
             return None
-        _LOGGER.debug("[full_image] valid JPEG: %d bytes", len(decoded))
         return decoded
 
     # ── Sensor operations ────────────────────────────────────────────────────
