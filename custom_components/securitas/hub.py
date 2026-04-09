@@ -236,6 +236,10 @@ class SecuritasHub:
 
         try:
             # Delegate capture + polling entirely to the client
+            _LOGGER.debug(
+                "[hub:capture] starting for %s (code=%s, type=%s, zone=%s)",
+                device.name, device.code, device.device_type, device.zone_id,
+            )
             thumbnail = await self._api_queue.submit(
                 self.client.capture_image,
                 installation,
@@ -243,6 +247,14 @@ class SecuritasHub:
                 device.device_type,
                 device.zone_id,
                 priority=ApiQueue.FOREGROUND,
+            )
+            _LOGGER.debug(
+                "[hub:capture] client returned: id_signal=%s, has_image=%s, "
+                "timestamp=%s, signal_type=%s",
+                thumbnail.id_signal if thumbnail else None,
+                thumbnail.image is not None if thumbnail else None,
+                thumbnail.timestamp if thumbnail else None,
+                thumbnail.signal_type if thumbnail else None,
             )
 
             image_bytes = self._validate_and_store_image(
@@ -311,6 +323,10 @@ class SecuritasHub:
         thumbnail: ThumbnailResponse,
     ) -> None:
         """Fetch the full-resolution photo and store it, then notify the frontend."""
+        _LOGGER.debug(
+            "[hub:full_image] fetching for %s: id_signal=%s, signal_type=%s",
+            camera_device.name, thumbnail.id_signal, thumbnail.signal_type,
+        )
         try:
             full_bytes = await self._api_queue.submit(
                 self.client.get_full_image,
@@ -321,7 +337,7 @@ class SecuritasHub:
             )
         except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
             _LOGGER.warning(
-                "[hub] Could not fetch full image for %s",
+                "[hub:full_image] exception fetching for %s",
                 camera_device.name,
                 exc_info=True,
             )
@@ -329,9 +345,15 @@ class SecuritasHub:
 
         if not full_bytes or not full_bytes.startswith(b"\xff\xd8"):
             _LOGGER.debug(
-                "[hub] Full image for %s is not valid JPEG", camera_device.name
+                "[hub:full_image] %s: not valid JPEG (got %s bytes)",
+                camera_device.name,
+                len(full_bytes) if full_bytes else 0,
             )
             return
+
+        _LOGGER.debug(
+            "[hub:full_image] %s: stored %d bytes", camera_device.name, len(full_bytes),
+        )
 
         key = f"{installation.number}_{camera_device.zone_id}"
         self._full_images[key] = full_bytes
