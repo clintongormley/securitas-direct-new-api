@@ -332,8 +332,38 @@ class CameraCoordinator(DataUpdateCoordinator[CameraData]):
                     thumbnails[camera.zone_id] = previous.thumbnails[camera.zone_id]
         return thumbnails
 
+    async def _fetch_full_image(
+        self,
+        thumbnail: ThumbnailResponse,
+        zone_id: str,
+    ) -> bytes | None:
+        """Fetch full-resolution image for a thumbnail, return bytes or None."""
+        if not thumbnail.id_signal or not thumbnail.signal_type:
+            return None
+        try:
+            full_bytes = await self._queue.submit(
+                self._client.get_full_image,
+                self._installation,
+                thumbnail.id_signal,
+                thumbnail.signal_type,
+                priority=ApiQueue.BACKGROUND,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+            _LOGGER.warning(
+                "Failed to fetch full image for camera zone %s", zone_id,
+                exc_info=True,
+            )
+            return None
+        if not full_bytes or not full_bytes.startswith(b"\xff\xd8"):
+            _LOGGER.debug(
+                "Full image for zone %s is not valid JPEG (%d bytes)",
+                zone_id, len(full_bytes) if full_bytes else 0,
+            )
+            return None
+        return full_bytes
+
     async def _async_update_data(self) -> CameraData:
-        """Fetch camera thumbnails via the API queue."""
+        """Fetch camera thumbnails and full images for any that changed."""
         previous = self.data
         try:
             thumbnails = await self._fetch_thumbnails(previous)
@@ -348,9 +378,24 @@ class CameraCoordinator(DataUpdateCoordinator[CameraData]):
         except WAFBlockedError as err:
             raise UpdateFailed(f"WAF blocked camera request: {err}") from err
 
-        # Preserve full_images from previous data
+        # Carry forward previous full images
         full_images: dict[str, bytes] = {}
         if previous:
             full_images = dict(previous.full_images)
+
+        # Fetch full images for thumbnails whose id_signal changed
+        prev_thumbnails = previous.thumbnails if previous else {}
+        for zone_id, thumb in thumbnails.items():
+            prev_thumb = prev_thumbnails.get(zone_id)
+            prev_signal = prev_thumb.id_signal if prev_thumb else None
+            if thumb.id_signal and thumb.id_signal != prev_signal:
+                _LOGGER.debug(
+                    "Thumbnail changed for zone %s (id_signal %s -> %s), "
+                    "fetching full image",
+                    zone_id, prev_signal, thumb.id_signal,
+                )
+                full_bytes = await self._fetch_full_image(thumb, zone_id)
+                if full_bytes:
+                    full_images[zone_id] = full_bytes
 
         return CameraData(thumbnails=thumbnails, full_images=full_images)
