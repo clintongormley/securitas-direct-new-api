@@ -26,6 +26,7 @@ from .exceptions import (
     AuthenticationError,
     OperationTimeoutError,
     SecuritasDirectError,
+    SessionExpiredError,
     TwoFactorRequiredError,
 )
 from .graphql_queries import (
@@ -421,6 +422,10 @@ class SecuritasClient:
                     ):
                         error_status = 400
 
+                if error_status == 403:
+                    _err = SessionExpiredError(message, http_status=403)
+                    _err.response_body = response_dict
+                    raise _err
                 _err = SecuritasDirectError(message, http_status=error_status)
                 _err.response_body = response_dict
                 raise _err
@@ -491,33 +496,26 @@ class SecuritasClient:
         headers = self._build_headers(operation, installation=installation)
         response_dict = await self._transport.execute(content, headers)
 
-        # Check for GraphQL errors
-        self._check_graphql_errors(response_dict, operation)
-
-        # Session expired (403): re-auth and retry once
-        if "errors" in response_dict and not _retried:
-            errors = response_dict.get("errors", [])
-            if isinstance(errors, list) and errors:
-                first = errors[0]
-                if isinstance(first, dict):
-                    error_status = None
-                    if isinstance(first.get("data"), dict):
-                        error_status = first["data"].get("status")
-                    if error_status == 403 and operation not in _AUTH_OPERATIONS:
-                        _LOGGER.debug(
-                            "[auth] Session expired server-side, re-authenticating"
-                        )
-                        self._authentication_token_exp = datetime.min
-                        await self._check_authentication_token()
-                        if installation is not None:
-                            await self._ensure_capabilities(installation)
-                        return await self._execute_graphql(
-                            content,
-                            operation,
-                            response_type,
-                            installation=installation,
-                            _retried=True,
-                        )
+        # Check for GraphQL errors — raises SessionExpiredError for 403
+        try:
+            self._check_graphql_errors(response_dict, operation)
+        except SessionExpiredError:
+            if _retried or operation in _AUTH_OPERATIONS:
+                raise
+            _LOGGER.debug(
+                "[auth] Session expired server-side, re-authenticating"
+            )
+            self._authentication_token_exp = datetime.min
+            await self._check_authentication_token()
+            if installation is not None:
+                await self._ensure_capabilities(installation)
+            return await self._execute_graphql(
+                content,
+                operation,
+                response_type,
+                installation=installation,
+                _retried=True,
+            )
 
         # Validate as Pydantic model
         try:
