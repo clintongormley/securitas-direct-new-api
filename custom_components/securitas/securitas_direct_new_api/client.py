@@ -1370,7 +1370,7 @@ class SecuritasClient:
         device_type: str,
         zone_id: str,
         *,
-        capture_timeout: float = 30.0,
+        capture_timeout: float = 90.0,
     ) -> ThumbnailResponse:
         """Request a new image capture and poll until the thumbnail updates.
 
