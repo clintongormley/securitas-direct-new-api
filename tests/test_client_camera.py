@@ -285,8 +285,8 @@ class TestCaptureImage:
         assert result.id_signal == "new-sig"
         assert result.image == "new-image-data"
 
-    async def test_timeout_returns_last_thumbnail(self, client, transport):
-        """When capture times out, returns the last available thumbnail."""
+    async def test_timeout_fetches_final_thumbnail(self, client, transport):
+        """When capture times out, fetches one final thumbnail (CDN may have caught up)."""
         call_count = 0
 
         async def _side_effect(*args, **kwargs):
@@ -298,7 +298,12 @@ class TestCaptureImage:
             if call_count == 2:
                 # Submit capture request
                 return request_images_response("ref-img-001")
-            # All subsequent calls: status still processing
+            # Check if this is the final thumbnail fetch after timeout
+            content = args[0] if args else {}
+            if isinstance(content, dict) and content.get("operationName") == "mkGetThumbnail":
+                # Final thumbnail fetch — CDN has caught up
+                return thumbnail_response(id_signal="new-sig")
+            # Status polls: always WAIT (will cause timeout)
             return request_images_status_response(res="WAIT", msg="processing image")
 
         transport.execute.side_effect = _side_effect
@@ -307,9 +312,9 @@ class TestCaptureImage:
         # Use a very short timeout so it triggers quickly
         result = await client.capture_image(inst, 1, "QR", "QR01", capture_timeout=0.1)
 
-        # Should return the baseline thumbnail since nothing updated
+        # Should return the final thumbnail fetch, not the baseline
         assert isinstance(result, ThumbnailResponse)
-        assert result.id_signal == "old-sig"
+        assert result.id_signal == "new-sig"
 
 
 # ── get_thumbnail tests ──────────────────────────────────────────────────────

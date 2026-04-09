@@ -1491,7 +1491,13 @@ class SecuritasClient:
                 zone_id, capture_timeout, baseline_id,
             )
             if thumbnail is None:
-                thumbnail = baseline
+                # Status polling consumed the entire timeout — thumbnail
+                # polling never ran.  Fetch one final thumbnail: the CDN
+                # has had ~30 s to propagate, so the image is likely ready.
+                _LOGGER.debug("[capture:%s] fetching final thumbnail after timeout", zone_id)
+                thumbnail = await self.get_thumbnail(
+                    installation, device_type, zone_id
+                )
 
         return thumbnail  # type: ignore[return-value]
 
