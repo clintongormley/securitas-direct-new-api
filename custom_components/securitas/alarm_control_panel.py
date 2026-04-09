@@ -650,8 +650,8 @@ class SecuritasAlarm(  # type: ignore[override]
         persistent_message = (
             f"Arming was blocked because the following sensor(s) are open:\n"
             f"{sensor_list}\n\n"
-            f"To arm anyway, call the **securitas.force_arm** service, "
-            f"or tap **Force Arm** on your mobile notification."
+            f"To arm anyway, tap **Force Arm** on the alarm card "
+            f"or on your mobile notification."
         )
         mobile_message = f"Arm blocked — open sensor(s): {short_details}. Arm anyway?"
 
