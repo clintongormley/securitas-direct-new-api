@@ -500,6 +500,19 @@ class SecuritasHub:
             priority=ApiQueue.FOREGROUND,
         )
 
+    async def refresh_alarm_status(
+        self, installation: Installation
+    ) -> OperationStatus:
+        """Full alarm status refresh via CheckAlarm + poll (through queue).
+
+        Used by the refresh button for an authoritative protom round-trip.
+        """
+        return await self._api_queue.submit(
+            self.client.check_alarm,
+            installation,
+            priority=ApiQueue.FOREGROUND,
+        )
+
     async def disarm_alarm(self, installation: Installation, command: str) -> Any:
         """Disarm the alarm via the client (polling handled internally)."""
         return await self._api_queue.submit(

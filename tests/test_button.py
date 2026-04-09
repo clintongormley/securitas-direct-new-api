@@ -5,6 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 from custom_components.securitas.button import SecuritasRefreshButton, async_setup_entry
 from custom_components.securitas import DOMAIN
+from custom_components.securitas.securitas_direct_new_api.exceptions import (
+    OperationTimeoutError,
+    SecuritasDirectError,
+)
+from custom_components.securitas.securitas_direct_new_api.models import OperationStatus
 
 from tests.conftest import (
     make_installation,
@@ -80,38 +85,85 @@ class TestSecuritasRefreshButtonInit:
 class TestSecuritasRefreshButtonAsyncPress:
     """Tests for SecuritasRefreshButton.async_press."""
 
-    async def test_requests_coordinator_refresh(self):
-        """async_press requests a coordinator refresh."""
+    async def test_calls_refresh_alarm_status(self):
+        """async_press calls hub.refresh_alarm_status for authoritative round-trip."""
         button = make_button()
+        status = OperationStatus(
+            operation_status="OK", protom_response="T", status=""
+        )
+        button._client.refresh_alarm_status = AsyncMock(return_value=status)
+        button.hass.data = {DOMAIN: {"alarm_entities": {}}}  # type: ignore[attr-defined]
 
-        mock_coord = MagicMock()
-        mock_coord.async_request_refresh = AsyncMock()
+        await button.async_press()
+
+        button._client.refresh_alarm_status.assert_awaited_once_with(
+            button._installation
+        )
+
+    async def test_updates_protom_response_on_success(self):
+        """async_press updates client.protom_response from the result."""
+        button = make_button()
+        status = OperationStatus(
+            operation_status="OK", protom_response="T", status=""
+        )
+        button._client.refresh_alarm_status = AsyncMock(return_value=status)
+        button.hass.data = {DOMAIN: {"alarm_entities": {}}}  # type: ignore[attr-defined]
+
+        await button.async_press()
+
+        assert button._client.client.protom_response == "T"
+
+    async def test_clears_refresh_failed_on_success(self):
+        """async_press clears refresh_failed on the alarm entity."""
+        button = make_button()
+        status = OperationStatus(
+            operation_status="OK", protom_response="T", status=""
+        )
+        button._client.refresh_alarm_status = AsyncMock(return_value=status)
+        alarm_entity = MagicMock()
         button.hass.data = {  # type: ignore[attr-defined]
-            DOMAIN: {
-                button._entry_id: {"alarm_coordinator": mock_coord},
-            }
+            DOMAIN: {"alarm_entities": {button._installation.number: alarm_entity}}
         }
 
         await button.async_press()
 
-        mock_coord.async_request_refresh.assert_awaited_once()
+        alarm_entity._set_refresh_failed.assert_called_with(False)
+        alarm_entity.async_write_ha_state.assert_called()
 
-    async def test_no_crash_when_entry_data_missing(self):
-        """async_press does not crash when entry_data is missing."""
+    async def test_sets_refresh_failed_on_timeout(self):
+        """async_press sets refresh_failed on timeout."""
         button = make_button()
-        button.hass.data = {}  # type: ignore[attr-defined]
+        button._client.refresh_alarm_status = AsyncMock(
+            side_effect=OperationTimeoutError("timed out")
+        )
+        alarm_entity = MagicMock()
+        button.hass.data = {  # type: ignore[attr-defined]
+            DOMAIN: {"alarm_entities": {button._installation.number: alarm_entity}}
+        }
 
-        # Should not raise
         await button.async_press()
 
-    async def test_no_crash_when_coordinator_missing(self):
-        """async_press does not crash when alarm_coordinator is None."""
+        alarm_entity._set_refresh_failed.assert_called_with(True)
+
+    async def test_sets_waf_blocked_on_403(self):
+        """async_press sets waf_blocked on 403 error."""
         button = make_button()
+        err = SecuritasDirectError("blocked", http_status=403)
+        button._client.refresh_alarm_status = AsyncMock(side_effect=err)
+        alarm_entity = MagicMock()
         button.hass.data = {  # type: ignore[attr-defined]
-            DOMAIN: {
-                button._entry_id: {"alarm_coordinator": None},
-            }
+            DOMAIN: {"alarm_entities": {button._installation.number: alarm_entity}}
         }
+
+        await button.async_press()
+
+        alarm_entity._set_waf_blocked.assert_called_with(True)
+        button.hass.services.async_call.assert_awaited_once()
+
+    async def test_no_crash_when_hass_is_none(self):
+        """async_press does not crash when hass is None."""
+        button = make_button()
+        button.hass = None
 
         # Should not raise
         await button.async_press()

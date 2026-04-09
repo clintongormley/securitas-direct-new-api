@@ -13,6 +13,7 @@ from .securitas_direct_new_api import (
     Installation,
     SecuritasDirectError,
 )
+from .securitas_direct_new_api.exceptions import OperationTimeoutError
 from .securitas_direct_new_api.models import CameraDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,16 +54,73 @@ class SecuritasRefreshButton(SecuritasEntity, ButtonEntity):
         self._entry_id = entry_id
         self.hass = hass
 
+    def _get_alarm_entity(self):
+        """Return the alarm entity for this installation, if available."""
+        alarm_entities = self.hass.data.get(DOMAIN, {}).get("alarm_entities", {})
+        return alarm_entities.get(self._installation.number)
+
     async def async_press(self) -> None:
-        """Request a coordinator refresh when button pressed."""
+        """Full alarm status refresh via CheckAlarm + poll.
+
+        This triggers an authoritative round-trip with the panel, not just
+        a lightweight xSStatus read.
+        """
         if self.hass is None:
             return
-        entry_data = self.hass.data.get(DOMAIN, {}).get(self._entry_id)
-        if entry_data is None:
-            return
-        alarm_coord = entry_data.get("alarm_coordinator")
-        if alarm_coord is not None:
-            await alarm_coord.async_request_refresh()
+        try:
+            alarm_status = await self._client.refresh_alarm_status(
+                self._installation
+            )
+
+            self._client.client.protom_response = alarm_status.protom_response
+
+            _LOGGER.info(
+                "Status of the Alarm via API: %s installation id: %s",
+                alarm_status.protom_response,
+                self._installation.number,
+            )
+
+            alarm_entity = self._get_alarm_entity()
+            if alarm_entity is not None:
+                alarm_entity._set_refresh_failed(False)  # noqa: SLF001
+                alarm_entity.async_write_ha_state()
+                alarm_entity.async_schedule_update_ha_state(force_refresh=True)
+
+        except OperationTimeoutError:
+            _LOGGER.warning(
+                "Refresh timed out for %s", self._installation.number
+            )
+            alarm_entity = self._get_alarm_entity()
+            if alarm_entity is not None:
+                alarm_entity._set_refresh_failed(True)  # noqa: SLF001
+                alarm_entity.async_write_ha_state()
+
+        except SecuritasDirectError as err:
+            _LOGGER.error(
+                "Error refreshing alarm status for %s: %s",
+                self._installation.number,
+                err.log_detail(),
+            )
+            if getattr(err, "http_status", None) == 403:
+                await self.hass.services.async_call(
+                    domain="persistent_notification",
+                    service="create",
+                    service_data={
+                        "title": "Securitas: Rate limited",
+                        "message": (
+                            "Too many requests — blocked by Securitas servers. "
+                            "Please wait a few minutes before trying again."
+                        ),
+                        "notification_id": (
+                            f"{DOMAIN}.securitas_rate_limited_"
+                            f"{self._installation.number}"
+                        ),
+                    },
+                )
+                alarm_entity = self._get_alarm_entity()
+                if alarm_entity is not None:
+                    alarm_entity._set_waf_blocked(True)  # noqa: SLF001
+                    alarm_entity.async_write_ha_state()
 
 
 class SecuritasCaptureButton(SecuritasEntity, ButtonEntity):
