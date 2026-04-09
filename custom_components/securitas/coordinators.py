@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -332,6 +332,21 @@ class CameraCoordinator(DataUpdateCoordinator[CameraData]):
                     thumbnails[camera.zone_id] = previous.thumbnails[camera.zone_id]
         return thumbnails
 
+    @staticmethod
+    def _thumbnail_is_recent(thumbnail: ThumbnailResponse, max_age_hours: int = 1) -> bool:
+        """Check if a thumbnail is recent enough to have a full image available."""
+        if not thumbnail.timestamp:
+            return False
+        try:
+            # Timestamp format: "2026-04-09 13:08:16"
+            thumb_time = datetime.strptime(
+                thumbnail.timestamp, "%Y-%m-%d %H:%M:%S"
+            ).replace(tzinfo=timezone.utc)
+            age = datetime.now(tz=timezone.utc) - thumb_time
+            return age < timedelta(hours=max_age_hours)
+        except (ValueError, TypeError):
+            return False
+
     async def _fetch_full_image(
         self,
         thumbnail: ThumbnailResponse,
@@ -339,6 +354,12 @@ class CameraCoordinator(DataUpdateCoordinator[CameraData]):
     ) -> bytes | None:
         """Fetch full-resolution image for a thumbnail, return bytes or None."""
         if not thumbnail.id_signal or not thumbnail.signal_type:
+            return None
+        if not self._thumbnail_is_recent(thumbnail):
+            _LOGGER.debug(
+                "Skipping full image for zone %s — thumbnail too old (%s)",
+                zone_id, thumbnail.timestamp,
+            )
             return None
         try:
             full_bytes = await self._queue.submit(
