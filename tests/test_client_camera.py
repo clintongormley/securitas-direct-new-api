@@ -262,19 +262,19 @@ class TestGetCameraDevices:
 
 class TestCaptureImage:
     async def test_full_flow(self, client, transport):
-        """baseline -> submit -> poll status -> poll thumbnail -> new thumbnail."""
+        """baseline -> submit -> interleaved (status+thumbnail) polling -> done."""
         transport.execute.side_effect = [
             # 1. Baseline thumbnail
             thumbnail_response(id_signal="old-sig"),
             # 2. Submit capture request
             request_images_response("ref-img-001"),
-            # 3. Poll status: still processing
+            # 3. Poll iteration 1: status still processing
             request_images_status_response(res="WAIT", msg="processing image"),
-            # 4. Poll status: done
-            request_images_status_response(res="OK", msg="completed"),
-            # 5. Poll thumbnail: still old
+            # 4. Poll iteration 1: thumbnail still old
             thumbnail_response(id_signal="old-sig"),
-            # 6. Poll thumbnail: updated!
+            # 5. Poll iteration 2: status done
+            request_images_status_response(res="OK", msg="completed"),
+            # 6. Poll iteration 2: thumbnail updated!
             thumbnail_response(id_signal="new-sig", image="new-image-data"),
         ]
 
@@ -298,13 +298,13 @@ class TestCaptureImage:
             if call_count == 2:
                 # Submit capture request
                 return request_images_response("ref-img-001")
-            # Check if this is the final thumbnail fetch after timeout
+            # Interleaved: status then thumbnail each iteration
             content = args[0] if args else {}
             if isinstance(content, dict) and content.get("operationName") == "mkGetThumbnail":
-                # Final thumbnail fetch — CDN has caught up
+                # Final thumbnail fetch after timeout — CDN has caught up
                 return thumbnail_response(id_signal="new-sig")
-            # Status polls: always WAIT (will cause timeout)
-            return request_images_status_response(res="WAIT", msg="processing image")
+            # Status polls: always processing (will cause timeout)
+            return request_images_status_response(res="OK", msg="processing image")
 
         transport.execute.side_effect = _side_effect
 
@@ -505,19 +505,26 @@ class TestCameraRequestContracts:
             )
 
     async def test_capture_image_status_poll_payload(self, client, transport):
-        """capture_image status poll sends RequestImagesStatus with counter."""
+        """capture_image interleaved poll sends status + thumbnail each iteration."""
         transport.execute.side_effect = [
+            # 1. Baseline thumbnail
             thumbnail_response(),
+            # 2. Submit capture request
             request_images_response("ref-img-1"),
+            # 3. Poll iteration 1: status (WAIT)
             request_images_status_response(res="WAIT", msg="processing image"),
+            # 4. Poll iteration 1: thumbnail (unchanged)
+            thumbnail_response(),
+            # 5. Poll iteration 2: status (OK)
             request_images_status_response(res="OK"),
+            # 6. Poll iteration 2: thumbnail (updated!)
             thumbnail_response(id_signal="new-signal"),
         ]
 
         inst = _make_installation()
         await client.capture_image(inst, 101, "QR", "QR01")
 
-        # Call 2 = first status poll (counter=1)
+        # Call index 2 = first status poll (counter=1)
         status_call = transport.execute.call_args_list[2][0][0]
         assert status_call["operationName"] == "RequestImagesStatus"
         assert status_call["variables"]["numinst"] == "123456"

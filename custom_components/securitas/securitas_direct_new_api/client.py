@@ -1428,13 +1428,14 @@ class SecuritasClient:
             nonlocal thumbnail
             counter = 0
 
-            # Poll status — but cap at 5 attempts (~10s). The status
-            # endpoint often returns "processing" indefinitely for some
-            # camera types (e.g. YR/PIRCAM).  Thumbnail polling is the
-            # reliable signal, so don't let status polling starve it.
-            max_status_polls = 5
-            while counter < max_status_polls:
+            # DEBUG: Poll status for the full timeout at 10s intervals
+            # to discover whether the endpoint ever returns a useful
+            # completion signal.  Also poll thumbnail in parallel to see
+            # which one fires first.
+            while True:
                 counter += 1
+
+                # Check status
                 status_content = {
                     "operationName": "RequestImagesStatus",
                     "variables": {
@@ -1455,31 +1456,31 @@ class SecuritasClient:
                 inner = status_envelope.data.xSRequestImagesStatus
                 msg = inner.msg or ""
                 _LOGGER.debug(
-                    "[capture:%s] status poll #%d/%d: res=%s, msg=%r, status=%s",
-                    zone_id, counter, max_status_polls, inner.res, msg, inner.status,
+                    "[capture:%s] status poll #%d: res=%s, msg=%r, status=%s",
+                    zone_id, counter, inner.res, msg, inner.status,
                 )
-                if "processing" not in msg and inner.res != "WAIT":
-                    break
-                await asyncio.sleep(self.poll_delay)
+                status_done = "processing" not in msg and inner.res != "WAIT"
+                if status_done:
+                    _LOGGER.debug("[capture:%s] status endpoint signalled done", zone_id)
 
-            _LOGGER.debug("[capture:%s] moving to thumbnail polling", zone_id)
-
-            # Poll thumbnail until idSignal changes
-            poll_count = 0
-            while True:
-                poll_count += 1
+                # Also check thumbnail each time
                 thumbnail = await self.get_thumbnail(installation, device_type, zone_id)
-                _LOGGER.debug(
-                    "[capture:%s] thumbnail poll #%d: id_signal=%s (baseline=%s), "
-                    "image_changed=%s",
-                    zone_id, poll_count, thumbnail.id_signal, baseline_id,
-                    thumbnail.image != baseline_image,
+                thumb_changed = (
+                    thumbnail.id_signal != baseline_id
+                    or (baseline_id is None and thumbnail.image != baseline_image)
                 )
-                if thumbnail.id_signal != baseline_id:
+                _LOGGER.debug(
+                    "[capture:%s] thumbnail check #%d: id_signal=%s (baseline=%s), "
+                    "changed=%s",
+                    zone_id, counter, thumbnail.id_signal, baseline_id, thumb_changed,
+                )
+                if thumb_changed:
+                    _LOGGER.debug(
+                        "[capture:%s] thumbnail updated at poll #%d", zone_id, counter,
+                    )
                     return
-                if baseline_id is None and thumbnail.image != baseline_image:
-                    return
-                await asyncio.sleep(max(5, self.poll_delay))
+
+                await asyncio.sleep(10)
 
         try:
             await asyncio.wait_for(_poll_capture_result(), timeout=capture_timeout)
