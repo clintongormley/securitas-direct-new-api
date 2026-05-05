@@ -39,7 +39,9 @@ from .const import (
 )
 from .coordinators import AlarmCoordinator, AlarmStatusData
 from .entity import securitas_device_info
+from .events import inject_ha_event
 from .notification_translations import get_notification_strings
+from .securitas_direct_new_api.models import ActivityCategory
 from .securitas_direct_new_api import (
     ArmingExceptionError,
     Installation,
@@ -605,6 +607,13 @@ class BaseSecuritasAlarmPanel(  # type: ignore[override]
             self.update_status_alarm(result)
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()
+            await inject_ha_event(
+                self.hass,
+                self._installation,
+                category=ActivityCategory.DISARMED,
+                alias="Disarmed",
+                context=self._context,
+            )
         except SecuritasDirectError as err:
             self._state = self._last_state
             _LOGGER.error(
@@ -644,6 +653,20 @@ class BaseSecuritasAlarmPanel(  # type: ignore[override]
             self.update_status_alarm(result)
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()
+            # Force-arm (after exceptions) keeps a different category so the
+            # bypassed-zones state is visible in the timeline.
+            armed_with_exceptions = bool(force_arming_remote_id)
+            await inject_ha_event(
+                self.hass,
+                self._installation,
+                category=(
+                    ActivityCategory.ARMED_WITH_EXCEPTIONS
+                    if armed_with_exceptions
+                    else ActivityCategory.ARMED
+                ),
+                alias=("Armed with exceptions" if armed_with_exceptions else "Armed"),
+                context=self._context,
+            )
         except ArmingExceptionError as exc:
             self._set_force_context(exc, mode)
             self._state = self._last_state
