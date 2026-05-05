@@ -50,6 +50,7 @@ from .securitas_direct_new_api import (
 )
 from .securitas_direct_new_api.command_resolver import (
     AlarmState,
+    AnnexMode,
     CommandResolver,
     CommandStep,
     InteriorMode,
@@ -993,7 +994,9 @@ class _AxisSubPanelMixin:
         joint = self.coordinator.alarm_state  # type: ignore[attr-defined]
         self._state = self._extract_state(joint)  # type: ignore[attr-defined]
 
-    def update_status_alarm(self, status: OperationStatus | None = None) -> None:  # type: ignore[override]
+    def update_status_alarm(  # type: ignore[override]
+        self, status: OperationStatus | None = None
+    ) -> None:
         """Update state after an arm/disarm operation using the joint-state projection."""
         if not self._store_operation_status_metadata(status):  # type: ignore[attr-defined]
             return
@@ -1046,10 +1049,6 @@ class InteriorSecuritasAlarmPanel(_AxisSubPanelMixin, BaseSecuritasAlarmPanel):
 
     def _resolve_target_state(self, ha_state: str) -> AlarmState:
         """Map an HA state to a target AlarmState that touches only the interior axis."""
-        from .securitas_direct_new_api.models import (
-            InteriorMode,
-        )
-
         interior_target_map = {
             "armed_home": InteriorMode.DAY,
             "armed_night": InteriorMode.NIGHT,
@@ -1070,8 +1069,6 @@ class InteriorSecuritasAlarmPanel(_AxisSubPanelMixin, BaseSecuritasAlarmPanel):
 
     def _extract_state(self, joint_state: AlarmState) -> AlarmControlPanelState | None:
         """Project the joint state onto the interior axis only."""
-        from .securitas_direct_new_api.models import InteriorMode
-
         mapping = {
             InteriorMode.OFF: AlarmControlPanelState.DISARMED,
             InteriorMode.DAY: AlarmControlPanelState.ARMED_HOME,
@@ -1103,8 +1100,6 @@ class PerimeterSecuritasAlarmPanel(_AxisSubPanelMixin, BaseSecuritasAlarmPanel):
 
     def _resolve_target_state(self, ha_state: str) -> AlarmState:
         """Map an HA state to a target AlarmState that touches only the perimeter axis."""
-        from .securitas_direct_new_api.models import PerimeterMode
-
         perimeter_target_map = {
             "armed_away": PerimeterMode.ON,
             "disarmed": PerimeterMode.OFF,
@@ -1123,8 +1118,6 @@ class PerimeterSecuritasAlarmPanel(_AxisSubPanelMixin, BaseSecuritasAlarmPanel):
 
     def _extract_state(self, joint_state: AlarmState) -> AlarmControlPanelState | None:
         """Project the joint state onto the perimeter axis only."""
-        from .securitas_direct_new_api.models import PerimeterMode
-
         mapping = {
             PerimeterMode.OFF: AlarmControlPanelState.DISARMED,
             PerimeterMode.ON: AlarmControlPanelState.ARMED_AWAY,
@@ -1154,8 +1147,6 @@ class AnnexSecuritasAlarmPanel(_AxisSubPanelMixin, BaseSecuritasAlarmPanel):
 
     def _resolve_target_state(self, ha_state: str) -> AlarmState:
         """Map an HA state to a target AlarmState that touches only the annex axis."""
-        from .securitas_direct_new_api.models import AnnexMode
-
         annex_target_map = {
             "armed_away": AnnexMode.ON,
             "disarmed": AnnexMode.OFF,
@@ -1174,8 +1165,6 @@ class AnnexSecuritasAlarmPanel(_AxisSubPanelMixin, BaseSecuritasAlarmPanel):
 
     def _extract_state(self, joint_state: AlarmState) -> AlarmControlPanelState | None:
         """Project the joint state onto the annex axis only."""
-        from .securitas_direct_new_api.models import AnnexMode
-
         mapping = {
             AnnexMode.OFF: AlarmControlPanelState.DISARMED,
             AnnexMode.ON: AlarmControlPanelState.ARMED_AWAY,
