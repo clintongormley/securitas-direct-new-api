@@ -214,16 +214,22 @@ on actual API responses, multi-axis state, or hardware configuration.
 
 ## Post-merge follow-ups
 
-- [ ] **Annex commands `ARMANNEX1` / `DARMANNEX1`.** Switched from
-      suffix-less `ARMANNEX` / `DARMANNEX` in
-      [f698cb8](https://github.com/clintongormley/securitas-direct-new-api/commit/f698cb8)
-      to match the Verisure web app's dispatch. Has **never** been tested
-      against a real annex installation — needs a Vatrinus UK user (or
-      anyone with `ARMANNEX`/`DARMANNEX` in their JWT cap) to confirm
-      arm/disarm of the annex axis works. Watch for a 4xx response on
-      the new command names — the resolver's `mark_unsupported` runtime
-      fallback will catch a wrong command name, and a 4xx HA log entry
-      will appear, but there's no fallback to the old form on file.
+- [ ] **Map the four perimeter+annex proto codes.** Issue #441 supplied
+      the table for the four annex-armed-without-perimeter codes
+      (X/R/S/O), now mapped to ANNEX_ONLY / PARTIAL_DAY_ANNEX /
+      PARTIAL_NIGHT_ANNEX / TOTAL_ANNEX in PROTO_TO_STATE. The four
+      perimeter+annex combinations remain unmapped:
+      - PERI_ANNEX (no interior, perimeter on, annex on)
+      - PARTIAL_DAY_PERI_ANNEX
+      - PARTIAL_NIGHT_PERI_ANNEX
+      - TOTAL_PERI_ANNEX
+
+      A user with all three axes (interior + perimeter + annex) can
+      cycle through these and capture the protomResponse code for each,
+      then we add four more rows to PROTO_TO_STATE in
+      `verisure_owa_api/const.py`. Until then the alarm panel falls
+      back to ARMED_CUSTOM_BYPASS for these states with an info-level
+      "unmapped proto code" log line.
 
 - [ ] **Compound transition optimization (optional).** Verisure web app
       uses single-API-call compound commands when transitioning between
