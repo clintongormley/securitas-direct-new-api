@@ -522,6 +522,29 @@ async def test_otp_challenge_api_error_shows_error(hass):
     assert result["errors"] == {"base": "invalid_otp"}
 
 
+async def test_otp_challenge_expired_code_shows_otp_expired_error(hass):
+    """OTP expired (auth-code 10002) re-shows phone list with otp_expired error.
+
+    The API surfaces expiry as a GraphQL error with auth-code 10002 in the
+    response body. The flow should restart 2FA so a fresh code can be sent,
+    not re-show the OTP form with the misleading invalid_otp error.
+    """
+    mock_hub = _hub_factory(two_fa=True)
+    flow_id = await _get_to_otp_step(hass, mock_hub)
+
+    err = VerisureOwaError("OTP expired")
+    err.response_body = {"errors": [{"data": {"auth-code": "10002"}}]}
+    mock_hub.send_sms_code = AsyncMock(side_effect=err)
+
+    with _patches(mock_hub):
+        result = await hass.config_entries.flow.async_configure(
+            flow_id, user_input={CONF_CODE: "123456"}
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {"base": "otp_expired"}
+
+
 async def test_otp_challenge_advances_to_options(hass):
     """After sending SMS code, flow should advance to options step."""
     mock_hub = _hub_factory(two_fa=True)
