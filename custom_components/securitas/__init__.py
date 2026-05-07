@@ -29,6 +29,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     Returns False because we never actually set up the legacy entry —
     we replace it with a new one under verisure_owa and remove this one.
     """
+    # pylint: disable=import-error  # HA loader resolves custom_components.* at runtime; pylint's static analyser can't see the path
     from custom_components.verisure_owa.migrate import migrate_legacy_entry
 
     _LOGGER.warning(
