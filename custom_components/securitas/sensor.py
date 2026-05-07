@@ -65,7 +65,9 @@ async def async_setup_entry(
             "async_manual_refresh",
         )
         # On-demand historical image fetch for image-request events.
-        # Returns base64 JPEG via the response so the card can render inline.
+        # Returns base64-encoded image bytes (any format the panel supplies
+        # — JPEG/PNG/GIF/WebP) plus a sniffed `mime_type` field so the card
+        # can render inline.
         platform.async_register_entity_service(
             "fetch_activity_image",
             {

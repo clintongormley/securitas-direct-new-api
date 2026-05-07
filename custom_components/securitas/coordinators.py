@@ -611,11 +611,16 @@ class ActivityCoordinator(DataUpdateCoordinator[ActivityData]):
     async def async_fetch_event_image(
         self, id_signal: str, signal_type: str
     ) -> bytes | None:
-        """Fetch the JPEG bytes for a specific image-request event.
+        """Fetch the decoded image bytes for a specific image-request event.
+
+        Format may be JPEG, PNG, GIF, or WebP — the caller is responsible
+        for sniffing the magic bytes if it needs the MIME type (the
+        ``fetch_activity_image`` entity service does this and returns
+        ``mime_type`` alongside the payload).
 
         Routes through the API queue at BACKGROUND priority so simultaneous
         clicks across many rows don't starve the alarm/foreground traffic.
-        Returns None if no valid image is available.
+        Returns None if no image is available.
         """
         return await self._queue.submit(
             self._client.get_full_image,
@@ -670,10 +675,16 @@ class ActivityCoordinator(DataUpdateCoordinator[ActivityData]):
         ``id_signal``), the polled timeline returns the same id at the next
         poll.  Drop the polled duplicate so the user sees one row, with the
         injected entry's HA-side context preserved.
+
+        Sort the combined list by ``time`` descending (the panel format
+        ``YYYY-MM-DD HH:MM:SS`` is lexicographically sortable) so a polled
+        event newer than an existing injected one floats above it.
         """
         injected_ids = {e.id_signal for e in injected}
         deduped = [e for e in polled if e.id_signal not in injected_ids]
-        return (injected + deduped)[:_ACTIVITY_TIMELINE_WINDOW]
+        combined = injected + deduped
+        combined.sort(key=lambda e: e.time or "", reverse=True)
+        return combined[:_ACTIVITY_TIMELINE_WINDOW]
 
     def inject_event(self, event: ActivityEvent) -> None:
         """Add a HA-side synthetic event to the front of the timeline.

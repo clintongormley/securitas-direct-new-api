@@ -1321,6 +1321,34 @@ class TestActivityCoordinator:
         assert ids == {"ha-abc", "100"}
 
     @pytest.mark.asyncio
+    async def test_merged_events_are_chronologically_ordered(self):
+        """A polled event with a newer timestamp than an existing injected
+        event should appear above it in the merged list — otherwise the
+        sensor's `events[0]` (and the card's first row) goes stale.
+        """
+        hass = _make_hass()
+        client = _make_client()
+        queue = _make_queue()
+        installation = _make_installation()
+
+        client.get_activity.return_value = []
+        coord = self._make_coordinator(hass, client, queue, installation)
+        await coord._async_update_data()
+
+        # Inject a HA-side action at 14:00.
+        injected = _make_event("ha-1", time="2026-05-05 14:00:00", alias="Armed")
+        coord.inject_event(injected)
+
+        # Next poll returns: a NEWER event (15:00) and an OLDER one (13:00).
+        newer = _make_event("polled-new", time="2026-05-05 15:00:00")
+        older = _make_event("polled-old", time="2026-05-05 13:00:00")
+        client.get_activity.return_value = [newer, older]
+        result = await coord._async_update_data()
+
+        ids = [e.id_signal for e in result.events]
+        assert ids == ["polled-new", "ha-1", "polled-old"]
+
+    @pytest.mark.asyncio
     async def test_injected_events_persist_across_polls(self):
         """Injected events stay in the merged list across subsequent polls."""
         hass = _make_hass()
