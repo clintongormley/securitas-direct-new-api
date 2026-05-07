@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
+from collections.abc import Callable
 from datetime import timedelta
 import logging
 from pathlib import Path
@@ -35,6 +36,8 @@ from .const import (  # noqa: F401 — re-exported for backwards compatibility
     CAMERA_CARD_URL,
     CARD_BASE_URL,
     CARD_URL,
+    EVENTS_CARD_BASE_URL,
+    EVENTS_CARD_URL,
     CONF_ADVANCED,
     CONF_CODE_ARM_REQUIRED,
     CONF_COUNTRY,
@@ -65,11 +68,13 @@ from .const import (  # noqa: F401 — re-exported for backwards compatibility
     SIGNAL_CAMERA_STATE,
 )
 from .coordinators import (
+    ActivityCoordinator,
     AlarmCoordinator,
     CameraCoordinator,
     LockCoordinator,
     SentinelCoordinator,
 )
+from .events import attach_activity_listener
 from .hub import (  # noqa: F401 — re-exported for backwards compatibility
     SecuritasDirectDevice,
     SecuritasHub,
@@ -394,6 +399,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _register_card_resource(
             hass, CAMERA_CARD_BASE_URL, CAMERA_CARD_URL, "camera_card_resource_id"
         )
+        await _register_card_resource(
+            hass, EVENTS_CARD_BASE_URL, EVENTS_CARD_URL, "events_card_resource_id"
+        )
         hass.data.setdefault(DOMAIN, {})["card_registered"] = True
 
     hass.data.setdefault(DOMAIN, {})
@@ -436,6 +444,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         alarm_coord: AlarmCoordinator | None = None
         sentinel_coord: SentinelCoordinator | None = None
         lock_coord: LockCoordinator | None = None
+        activity_coord: ActivityCoordinator | None = None
 
         # Use the first installation for shared coordinators.
         # (Each config entry is scoped to one installation via CONF_INSTALLATION.)
@@ -447,6 +456,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 client.api_queue,
                 first_installation,
                 update_interval=scan_interval,
+                config_entry=entry,
+            )
+
+            activity_coord = ActivityCoordinator(
+                hass,
+                client.client,
+                client.api_queue,
+                first_installation,
                 config_entry=entry,
             )
 
@@ -492,6 +509,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     config_entry=entry,
                 )
 
+        # Wire bus-event emission for the activity timeline at the
+        # integration level (not the sensor level) so `securitas_activity`
+        # automations keep working even if the user disables the
+        # ActivityLogSensor entity.  Attaching here also starts the
+        # coordinator's periodic timer so polling continues for as long as
+        # the integration is loaded; async_unload_entry detaches it.
+        activity_listener_unsub: Callable[[], None] | None = None
+        if activity_coord is not None and devices:
+            activity_listener_unsub = attach_activity_listener(
+                hass, activity_coord, devices[0].installation.number
+            )
+
         # Store per-entry data
         hass.data[DOMAIN][entry.entry_id] = {
             "hub": client,
@@ -499,10 +528,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "alarm_coordinator": alarm_coord,
             "sentinel_coordinator": sentinel_coord,
             "lock_coordinator": lock_coord,
+            "activity_coordinator": activity_coord,
+            "activity_listener_unsub": activity_listener_unsub,
         }
 
-        # Schedule non-blocking first refresh for each coordinator
-        for coord in filter(None, [alarm_coord, sentinel_coord, lock_coord]):
+        # Schedule non-blocking first refresh for each coordinator.
+        for coord in filter(
+            None, [alarm_coord, sentinel_coord, lock_coord, activity_coord]
+        ):
             entry.async_create_background_task(
                 hass,
                 coord.async_refresh(),
@@ -771,7 +804,10 @@ async def _register_card_resource(
                 for item in resources.async_items():
                     url = item.get("url", "")
                     if url == card_url:
-                        return  # Already current version
+                        # Resource already at current version — record its id
+                        # so async_unload_entry can find and remove it.
+                        hass.data.setdefault(DOMAIN, {})[storage_key] = item["id"]
+                        return
                     if url.startswith(base_url):
                         await resources.async_update_item(item["id"], {"url": card_url})
                         hass.data.setdefault(DOMAIN, {})[storage_key] = item["id"]
@@ -817,6 +853,11 @@ async def _unregister_card_resource(
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    entry_data = hass.data.get(DOMAIN, {}).get(config_entry.entry_id, {})
+    activity_listener_unsub = entry_data.get("activity_listener_unsub")
+    if activity_listener_unsub is not None:
+        activity_listener_unsub()
+
     unload_ok = await hass.config_entries.async_unload_platforms(
         config_entry, PLATFORMS
     )
@@ -852,6 +893,9 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
         await _unregister_card_resource(hass, CARD_URL, "card_resource_id")
         await _unregister_card_resource(
             hass, CAMERA_CARD_URL, "camera_card_resource_id"
+        )
+        await _unregister_card_resource(
+            hass, EVENTS_CARD_URL, "events_card_resource_id"
         )
         hass.data.pop(DOMAIN, None)
 

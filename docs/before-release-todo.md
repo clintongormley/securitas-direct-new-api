@@ -1,11 +1,15 @@
 # Before-release manual testing todo
 
-This branch (`subpanels`) introduces the three-axis alarm model and opt-in
-sub-panels. Automated tests cover the unit-level behavior; the items below
-need a real HA install + real Verisure account to validate, since they
-depend on actual API responses, multi-axis state, or hardware configuration.
+This branch combines the `subpanels` work (three-axis alarm model + opt-in
+sub-panels) with the `eventlog` work (xSActV2 activity timeline → events
+bus, sensor, Lovelace card). Automated tests cover the unit-level
+behavior; the items below need a real HA install + real Verisure account
+to validate, since they depend on actual API responses, multi-axis
+state, or hardware configuration.
 
 ## Required before merge
+
+### Sub-panel work
 
 - [ ] **Sub-panel disarm preserves siblings.** Pressing Disarm on the
       Perimeter (or Annex) sub-panel must disarm only that axis, leaving
@@ -43,6 +47,64 @@ depend on actual API responses, multi-axis state, or hardware configuration.
       entity must disappear from the entity registry / dashboard.
       Re-enable: entity reappears.
 
+### Activity log work
+
+- [ ] **An HA automation can be triggered by `securitas_activity`
+      events.** The integration documents these as the primary
+      automation entrypoint, but no one has wired one up on a real
+      install yet. Create an automation in the UI:
+
+      ```yaml
+      trigger:
+        - platform: event
+          event_type: securitas_activity
+          event_data:
+            category: alarm   # or tampering / sabotage / disarmed / …
+      action:
+        - service: notify.persistent_notification
+          data:
+            message: "fired: {{ trigger.event.data.alias }}"
+      ```
+
+      Trigger that category from the panel (or app) and confirm the
+      notification fires once. Then add the documented "skip
+      HA-issued" template condition and confirm it skips events
+      injected from HA (arm/disarm via the alarm panel entity) but
+      still fires for panel/app-originated activity:
+
+      ```yaml
+      condition:
+        - condition: template
+          value_template: "{{ not trigger.event.data.injected }}"
+      ```
+
+- [ ] **Force-arm injects `armed_with_exceptions` with the exception
+      list.** Trigger an arm with an open sensor → expect the integration
+      to surface the persistent notification with Force Arm. Press Force
+      Arm. The activity timeline should show:
+      - an entry with category `armed_with_exceptions` (HA badge), and
+      - the open zone(s) listed inline when the row is expanded
+      - `event.exceptions[]` populated on the bus event
+      Then trigger a hard arm failure (5802/5824) and confirm an
+      `arming_failed` row appears with the exceptions list.
+
+- [ ] **Disabling the activity log sensor does not break bus events.**
+      Originally the `securitas_activity` listener was attached inside
+      `ActivityLogSensor.async_added_to_hass`, so disabling the sensor
+      entity in the entity registry silently killed all bus events too.
+      Commit `a084e19` moved the listener to `async_setup_entry` so it
+      lives for the lifetime of the integration. Unit tests cover the
+      decoupling, but the actual HA "disable entity" path isn't
+      automation-testable. Sanity check on a real install:
+      1. Set up an automation that listens for `securitas_activity`
+         (any category) and writes a persistent notification.
+      2. Disable `sensor.<alias>_activity_log` in
+         Settings → Devices & Services → Entities.
+      3. Arm / disarm at the panel.
+      4. Confirm the notification still fires.
+
+      Then re-enable the sensor.
+
 ## Post-merge follow-ups
 
 - [ ] **Annex commands `ARMANNEX1` / `DARMANNEX1`.** Switched from
@@ -65,6 +127,16 @@ depend on actual API responses, multi-axis state, or hardware configuration.
       fire HA automations. Decoded JS analysis in
       `docs/handoffs/2026-05-05-verisure-web-dispatch-findings.md`
       (gitignored).
+
+- [ ] **Activity log: catalogue smart-lock event types.** Lock/unlock
+      actions surfaced in `xSActV2` haven't been catalogued — no entries
+      in `_ACTIVITY_TYPE_TO_CATEGORY` and no `lock_*` categories in
+      `ActivityCategory`. Capture fixtures for HA-issued and
+      panel/app-issued lock + unlock, then add categories + type-code
+      mappings + injection from `lock.py` (mirroring how
+      `alarm_control_panel.py` injects arm/disarm). Until then, lock
+      events surface as either a `unknown`-category polled row or
+      nothing at all.
 
 ## Done
 
