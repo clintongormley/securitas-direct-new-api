@@ -396,14 +396,6 @@ class BaseSecuritasAlarmPanel(  # type: ignore[override]
             )
         return result
 
-    def _build_operation_status(self, result: OperationStatus) -> OperationStatus:
-        """Build OperationStatus from an arm/disarm result."""
-        return OperationStatus(
-            operation_status=getattr(result, "operation_status", ""),
-            message=getattr(result, "message", ""),
-            protom_response=result.protom_response,
-        )
-
     def _handle_arm_disarm_error(
         self, err: SecuritasDirectError, translation_key: str
     ) -> None:
@@ -521,9 +513,10 @@ class BaseSecuritasAlarmPanel(  # type: ignore[override]
                     raise
                 if err.http_status == 409:
                     raise  # Server busy — don't try alternatives
-                if err.http_status is not None:
-                    # GraphQL validation error (e.g. BAD_USER_INPUT) —
-                    # command not in panel's enum, mark as unsupported
+                if err.http_status is not None and 400 <= err.http_status < 500:
+                    # 4xx (BAD_USER_INPUT, "command not valid for panel", etc.)
+                    # — command not in panel's enum, mark as unsupported and
+                    # try the next alternative.
                     _LOGGER.info(
                         "Command %s not supported by panel (status %s),"
                         " trying next alternative: %s",
@@ -533,9 +526,10 @@ class BaseSecuritasAlarmPanel(  # type: ignore[override]
                     )
                     self._resolver.mark_unsupported(command)
                 else:
-                    # Panel-level error (e.g. TECHNICAL_ERROR after polling) —
-                    # panel communication failure, not a command issue.
-                    # Don't try alternatives (they'll likely also fail).
+                    # 5xx server error or panel-level error (e.g.
+                    # TECHNICAL_ERROR after polling) — transient/communication
+                    # failure, not a command issue. Don't blacklist the command
+                    # and don't try alternatives (they'll likely also fail).
                     raise
                 last_err = err
 
@@ -608,7 +602,7 @@ class BaseSecuritasAlarmPanel(  # type: ignore[override]
             target = self._resolve_target_state("disarmed")
             result = await self._execute_transition(target)
             self._set_waf_blocked(False)
-            self.update_status_alarm(self._build_operation_status(result))
+            self.update_status_alarm(result)
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()
         except SecuritasDirectError as err:
@@ -647,7 +641,7 @@ class BaseSecuritasAlarmPanel(  # type: ignore[override]
             target = self._resolve_target_state(mode)
             result = await self._execute_transition(target, **force_params)
             self._set_waf_blocked(False)
-            self.update_status_alarm(self._build_operation_status(result))
+            self.update_status_alarm(result)
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()
         except ArmingExceptionError as exc:
@@ -657,9 +651,7 @@ class BaseSecuritasAlarmPanel(  # type: ignore[override]
             self.async_write_ha_state()
         except SecuritasDirectError as err:
             if self._last_arm_result.protom_response:
-                self.update_status_alarm(
-                    self._build_operation_status(self._last_arm_result)
-                )
+                self.update_status_alarm(self._last_arm_result)
             else:
                 self._state = self._last_state
             _LOGGER.error(

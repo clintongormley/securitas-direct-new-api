@@ -2255,6 +2255,59 @@ class TestCompoundArmCommands:
         assert "ARMNIGHT1PERI1" in alarm._resolver.unsupported
         assert alarm._state == AlarmControlPanelState.DISARMED
 
+    async def test_disarm_preserves_protom_response_data_in_state_attrs(self):
+        """OperationStatus fields beyond protom_response (notably
+        protom_response_data) must survive the disarm path. _build_operation_status
+        used to drop everything except operation_status/message/protom_response,
+        which broke `update_status_alarm`'s `response_data` extra-state-attribute.
+        """
+        alarm = make_alarm()
+        alarm._state = AlarmControlPanelState.ARMED_AWAY
+        alarm._last_proto_code = "T"
+
+        alarm.client.disarm_alarm = AsyncMock(
+            return_value=OperationStatus(
+                operation_status="OK",
+                message="",
+                status="",
+                installation_number="123456",
+                protom_response="D",
+                protom_response_data="2026-05-07T12:00:00Z",
+            )
+        )
+
+        await alarm.async_alarm_disarm()
+
+        assert (
+            alarm._attr_extra_state_attributes.get("response_data")
+            == "2026-05-07T12:00:00Z"
+        )
+
+    async def test_5xx_error_does_not_mark_command_unsupported(self):
+        """Transient 5xx server errors must not permanently blacklist valid commands.
+
+        Marking on any non-None status would let a one-off 503 freeze a working
+        command for the rest of the HA session. set_arm_state catches the
+        SecuritasDirectError; the observable is that the command is NOT in
+        the unsupported set and only one API call was attempted (no fallback
+        cascade).
+        """
+        alarm = make_alarm(config=_night_peri_config())
+        alarm._state = AlarmControlPanelState.ARMING
+        alarm._last_state = AlarmControlPanelState.DISARMED
+
+        alarm.client.arm_alarm = AsyncMock(
+            side_effect=SecuritasDirectError("Internal server error", http_status=503)
+        )
+
+        # set_arm_state catches and handles SecuritasDirectError internally
+        await alarm.set_arm_state(AlarmControlPanelState.ARMED_NIGHT)
+
+        # Command must NOT be marked unsupported on transient server errors
+        assert "ARMNIGHT1PERI1" not in alarm._resolver.unsupported
+        # No fallback cascade — first attempt should re-raise immediately
+        assert alarm.client.arm_alarm.call_count == 1
+
     async def test_non_compound_command_sent_directly(self):
         """Non-compound commands (e.g. ARMNIGHT1) are sent as-is."""
         alarm = make_alarm(has_peri=True)
