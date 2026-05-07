@@ -443,7 +443,7 @@ async def test_phone_list_fallback_selection_by_phone_name(hass):
     mock_hub = _hub_factory()
     flow = FlowHandler()
     flow.hass = hass
-    flow.securitas = mock_hub
+    flow.hub = mock_hub
     flow.otp_challenge = ("otp-hash-abc", MOCK_PHONES)
 
     # Simulate user_input with a key that cannot be parsed as integer index
