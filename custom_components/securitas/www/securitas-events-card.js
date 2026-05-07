@@ -569,6 +569,17 @@ class SecuritasEventsCard extends HTMLElement {
     const visible = events.filter((ev) => !hidden.has(ev.category || "unknown"));
     const limited = visible.slice(0, this._config.limit);
     this._latestEvents = limited;
+
+    // Prune per-row state for events that have scrolled out of view —
+    // otherwise _expanded and _imageCache grow unboundedly across days
+    // (image cache entries hold the full data URL, not just a flag).
+    const visibleIds = new Set(limited.map((ev) => String(ev.id_signal || "")));
+    for (const id of this._expanded) {
+      if (!visibleIds.has(id)) this._expanded.delete(id);
+    }
+    for (const id of this._imageCache.keys()) {
+      if (!visibleIds.has(id)) this._imageCache.delete(id);
+    }
     const body = limited.length
       ? limited.map((ev) => this._renderRow(ev, lang)).join("")
       : `<div class="empty">${_escHtml(_t(lang, "no_events"))}</div>`;
@@ -582,36 +593,45 @@ class SecuritasEventsCard extends HTMLElement {
         this._handleRefresh();
       });
     }
-    // Wire row clicks
+    // Wire row activation — click for mouse, Enter/Space for keyboard.
+    const toggleRow = (row) => {
+      const id = row.dataset.id;
+      if (!id) return;
+      const details = this.shadowRoot.querySelector(`.details-row[data-id="${CSS.escape(id)}"]`);
+      if (this._expanded.has(id)) {
+        this._expanded.delete(id);
+        row.classList.remove("expanded");
+        row.setAttribute("aria-expanded", "false");
+        if (details) details.classList.remove("expanded");
+      } else {
+        this._expanded.add(id);
+        row.classList.add("expanded");
+        row.setAttribute("aria-expanded", "true");
+        if (details) details.classList.add("expanded");
+        // Lazy-fetch the historical image for image-request events.
+        // Skip synthetic ids (prefix `ha-`) — those are HA-side
+        // placeholders the Verisure server can't resolve.  Injected
+        // events from the capture button use the real server id, so
+        // the fetch works for them too.
+        const event = this._latestEvents.find(
+          (e) => String(e.id_signal || "") === id
+        );
+        if (
+          event &&
+          event.category === "image_request" &&
+          !id.startsWith("ha-") &&
+          !this._imageCache.has(id)
+        ) {
+          this._fetchEventImage(event);
+        }
+      }
+    };
     this.shadowRoot.querySelectorAll(".event").forEach((row) => {
-      row.addEventListener("click", () => {
-        const id = row.dataset.id;
-        if (!id) return;
-        const details = this.shadowRoot.querySelector(`.details-row[data-id="${CSS.escape(id)}"]`);
-        if (this._expanded.has(id)) {
-          this._expanded.delete(id);
-          row.classList.remove("expanded");
-          if (details) details.classList.remove("expanded");
-        } else {
-          this._expanded.add(id);
-          row.classList.add("expanded");
-          if (details) details.classList.add("expanded");
-          // Lazy-fetch the historical image for image-request events.
-          // Skip synthetic ids (prefix `ha-`) — those are HA-side
-          // placeholders the Verisure server can't resolve.  Injected
-          // events from the capture button use the real server id, so
-          // the fetch works for them too.
-          const event = this._latestEvents.find(
-            (e) => String(e.id_signal || "") === id
-          );
-          if (
-            event &&
-            event.category === "image_request" &&
-            !id.startsWith("ha-") &&
-            !this._imageCache.has(id)
-          ) {
-            this._fetchEventImage(event);
-          }
+      row.addEventListener("click", () => toggleRow(row));
+      row.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleRow(row);
         }
       });
     });
@@ -673,8 +693,9 @@ class SecuritasEventsCard extends HTMLElement {
     const injectedBadge = isInjected
       ? `<ha-icon class="injected-badge" icon="mdi:home-assistant" title="${_escHtml(_t(lang, "from_home_assistant"))}"></ha-icon>`
       : "";
+    const detailsId = `details-${_escHtml(id)}`;
     return `
-      <div class="event${isExpanded ? " expanded" : ""}${isInjected ? " injected" : ""}" data-id="${_escHtml(id)}">
+      <div class="event${isExpanded ? " expanded" : ""}${isInjected ? " injected" : ""}" data-id="${_escHtml(id)}" role="button" tabindex="0" aria-expanded="${isExpanded}" aria-controls="${detailsId}">
         <ha-icon icon="${_escHtml(icon)}" style="color:${color}"></ha-icon>
         <div class="meta">
           <div class="line1">
@@ -684,7 +705,7 @@ class SecuritasEventsCard extends HTMLElement {
         </div>
         <div class="time" title="${_escHtml(event.time || "")}">${_escHtml(rel)}</div>
       </div>
-      <div class="details-row ${isExpanded ? "expanded" : ""}" data-id="${_escHtml(id)}">
+      <div class="details-row ${isExpanded ? "expanded" : ""}" id="${detailsId}" data-id="${_escHtml(id)}">
         ${this._renderDetails(event, lang)}
       </div>
     `;
@@ -789,6 +810,10 @@ class SecuritasEventsCard extends HTMLElement {
         }
         .event:first-of-type { border-top: 0; }
         .event:hover { background: var(--secondary-background-color, rgba(0,0,0,.03)); }
+        .event:focus-visible {
+          outline: 2px solid var(--primary-color, #03a9f4);
+          outline-offset: -2px;
+        }
         .event ha-icon { --mdc-icon-size: 24px; }
         .meta { min-width: 0; }
         .line1 {
