@@ -157,6 +157,7 @@ async def test_setup_makes_only_expected_api_calls(
     ):
         mock_fwd.return_value = True
         await async_setup_entry(hass, entry)
+    _SETUP_ENTRIES.append((hass, entry))
 
     operations = [op for op, _, _ in mock_server.calls]
     # The first three calls are the synchronous setup path.
