@@ -97,10 +97,19 @@ class CommandResolver:
     resets on HA restart) and skips them in future resolutions.
     """
 
-    def __init__(self, has_peri: bool, has_annex: bool = False) -> None:
+    def __init__(self, has_peri: bool) -> None:
         self._has_peri = has_peri
-        self._has_annex = has_annex
         self._unsupported: set[str] = set()
+
+    def update_capabilities(self, *, has_peri: bool) -> None:
+        """Refresh capability flags after late capability detection.
+
+        Capability detection can be deferred (e.g. transient API errors at
+        startup that succeed on retry). The resolver is constructed before
+        that retry, so the entity calls this on every coordinator update so
+        the resolver picks up newly-populated flags.
+        """
+        self._has_peri = has_peri
 
     def mark_unsupported(self, command: str) -> None:
         """Record that a command is not supported by this panel."""

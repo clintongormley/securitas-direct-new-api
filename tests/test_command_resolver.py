@@ -132,6 +132,29 @@ class TestCommandResolverDisarm:
         assert steps[0].commands == ["DARM1"]
 
 
+class TestCommandResolverCapabilityRefresh:
+    """Test that the resolver picks up late capability population.
+
+    Capability detection can be deferred (e.g. when get_services fails on
+    startup and retries succeed on the first refresh). The entity's resolver
+    is constructed before that retry, so it must be refreshable to avoid
+    being permanently stuck with stale flags.
+    """
+
+    def test_update_capabilities_takes_effect_for_subsequent_resolve(self):
+        # Constructed before capabilities were populated (has_peri=False)
+        resolver = CommandResolver(has_peri=False)
+
+        # Capability detection succeeds on a later refresh
+        resolver.update_capabilities(has_peri=True)
+
+        # Disarming a peri-armed state must now use peri-aware commands
+        current = AlarmState(interior=InteriorMode.OFF, perimeter=PerimeterMode.ON)
+        target = AlarmState(interior=InteriorMode.OFF, perimeter=PerimeterMode.OFF)
+        steps = resolver.resolve(current, target)
+        assert steps[0].commands == ["DARMPERI", "DARM1"]
+
+
 class TestCommandResolverArm:
     """Test arm transition resolution."""
 
@@ -293,16 +316,8 @@ class TestSecuritasStateAnnexMappings:
 
 
 class TestAnnexResolution:
-    def test_resolver_accepts_has_annex(self):
-        r = CommandResolver(has_peri=False, has_annex=True)
-        assert r._has_annex is True
-
-    def test_resolver_has_annex_defaults_false_for_backcompat(self):
-        r = CommandResolver(has_peri=False)  # no has_annex kwarg
-        assert r._has_annex is False
-
     def test_arm_annex_only(self):
-        r = CommandResolver(has_peri=False, has_annex=True)
+        r = CommandResolver(has_peri=False)
         steps = r.resolve(
             current=AlarmState(
                 interior=InteriorMode.OFF,
@@ -319,7 +334,7 @@ class TestAnnexResolution:
         assert "ARMANNEX1" in steps[0].commands
 
     def test_disarm_annex_only(self):
-        r = CommandResolver(has_peri=False, has_annex=True)
+        r = CommandResolver(has_peri=False)
         steps = r.resolve(
             current=AlarmState(
                 interior=InteriorMode.OFF,
@@ -338,7 +353,7 @@ class TestAnnexResolution:
 
 class TestMultiAxisAnnexTransitions:
     def test_arm_interior_total_and_annex_from_off(self):
-        r = CommandResolver(has_peri=False, has_annex=True)
+        r = CommandResolver(has_peri=False)
         steps = r.resolve(
             current=AlarmState(
                 interior=InteriorMode.OFF,
@@ -356,7 +371,7 @@ class TestMultiAxisAnnexTransitions:
         assert "ARMANNEX1" in cmds
 
     def test_disarm_only_annex_keeping_interior(self):
-        r = CommandResolver(has_peri=False, has_annex=True)
+        r = CommandResolver(has_peri=False)
         steps = r.resolve(
             current=AlarmState(
                 interior=InteriorMode.TOTAL,

@@ -107,9 +107,6 @@ async def async_setup_entry(
         alarms.append(combined)
         all_entities.append(combined)
 
-        peri_added = False
-        annex_added = False
-
         if enable_peri and coordinator.has_peri:
             all_entities.append(
                 PerimeterSecuritasAlarmPanel(
@@ -119,7 +116,6 @@ async def async_setup_entry(
                     coordinator=coordinator,
                 )
             )
-            peri_added = True
 
         if enable_annex and coordinator.has_annex:
             all_entities.append(
@@ -130,9 +126,8 @@ async def async_setup_entry(
                     coordinator=coordinator,
                 )
             )
-            annex_added = True
 
-        if enable_interior and (peri_added or annex_added):
+        if enable_interior and (coordinator.has_peri or coordinator.has_annex):
             all_entities.append(
                 InteriorSecuritasAlarmPanel(
                     devices.installation,
@@ -191,10 +186,7 @@ class BaseSecuritasAlarmPanel(  # type: ignore[override]
         self._has_peri = coordinator.has_peri
         self._has_annex = coordinator.has_annex
         self._last_proto_code: str | None = None
-        self._resolver = CommandResolver(
-            has_peri=self._has_peri,
-            has_annex=self._has_annex,
-        )
+        self._resolver = CommandResolver(has_peri=self._has_peri)
 
         # Build outgoing map: HA state -> API command string
         # Build incoming map: protomResponse code -> HA state
@@ -302,6 +294,9 @@ class BaseSecuritasAlarmPanel(  # type: ignore[override]
 
     def _update_from_coordinator(self, data: AlarmStatusData) -> None:
         """Update internal state from coordinator data."""
+        # Refresh resolver capabilities — they may have been populated late
+        # (e.g. transient API error at startup, retry succeeds on first refresh).
+        self._resolver.update_capabilities(has_peri=self.coordinator.has_peri)
         status = data.status
         if not status.status:
             return
@@ -992,6 +987,10 @@ class _AxisSubPanelMixin:
         Uses PROTO_TO_ALARM_STATE (12 entries — includes annex codes X/R/S/O)
         not const.PROTO_TO_STATE (8 entries — pre-annex).
         """
+        # Refresh resolver capabilities — they may have been populated late.
+        self._resolver.update_capabilities(  # type: ignore[attr-defined]
+            has_peri=self.coordinator.has_peri  # type: ignore[attr-defined]
+        )
         status = data.status
         if not status.status:
             return

@@ -4188,6 +4188,30 @@ class TestSubPanelStateExtraction:
         assert panel._state == AlarmControlPanelState.DISARMED
 
 
+class TestResolverCapabilityRefresh:
+    """The resolver is built at entity construction; capability detection
+    can complete *after* that (e.g. transient API errors at startup that
+    succeed on retry). The entity must refresh the resolver's flags from
+    the coordinator on each update so it doesn't get stuck with stale flags.
+    """
+
+    def test_entity_refreshes_resolver_has_peri_on_coordinator_update(self):
+        """When coordinator.has_peri flips False→True after entity construction,
+        the next coordinator update must propagate the new flag to the resolver.
+        """
+        alarm = make_alarm(has_peri=False)
+        assert alarm._resolver._has_peri is False
+
+        # Capability detection now succeeds on a later refresh
+        alarm.coordinator.has_peri = True
+
+        # Coordinator delivers an update — entity must propagate
+        data = AlarmStatusData(status=SStatus(status="D"), protom_response="D")
+        alarm._update_from_coordinator(data)
+
+        assert alarm._resolver._has_peri is True
+
+
 # ===========================================================================
 # TestSubPanelSetup — conditional instantiation in async_setup_entry (Task 16)
 # ===========================================================================
@@ -4314,8 +4338,15 @@ class TestSubPanelSetup:
         assert not any(isinstance(p, AnnexSecuritasAlarmPanel) for p in added)
 
     @pytest.mark.asyncio
-    async def test_interior_panel_requires_sibling(self):
-        # interior toggle on, but no sibling toggle/cap → no interior panel
+    async def test_interior_panel_created_when_capability_present_no_siblings_enabled(
+        self,
+    ):
+        """Interior panel must be creatable standalone when any sibling
+        capability is present, without requiring the user to also enable
+        the Perimeter or Annex toggle. The Interior toggle was made
+        capability-gated (not toggle-gated) in the options flow; the
+        entity-creation guard must match.
+        """
         from custom_components.securitas.alarm_control_panel import (
             async_setup_entry,
             InteriorSecuritasAlarmPanel,
@@ -4325,7 +4356,34 @@ class TestSubPanelSetup:
         hass, entry = self._setup_kwargs(
             options={CONF_ENABLE_INTERIOR_PANEL: True},
             has_peri=True,
-            has_annex=True,
+            has_annex=False,
+        )
+        added: list = []
+
+        def add(entities, _update_before_add=False):
+            added.extend(entities)
+
+        with patch(
+            "custom_components.securitas.alarm_control_panel.async_get_current_platform"
+        ):
+            await async_setup_entry(hass, entry, add)
+        assert any(isinstance(p, InteriorSecuritasAlarmPanel) for p in added)
+
+    @pytest.mark.asyncio
+    async def test_interior_panel_hidden_without_any_sibling_capability(self):
+        """Interior panel must NOT be created when neither perimeter nor annex
+        capability exists — the combined panel already drives the interior axis.
+        """
+        from custom_components.securitas.alarm_control_panel import (
+            async_setup_entry,
+            InteriorSecuritasAlarmPanel,
+        )
+        from custom_components.securitas.const import CONF_ENABLE_INTERIOR_PANEL
+
+        hass, entry = self._setup_kwargs(
+            options={CONF_ENABLE_INTERIOR_PANEL: True},
+            has_peri=False,
+            has_annex=False,
         )
         added: list = []
 
