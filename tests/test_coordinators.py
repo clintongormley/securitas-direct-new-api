@@ -796,6 +796,7 @@ class TestCoordinatorCapabilities:
         # Assert: client.get_services was NOT called (no redundant API hit)
         client.get_services.assert_not_awaited()
 
+
 # ── ActivityCoordinator ──────────────────────────────────────────────────────
 
 
@@ -1438,4 +1439,3 @@ class TestActivityCoordinator:
         result = await coord._async_update_data()
 
         assert all(e.id_signal != "ha-abc" for e in result.new_events)
-
