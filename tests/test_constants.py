@@ -166,10 +166,16 @@ class TestProtoToState:
         "C": VerisureOwaState.PARTIAL_NIGHT_PERI,
         "T": VerisureOwaState.TOTAL,
         "A": VerisureOwaState.TOTAL_PERI,
+        # Annex-armed codes — source: issue #441 status-code table.
+        # (Annex + perimeter combos are not yet observed in any capture.)
+        "X": VerisureOwaState.ANNEX_ONLY,           # main disarmed, annex armed
+        "R": VerisureOwaState.PARTIAL_DAY_ANNEX,    # main day,      annex armed
+        "S": VerisureOwaState.PARTIAL_NIGHT_ANNEX,  # main night,    annex armed
+        "O": VerisureOwaState.TOTAL_ANNEX,          # main total,    annex armed
     }
 
-    def test_has_eight_protocol_codes(self):
-        assert len(PROTO_TO_STATE) == 8
+    def test_has_twelve_protocol_codes(self):
+        assert len(PROTO_TO_STATE) == 12
 
     @pytest.mark.parametrize(
         ("code", "expected_state"),
