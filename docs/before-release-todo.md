@@ -49,13 +49,34 @@ state, or hardware configuration.
 
 ### Activity log work
 
-- [ ] **Automation triggers on `securitas_activity` bus events.** Build
-      an automation triggered by `securitas_activity` with
-      `event_data.category: alarm`. Trigger an alarm (or a tampering /
-      sabotage event if alarm-testing isn't an option) and confirm the
-      automation fires once. Then add the documented `injected: false`
-      template condition and confirm it skips HA-issued events but still
-      fires for panel/app actions.
+- [ ] **An HA automation can be triggered by `securitas_activity`
+      events.** The integration documents these as the primary
+      automation entrypoint, but no one has wired one up on a real
+      install yet. Create an automation in the UI:
+
+      ```yaml
+      trigger:
+        - platform: event
+          event_type: securitas_activity
+          event_data:
+            category: alarm   # or tampering / sabotage / disarmed / …
+      action:
+        - service: notify.persistent_notification
+          data:
+            message: "fired: {{ trigger.event.data.alias }}"
+      ```
+
+      Trigger that category from the panel (or app) and confirm the
+      notification fires once. Then add the documented "skip
+      HA-issued" template condition and confirm it skips events
+      injected from HA (arm/disarm via the alarm panel entity) but
+      still fires for panel/app-originated activity:
+
+      ```yaml
+      condition:
+        - condition: template
+          value_template: "{{ not trigger.event.data.injected }}"
+      ```
 
 - [ ] **Force-arm injects `armed_with_exceptions` with the exception
       list.** Trigger an arm with an open sensor → expect the integration
@@ -67,11 +88,22 @@ state, or hardware configuration.
       Then trigger a hard arm failure (5802/5824) and confirm an
       `arming_failed` row appears with the exceptions list.
 
-- [ ] **Disabling the activity log sensor does not stop bus events.**
-      Disable `sensor.<alias>_activity_log` in the entity registry, then
-      arm/disarm at the panel. The `securitas_activity` event must still
-      fire on the bus (architecturally decoupled from the sensor
-      lifecycle, but worth a manual check).
+- [ ] **Disabling the activity log sensor does not break bus events.**
+      Originally the `securitas_activity` listener was attached inside
+      `ActivityLogSensor.async_added_to_hass`, so disabling the sensor
+      entity in the entity registry silently killed all bus events too.
+      Commit `a084e19` moved the listener to `async_setup_entry` so it
+      lives for the lifetime of the integration. Unit tests cover the
+      decoupling, but the actual HA "disable entity" path isn't
+      automation-testable. Sanity check on a real install:
+      1. Set up an automation that listens for `securitas_activity`
+         (any category) and writes a persistent notification.
+      2. Disable `sensor.<alias>_activity_log` in
+         Settings → Devices & Services → Entities.
+      3. Arm / disarm at the panel.
+      4. Confirm the notification still fires.
+
+      Then re-enable the sensor.
 
 ## Post-merge follow-ups
 
