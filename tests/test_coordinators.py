@@ -1218,6 +1218,59 @@ class TestActivityCoordinator:
             cm.Store = original_store
 
     @pytest.mark.asyncio
+    async def test_first_poll_loads_persisted_before_baselining(self):
+        """If `_async_update_data` runs before any external load (e.g. the
+        coordinator's eager-refresh background task wins the race against
+        the sensor's `async_added_to_hass`), it must still fold restored
+        injected events into the first-poll baseline — otherwise the next
+        poll would treat them as new and re-fire them on the bus.
+        """
+        hass = _make_hass()
+        client = _make_client()
+        queue = _make_queue()
+        installation = _make_installation()
+
+        from custom_components.securitas.coordinators import ActivityCoordinator
+
+        persisted_event = _make_event(
+            "ha-1", time="2026-05-05 14:00:00", alias="Armed by Clinton"
+        )
+
+        class _StubStore:
+            def __init__(self, *_a, **_k):
+                pass
+
+            async def async_load(self):
+                return {"events": [persisted_event.model_dump()]}
+
+            async def async_save(self, _data):
+                pass
+
+        import custom_components.securitas.coordinators as cm
+
+        original_store = cm.Store
+        cm.Store = _StubStore  # type: ignore[assignment]
+        try:
+            polled_event = _make_event("polled-1", time="2026-05-05 13:00:00")
+            client.get_activity.return_value = [polled_event]
+
+            coord = ActivityCoordinator(hass, client, queue, installation)
+            # No external async_load_persisted() call — simulate the race.
+            first = await coord._async_update_data()
+
+            # Restored injected event surfaced on the first poll.
+            assert {e.id_signal for e in first.events} == {"ha-1", "polled-1"}
+            # Silent first poll: no bus fires.
+            assert first.new_events == []
+
+            # A subsequent poll with the same data must NOT refire the
+            # restored injected event.
+            second = await coord._async_update_data()
+            assert second.new_events == []
+        finally:
+            cm.Store = original_store
+
+    @pytest.mark.asyncio
     async def test_async_load_persisted_is_idempotent(self):
         """Calling load twice doesn't double-load."""
         hass = _make_hass()

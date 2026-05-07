@@ -493,23 +493,11 @@ class SecuritasEventsCard extends HTMLElement {
   }
 
   async _callServiceWithResponse(domain, service, data) {
-    // Try the modern positional signature first (returnResponse as 6th arg);
-    // fall back to callWS for older HA frontends that don't support it.
-    try {
-      const resp = await this._hass.callService(
-        domain,
-        service,
-        data,
-        undefined,
-        false,
-        true,
-      );
-      if (resp && (resp.response || resp.service_response)) {
-        return resp.response || resp.service_response;
-      }
-    } catch (e) {
-      // fall through to callWS
-    }
+    // Use callWS directly: hass.callService on older frontends silently
+    // ignores the returnResponse arg (executes the service but returns
+    // undefined), and a try/callService-then-fallback pattern would end
+    // up calling the rate-limited service twice.  callWS has had a
+    // stable return_response contract for years.
     try {
       const resp = await this._hass.callWS({
         type: "call_service",

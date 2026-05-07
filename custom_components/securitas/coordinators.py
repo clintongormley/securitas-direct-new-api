@@ -631,6 +631,14 @@ class ActivityCoordinator(DataUpdateCoordinator[ActivityData]):
         )
 
     async def _async_update_data(self) -> ActivityData:
+        # Restore persisted injected events before baselining.  If a sensor
+        # already called async_load_persisted in async_added_to_hass, this
+        # is a cheap no-op (idempotent via _persisted_loaded).  Doing it
+        # here too closes the race where the eager-refresh background task
+        # wins over the sensor lifecycle and would otherwise leave restored
+        # events out of the first-poll baseline — causing them to re-fire
+        # on the bus on the next poll.
+        await self.async_load_persisted()
         try:
             events = await self._fetch()
         except SessionExpiredError:
