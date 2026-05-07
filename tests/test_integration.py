@@ -58,10 +58,18 @@ def _make_entry(hass: HomeAssistant, **overrides) -> MockConfigEntry:
     return entry
 
 
+_SETUP_ENTRIES: list[tuple[HomeAssistant, MockConfigEntry]] = []
+
+
 async def _setup(
     hass: HomeAssistant, server: MockGraphQLServer
 ) -> tuple[MockConfigEntry, bool]:
-    """Create an entry and run full async_setup_entry with the mock server."""
+    """Create an entry and run full async_setup_entry with the mock server.
+
+    The entry is tracked for teardown by ``_unload_setup_entries`` (autouse
+    fixture) so the activity coordinator's periodic-refresh timer doesn't
+    leak between tests.
+    """
     entry = _make_entry(hass)
     mock_http = server.make_http_client()
     with patch(
@@ -73,7 +81,21 @@ async def _setup(
         ) as mock_fwd:
             mock_fwd.return_value = True
             result = await async_setup_entry(hass, entry)
+    _SETUP_ENTRIES.append((hass, entry))
     return entry, result
+
+
+@pytest.fixture(autouse=True)
+async def _unload_setup_entries():
+    """Unload any entries created via ``_setup`` to release coordinator timers."""
+    yield
+    while _SETUP_ENTRIES:
+        hass, entry = _SETUP_ENTRIES.pop()
+        if hass.data.get(DOMAIN, {}).get(entry.entry_id) is not None:
+            try:
+                await async_unload_entry(hass, entry)
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
 
 
 # ── Setup & entity creation ───────────────────────────────────────────────────

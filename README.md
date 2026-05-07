@@ -526,7 +526,7 @@ Useful fields on `trigger.event.data`:
 | `verisure_user` | The Verisure account name that performed the action, if any. |
 | `injected` | `true` if this event came from a Home Assistant action (see below). |
 
-#### "Who armed it?" example
+#### "Who disarmed it?" example
 
 ```yaml
 trigger:
@@ -546,11 +546,12 @@ When you arm, disarm, or request an image **from Home Assistant** (the card, an 
 
 The matching event polled back from the panel ~60 seconds later is suppressed: it doesn't appear in the log and it doesn't fire on the event bus, so your automations only run once per action.
 
-If you specifically want to react **only** to actions taken outside Home Assistant (at the panel, in the Verisure app, etc.), exclude the injected entries:
+If you specifically want to react **only** to actions taken outside Home Assistant (at the panel, in the Verisure app, etc.), exclude the injected entries with a template condition:
 
 ```yaml
 condition:
-  - "{{ not trigger.event.data.injected }}"
+  - condition: template
+    value_template: "{{ not trigger.event.data.injected }}"
 ```
 
 ### Unknown events — please report them
