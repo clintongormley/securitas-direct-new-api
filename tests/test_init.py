@@ -62,8 +62,6 @@ from tests.conftest import (
     make_securitas_hub_mock,
 )
 
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helper: patch SecuritasHub preserving __name__
