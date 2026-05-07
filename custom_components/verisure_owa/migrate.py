@@ -7,8 +7,10 @@ already-migrated entry is a no-op.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from types import MappingProxyType
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry, SOURCE_USER
 from homeassistant.core import HomeAssistant
@@ -115,18 +117,22 @@ async def migrate_legacy_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     if not isinstance(raw_discovery_keys, MappingProxyType):
         raw_discovery_keys = MappingProxyType(raw_discovery_keys)
 
-    new_entry = ConfigEntry(
-        version=entry.version,
-        minor_version=getattr(entry, "minor_version", 1),
-        domain=NEW_DOMAIN,
-        title=entry.title,
-        data=new_data,
-        options=dict(entry.options),
-        source=getattr(entry, "source", SOURCE_USER),
-        unique_id=entry.unique_id,
-        discovery_keys=raw_discovery_keys,
-        subentries_data=None,
-    )
+    # subentries_data was added in HA 2025.x; older HA cores reject it as
+    # an unexpected kwarg.  Only pass it when the running HA version accepts it.
+    config_entry_kwargs: dict[str, Any] = {
+        "version": entry.version,
+        "minor_version": getattr(entry, "minor_version", 1),
+        "domain": NEW_DOMAIN,
+        "title": entry.title,
+        "data": new_data,
+        "options": dict(entry.options),
+        "source": getattr(entry, "source", SOURCE_USER),
+        "unique_id": entry.unique_id,
+        "discovery_keys": raw_discovery_keys,
+    }
+    if "subentries_data" in inspect.signature(ConfigEntry).parameters:
+        config_entry_kwargs["subentries_data"] = None
+    new_entry = ConfigEntry(**config_entry_kwargs)
     # Register the new entry directly, without triggering async_setup.
     # Using _entries is intentional: async_add() calls async_setup(), which
     # would attempt to authenticate immediately during migration — before the
