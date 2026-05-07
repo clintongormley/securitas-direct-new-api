@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
+from collections.abc import Callable
 from datetime import timedelta
 import logging
 from pathlib import Path
@@ -73,6 +74,7 @@ from .coordinators import (
     LockCoordinator,
     SentinelCoordinator,
 )
+from .events import attach_activity_listener
 from .hub import (  # noqa: F401 — re-exported for backwards compatibility
     SecuritasDirectDevice,
     SecuritasHub,
@@ -507,6 +509,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     config_entry=entry,
                 )
 
+        # Wire bus-event emission for the activity timeline at the
+        # integration level (not the sensor level) so `securitas_activity`
+        # automations keep working even if the user disables the
+        # ActivityLogSensor entity.  Attaching here also starts the
+        # coordinator's periodic timer so polling continues for as long as
+        # the integration is loaded; async_unload_entry detaches it.
+        activity_listener_unsub: Callable[[], None] | None = None
+        if activity_coord is not None and devices:
+            activity_listener_unsub = attach_activity_listener(
+                hass, activity_coord, devices[0].installation.number
+            )
+
         # Store per-entry data
         hass.data[DOMAIN][entry.entry_id] = {
             "hub": client,
@@ -515,13 +529,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "sentinel_coordinator": sentinel_coord,
             "lock_coordinator": lock_coord,
             "activity_coordinator": activity_coord,
+            "activity_listener_unsub": activity_listener_unsub,
         }
 
-        # Schedule non-blocking first refresh for each coordinator.  The
-        # eager refresh just populates `data` once; the periodic timer is
-        # only started when something subscribes (e.g. the sensor entity
-        # in async_added_to_hass), so this doesn't leak a timer in test
-        # setups that mock platform forwarding.
+        # Schedule non-blocking first refresh for each coordinator.
         for coord in filter(
             None, [alarm_coord, sentinel_coord, lock_coord, activity_coord]
         ):
@@ -842,6 +853,11 @@ async def _unregister_card_resource(
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    entry_data = hass.data.get(DOMAIN, {}).get(config_entry.entry_id, {})
+    activity_listener_unsub = entry_data.get("activity_listener_unsub")
+    if activity_listener_unsub is not None:
+        activity_listener_unsub()
+
     unload_ok = await hass.config_entries.async_unload_platforms(
         config_entry, PLATFORMS
     )

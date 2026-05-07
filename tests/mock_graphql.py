@@ -350,12 +350,21 @@ def graphql_general_status(
     }
 
 
-def graphql_activity(*, reg: list[dict] | None = None) -> dict:
-    """ActV2Timeline (xSActV2 alarm-panel timeline) response."""
+_UNSET = object()
+
+
+def graphql_activity(*, reg=_UNSET) -> dict:
+    """ActV2Timeline (xSActV2 alarm-panel timeline) response.
+
+    ``reg=None`` produces the panel's documented null shape (used to test
+    the empty-installation case).  Omit ``reg`` for an empty list default.
+    """
+    if reg is _UNSET:
+        reg = []
     return {
         "data": {
             "xSActV2": {
-                "reg": reg if reg is not None else [],
+                "reg": reg,
                 "__typename": "XSActV2",
             }
         }

@@ -2,7 +2,6 @@
 
 import base64
 import logging
-from collections.abc import Callable
 from typing import Any
 
 import voluptuous as vol
@@ -21,7 +20,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import DOMAIN
 from .coordinators import ActivityCoordinator, SentinelCoordinator
 from .entity import securitas_device_info
-from .events import attach_activity_listener
 from .securitas_direct_new_api import Installation
 from .securitas_direct_new_api.models import ActivityEvent
 
@@ -271,27 +269,6 @@ class ActivityLogSensor(  # type: ignore[override]
         # several times per state update.  Cached by coordinator.data identity.
         self._attrs_cache_key: int | None = None
         self._attrs_cache: dict[str, Any] = {"events": []}
-        self._bus_listener_unsub: Callable[[], None] | None = None
-
-    async def async_added_to_hass(self) -> None:
-        """Wire bus emission once the sensor is in HA.
-
-        Attaching the listener here (rather than in `async_setup_entry`)
-        keeps the coordinator's periodic-refresh timer tied to the sensor's
-        lifetime — without a sensor the coordinator stays idle, which avoids
-        leaking timers in test setups that skip platform forwarding.
-        """
-        await super().async_added_to_hass()
-        self._bus_listener_unsub = attach_activity_listener(
-            self.hass, self.coordinator, self._installation.number
-        )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Detach the bus listener when the sensor is removed."""
-        if self._bus_listener_unsub is not None:
-            self._bus_listener_unsub()
-            self._bus_listener_unsub = None
-        await super().async_will_remove_from_hass()
 
     async def async_manual_refresh(self) -> None:
         """Service entrypoint for the card's refresh button."""
