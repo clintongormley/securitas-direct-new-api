@@ -29,7 +29,7 @@ from custom_components.verisure_owa.verisure_owa_api.exceptions import (
     VerisureOwaError,
 )
 from custom_components.verisure_owa.alarm_control_panel import (
-    VerisureAlarm,
+    CombinedVerisureOwaAlarmPanel,
 )
 from custom_components.verisure_owa.coordinators import (
     AlarmCoordinator,
@@ -251,8 +251,8 @@ def make_alarm(
     has_peri=False,
     initial_status=None,
     code=None,
-) -> VerisureAlarm:
-    """Create a VerisureAlarm with mocked dependencies.
+) -> CombinedVerisureOwaAlarmPanel:
+    """Create a CombinedVerisureOwaAlarmPanel with mocked dependencies.
 
     ``code`` sets the CONF_CODE value that check_code() compares against.
     """
@@ -312,10 +312,14 @@ def make_alarm(
 
     # Patch Entity state-writing methods that require a running HA instance.
     with (
-        patch.object(VerisureAlarm, "async_schedule_update_ha_state", MagicMock()),
-        patch.object(VerisureAlarm, "async_write_ha_state", MagicMock()),
+        patch.object(
+            CombinedVerisureOwaAlarmPanel, "async_schedule_update_ha_state", MagicMock()
+        ),
+        patch.object(
+            CombinedVerisureOwaAlarmPanel, "async_write_ha_state", MagicMock()
+        ),
     ):
-        alarm = VerisureAlarm(
+        alarm = CombinedVerisureOwaAlarmPanel(
             installation=installation,
             client=client,
             hass=hass,
@@ -4281,7 +4285,7 @@ class TestSubPanelSetup:
         """Build hass/entry/coordinator suitable for invoking async_setup_entry."""
         from custom_components.verisure_owa.const import DOMAIN
         from custom_components.verisure_owa import (
-            VerisureDevice as SecuritasDirectDevice,
+            VerisureDevice,
         )
 
         installation = Installation(
@@ -4292,7 +4296,7 @@ class TestSubPanelSetup:
             address="123 St",
             city="Madrid",
         )
-        device = MagicMock(spec=SecuritasDirectDevice)
+        device = MagicMock(spec=VerisureDevice)
         device.installation = installation
 
         client = MagicMock()

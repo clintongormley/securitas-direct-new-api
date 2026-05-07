@@ -112,10 +112,6 @@ class VerisureRefreshButton(VerisureEntity, ButtonEntity):
                     alarm_entity.async_write_ha_state()
 
 
-# Backwards-compat alias — old name used in tests and any external imports.
-SecuritasCaptureButton = None  # defined below after VerisureCaptureButton
-
-
 class VerisureCaptureButton(VerisureEntity, ButtonEntity):
     """Button to capture a new image from a Verisure camera."""
 
@@ -168,7 +164,3 @@ class VerisureCaptureButton(VerisureEntity, ButtonEntity):
             id_signal=id_signal,
             signal_type=signal_type,
         )
-
-
-# Backwards-compat alias — removed in v6.0.0.
-SecuritasCaptureButton = VerisureCaptureButton

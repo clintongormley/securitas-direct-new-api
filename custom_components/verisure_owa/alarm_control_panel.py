@@ -79,9 +79,6 @@ _DISARMED_STATE = AlarmState(
 
 _LOGGER = logging.getLogger(__name__)
 
-# Map for combined panel: VerisureOwaState -> AlarmState
-SECURITAS_STATE_TO_ALARM_STATE = VERISURE_OWA_STATE_TO_ALARM_STATE
-
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
@@ -1050,12 +1047,12 @@ class CombinedVerisureOwaAlarmPanel(BaseVerisureOwaAlarmPanel):
         securitas_state = self._securitas_state_map.get(ha_state)
         if securitas_state is None:
             raise VerisureOwaError(f"Unsupported alarm mode: {ha_state}")
-        return SECURITAS_STATE_TO_ALARM_STATE[securitas_state]
+        return VERISURE_OWA_STATE_TO_ALARM_STATE[securitas_state]
 
     def _extract_state(self, joint_state: AlarmState) -> AlarmControlPanelState | None:
         """For the combined panel, map joint state back to HA via user mappings."""
         for ha_state, sec_state in self._securitas_state_map.items():
-            if SECURITAS_STATE_TO_ALARM_STATE.get(sec_state) == joint_state:
+            if VERISURE_OWA_STATE_TO_ALARM_STATE.get(sec_state) == joint_state:
                 try:
                     return AlarmControlPanelState(ha_state)
                 except ValueError:
@@ -1266,7 +1263,3 @@ class AnnexVerisureOwaAlarmPanel(_AxisSubPanelMixin, BaseVerisureOwaAlarmPanel):
             AnnexMode.ON: AlarmControlPanelState.ARMED_AWAY,
         }
         return mapping.get(joint_state.annex)
-
-
-# Backwards-compat aliases kept for tests and external references.
-VerisureAlarm = CombinedVerisureOwaAlarmPanel

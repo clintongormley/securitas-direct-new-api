@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from custom_components.verisure_owa.verisure_owa_api.client import (
-    VerisureOwaClient as SecuritasClient,
+    VerisureOwaClient,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "capability_jwts"
@@ -22,7 +22,7 @@ class TestGetSupportedCommands:
         body = fixture["decoded_jwt_body"]
         # We don't need a real JWT — we directly populate the storage with
         # the new 3-tuple shape that _ensure_capabilities will produce.
-        client = SecuritasClient.__new__(SecuritasClient)  # bypass __init__
+        client = VerisureOwaClient.__new__(VerisureOwaClient)  # bypass __init__
         client._capabilities = {
             "INST_VATRINUS": (
                 "fake_jwt_string",
@@ -39,13 +39,13 @@ class TestGetSupportedCommands:
         assert "ARMNIGHT" in caps
 
     def test_returns_empty_for_unknown_install(self):
-        client = SecuritasClient.__new__(SecuritasClient)
+        client = VerisureOwaClient.__new__(VerisureOwaClient)
         client._capabilities = {}
         assert client.get_supported_commands("DOES_NOT_EXIST") == frozenset()
 
     def test_returns_empty_for_legacy_2tuple_storage(self):
         """If a legacy 2-tuple is somehow in storage, return empty rather than crash."""
-        client = SecuritasClient.__new__(SecuritasClient)
+        client = VerisureOwaClient.__new__(VerisureOwaClient)
         client._capabilities = {
             "LEGACY": ("fake_jwt", datetime.now()),  # 2-tuple, no cap set
         }

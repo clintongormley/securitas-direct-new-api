@@ -1,4 +1,4 @@
-"""Tests for SecuritasClient.get_activity (xSActV2 timeline)."""
+"""Tests for VerisureOwaClient.get_activity (xSActV2 timeline)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import jwt
 import pytest
 
 from custom_components.verisure_owa.verisure_owa_api.client import (
-    VerisureOwaClient as SecuritasClient,
+    VerisureOwaClient,
 )
 from custom_components.verisure_owa.verisure_owa_api.http_transport import (
     HttpTransport,
@@ -55,7 +55,7 @@ def transport():
 
 @pytest.fixture
 def client(transport):
-    c = SecuritasClient(
+    c = VerisureOwaClient(
         transport=transport,
         country="ES",
         language="es",

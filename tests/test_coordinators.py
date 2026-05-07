@@ -46,10 +46,6 @@ from custom_components.verisure_owa.verisure_owa_api.models import (
 )
 from .conftest import make_installation
 
-# Backwards-compat alias for existing tests
-SecuritasDirectError = VerisureOwaError
-
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -710,7 +706,7 @@ class TestCoordinatorCapabilities:
         installation = _make_installation()
 
         client.get_services = AsyncMock(
-            side_effect=SecuritasDirectError("service fetch failed")
+            side_effect=VerisureOwaError("service fetch failed")
         )
         client.get_supported_commands = MagicMock(return_value=frozenset())
 
@@ -1061,7 +1057,7 @@ class TestActivityCoordinator:
         installation = _make_installation()
 
         client.get_activity.side_effect = SessionExpiredError("expired")
-        client.login.side_effect = SecuritasDirectError("login failed")
+        client.login.side_effect = VerisureOwaError("login failed")
 
         coord = self._make_coordinator(hass, client, queue, installation)
         with pytest.raises(ConfigEntryAuthFailed):
@@ -1097,7 +1093,7 @@ class TestActivityCoordinator:
         queue = _make_queue()
         installation = _make_installation()
 
-        client.get_activity.side_effect = SecuritasDirectError("boom")
+        client.get_activity.side_effect = VerisureOwaError("boom")
 
         coord = self._make_coordinator(hass, client, queue, installation)
         with pytest.raises(UpdateFailed):
