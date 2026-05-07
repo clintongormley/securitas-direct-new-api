@@ -31,7 +31,7 @@ _SCHEMA_FLAG = "unique_id_schema"
 _SCHEMA_VALUE = "v5_verisure_owa"
 
 
-def OLD_TO_NEW_UNIQUE_ID(old: str) -> str:
+def old_to_new_unique_id(old: str) -> str:
     """Map a legacy unique_id to the v5_verisure_owa.* form.
 
     Handles all entity formats from v4. Idempotent on already-v5 inputs.
@@ -56,7 +56,7 @@ def OLD_TO_NEW_UNIQUE_ID(old: str) -> str:
     raise ValueError(f"Unrecognized legacy unique_id format: {old!r}")
 
 
-def OLD_TO_NEW_IDENTIFIER(identifier: tuple[str, str]) -> tuple[str, str]:
+def old_to_new_identifier(identifier: tuple[str, str]) -> tuple[str, str]:
     """Map a device-registry identifier tuple to the new domain + new id.
 
     Identifiers under an unrelated domain are returned unchanged.
@@ -66,7 +66,7 @@ def OLD_TO_NEW_IDENTIFIER(identifier: tuple[str, str]) -> tuple[str, str]:
         return identifier  # already migrated
     if domain != LEGACY_DOMAIN:
         return identifier  # not ours
-    return (NEW_DOMAIN, OLD_TO_NEW_UNIQUE_ID(id_))
+    return (NEW_DOMAIN, old_to_new_unique_id(id_))
 
 
 async def migrate_legacy_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -75,13 +75,21 @@ async def migrate_legacy_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     Steps:
     1. Idempotency check — early-exit if a verisure_owa entry already
        exists for this entry's unique_id.
-    2. Create a new ConfigEntry under 'verisure_owa' with the same data,
-       options, title, unique_id, version.
-    3. Re-platform device registry: rewrite identifiers and re-attach
-       devices from old entry to new entry.
-    4. Re-platform entity registry: rewrite unique_ids and re-attach
-       entities to the new entry.
-    5. Mark the new entry as migrated (via flags in data).
+    2. Pre-validate — compute every old→new mapping up-front and abort
+       cleanly (without touching any registry) if any input is in an
+       unrecognised format.  Without this, a mid-loop ValueError would
+       leave registries partially mutated and the rollback below
+       (which only unregisters the new config entry) couldn't restore
+       them.
+    3. Create a new ConfigEntry under 'verisure_owa' with the same data,
+       options, title, unique_id, version, plus migration-marker flags.
+    4. Re-platform entity registry FIRST: apply the pre-validated
+       unique_id rewrites and re-attach entities to the new entry.
+       Done before step 5 because async_update_device fires
+       device_registry_updated whose listener removes entities still
+       tied to the old entry id.
+    5. Re-platform device registry: apply the pre-validated identifier
+       rewrites and re-attach devices to the new entry.
     """
     if entry.domain != LEGACY_DOMAIN:
         _LOGGER.error(
@@ -105,7 +113,48 @@ async def migrate_legacy_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         )
         return
 
-    # 2. Create new entry under verisure_owa with migration flags in data
+    # 2. Pre-validate.  If any unique_id or device-identifier in this entry's
+    # registries has an unrecognised format, old_to_new_unique_id raises
+    # ValueError.  Failing here — before any registry mutation — leaves
+    # registries untouched, so the user can fix the bad entry, retry, and
+    # nothing has been corrupted.  Without this pass, a mid-loop ValueError
+    # would leave entities/devices partially migrated; the rollback below
+    # only unregisters the new config entry and can't restore the registry
+    # mutations that already happened.
+    pre_ent_reg = er.async_get(hass)
+    pre_dev_reg = dr.async_get(hass)
+    entity_id_map: dict[str, str] = {}
+    for ent in pre_ent_reg.entities.values():
+        if ent.config_entry_id != entry.entry_id:
+            continue
+        try:
+            entity_id_map[ent.entity_id] = old_to_new_unique_id(ent.unique_id)
+        except ValueError as exc:
+            raise ConfigEntryError(
+                f"Cannot migrate entry {entry.entry_id}: entity {ent.entity_id} "
+                f"has unique_id {ent.unique_id!r} in an unrecognised format. "
+                f"No registry changes have been applied."
+            ) from exc
+    device_id_map: dict[str, set[tuple[str, str]]] = {}
+    for device in pre_dev_reg.devices.values():
+        if entry.entry_id not in device.config_entries:
+            continue
+        old_ids = {(d, i) for d, i in device.identifiers if d == LEGACY_DOMAIN}
+        if not old_ids:
+            continue
+        try:
+            device_id_map[device.id] = {
+                old_to_new_identifier(ident) if ident in old_ids else ident
+                for ident in device.identifiers
+            }
+        except ValueError as exc:
+            raise ConfigEntryError(
+                f"Cannot migrate entry {entry.entry_id}: device {device.id} "
+                f"has identifiers {device.identifiers!r} in an unrecognised format. "
+                f"No registry changes have been applied."
+            ) from exc
+
+    # 3. Create new entry under verisure_owa with migration flags in data
     new_data = {
         **dict(entry.data),
         _MIGRATION_FLAG: True,
@@ -132,8 +181,10 @@ async def migrate_legacy_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     }
     if "subentries_data" in inspect.signature(ConfigEntry).parameters:
         config_entry_kwargs["subentries_data"] = None
-    # pylint: disable=missing-kwoa  # subentries_data is conditionally added above for older HA versions
-    new_entry = ConfigEntry(**config_entry_kwargs)
+    # pylint thinks subentries_data is mandatory (since we test against a HA
+    # version that defines it), but it's added conditionally above for older
+    # HA versions that don't accept it.  Disable just for this call.
+    new_entry = ConfigEntry(**config_entry_kwargs)  # pylint: disable=missing-kwoa
     # Register the new entry directly, without triggering async_setup.
     # Using _entries is intentional: async_add() calls async_setup(), which
     # would attempt to authenticate immediately during migration — before the
@@ -148,44 +199,30 @@ async def migrate_legacy_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # pylint: enable=protected-access
 
     try:
-        # 3. Re-platform entity registry FIRST.
+        # 4. Re-platform entity registry FIRST.
         # Entities must be moved to the new config entry BEFORE the device update
-        # (step 4), because async_update_device fires a device_registry_updated
+        # (step 5), because async_update_device fires a device_registry_updated
         # event. The entity-registry listener on that event removes entities whose
         # config_entry_id is in `changes["config_entries"]` (the old value) but
         # no longer in the device's current config_entries. Moving entities first
         # ensures they are already under new_entry.entry_id when the event fires,
         # so the listener correctly keeps them.
         ent_reg = er.async_get(hass)
-        entities_to_migrate = [
-            e for e in ent_reg.entities.values() if e.config_entry_id == entry.entry_id
-        ]
-        for ent in entities_to_migrate:
-            new_unique_id = OLD_TO_NEW_UNIQUE_ID(ent.unique_id)
+        for entity_id, new_unique_id in entity_id_map.items():
             # async_update_entity_platform atomically updates platform, config_entry_id,
             # and unique_id while preserving all user customizations (name, area_id, etc.)
             ent_reg.async_update_entity_platform(
-                ent.entity_id,
+                entity_id,
                 NEW_DOMAIN,
                 new_config_entry_id=new_entry.entry_id,
                 new_unique_id=new_unique_id,
             )
 
-        # 4. Re-platform device registry
+        # 5. Re-platform device registry
         dev_reg = dr.async_get(hass)
-        for device in list(dev_reg.devices.values()):
-            old_ids = {(d, i) for d, i in device.identifiers if d == LEGACY_DOMAIN}
-            if not old_ids:
-                continue
-            if entry.entry_id not in device.config_entries:
-                continue
-            # Translate only the identifiers belonging to the legacy domain
-            new_ids = {
-                OLD_TO_NEW_IDENTIFIER(ident) if ident in old_ids else ident
-                for ident in device.identifiers
-            }
+        for device_id, new_ids in device_id_map.items():
             dev_reg.async_update_device(
-                device.id,
+                device_id,
                 new_identifiers=new_ids,
                 add_config_entry_id=new_entry.entry_id,
                 remove_config_entry_id=entry.entry_id,
