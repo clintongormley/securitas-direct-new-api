@@ -170,7 +170,7 @@ To see which status code the alarm is reporting, [enable debug logging](#reporti
 
 By default the integration creates one `alarm_control_panel` entity per installation — the **main panel**, named `Main - <installation alias>`. It represents the household's overall alarm intent and is driven by the user-configurable Home / Away / Night / Vacation / Custom mappings (Alarm State Mappings screen). This is unchanged from previous versions and works for almost everyone.
 
-Installations with multiple alarm axes (interior, perimeter, annex) can optionally enable per-axis sub-panels via the integration's options (**Settings → Devices & Services → Securitas Direct → Configure**):
+Installations with multiple alarm axes (interior, perimeter, annex) can optionally enable per-axis sub-panels via the integration's options (**Settings → Devices & Services → Verisure OWA → Configure**):
 
 - **Interior-only control panel** — interior axis only (Home / Away / Night / Disarmed). Named `Interior - <installation alias>`.
 - **Perimeter-only control panel** — perimeter axis only (Armed Away / Disarmed). Named `Perimeter - <installation alias>`. Visible only if your installation has perimeter sensors.
@@ -483,7 +483,7 @@ The Activity Log shows the same history of events as the Verisure app: when the 
 
 ### Where to find it
 
-- **A Lovelace card.** When editing your dashboard, click **Add Card** and pick **Securitas Events Card**. The card shows the most recent events; click any row to see details, including images for image-request events. There's a refresh button in the top-right corner.
+- **A Lovelace card.** When editing your dashboard, click **Add Card** and pick **Verisure OWA Events Card**. The card shows the most recent events; click any row to see details, including images for image-request events. There's a refresh button in the top-right corner.
 - **A sensor.** `sensor.<alias>_activity_log` shows the most recent event as its state. Its `events` attribute holds the last 30 entries — useful for templates, custom cards, or anything that needs to read the history programmatically.
 - **The event bus.** Each new entry fires a `securitas_activity` event you can use as an automation trigger (see below).
 

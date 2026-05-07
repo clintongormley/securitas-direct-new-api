@@ -134,7 +134,7 @@
             "message": "This alarm mode is not supported by your panel (rejected: {tried}). Check the state mappings in the integration options (Settings → Devices & Services → Verisure OWA → Configure)."
         },
         "no_supported_command": {
-            "message": "No supported command found for this panel. Check the state mappings in the integration options (Settings → Devices & Services → Securitas → Configure)."
+            "message": "No supported command found for this panel. Check the state mappings in the integration options (Settings → Devices & Services → Verisure OWA → Configure)."
         }
     }
 }

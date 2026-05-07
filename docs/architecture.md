@@ -445,8 +445,8 @@ force_arm_cancel:
   3. async_write_ha_state()
 
 Mobile notification actions (when built-in handler enabled):
-  - VERISURE_OWA_FORCE_ARM_<num> → async_force_arm()
-  - VERISURE_OWA_CANCEL_FORCE_ARM_<num> → _clear_force_context() + write state
+  - SECURITAS_FORCE_ARM_<num> → async_force_arm()
+  - SECURITAS_CANCEL_FORCE_ARM_<num> → _clear_force_context() + write state
 ```
 
 **Force-arm context expiry:** The force-arm context has a 180-second TTL (`_FORCE_ARM_TTL`). When `_clear_force_context()` is called by a coordinator update and the context has aged past the TTL, it is cleared. If the built-in notification handler is enabled, a persistent notification is shown explaining the force-arm option has expired. This prevents stale force-arm contexts from being used after the panel has moved on.
@@ -493,7 +493,7 @@ When arming is blocked by open sensors (the API returns a `NON_BLOCKING` error),
 When the built-in handler is active it:
 - Creates a persistent notification listing open zones with instructions for how to force-arm.
 - Sends a mobile notification (if `notify_group` is configured) with **Force Arm** / **Cancel** action buttons.
-- Listens for `mobile_app_notification_action` events to handle button taps (`VERISURE_OWA_FORCE_ARM_<num>` → `async_force_arm()`, `VERISURE_OWA_CANCEL_FORCE_ARM_<num>` → cancel).
+- Listens for `mobile_app_notification_action` events to handle button taps (`SECURITAS_FORCE_ARM_<num>` → `async_force_arm()`, `SECURITAS_CANCEL_FORCE_ARM_<num>` → cancel). The constant names retain the `SECURITAS_` prefix because they're determined by the Verisure mobile app's push-action protocol — the integration receives them as-is.
 - When force-arm context expires (180 s), updates the notification to inform the user the alarm was not armed.
 
 **Disabling the built-in handler:**
@@ -1024,5 +1024,6 @@ Three parallel jobs run on every PR and push to main:
 | `verisure_owa_api/const.py` | 107 | `VerisureOwaState`, command/protocol mappings, defaults |
 | `verisure_owa_api/domains.py` | 50 | Country-to-URL routing |
 | `verisure_owa_api/exceptions.py` | 121 | Exception hierarchy with `http_status`, `log_detail()`, and `ArmingExceptionError` |
-| `www/verisure-owa-alarm-card.js` | 1841 | Custom Lovelace alarm card with WAF warning banner, multi-language |
-| `www/verisure-owa-camera-card.js` | 376 | Custom Lovelace camera card with capture button, image timestamp overlay, and loading spinner |
+| `www/verisure_owa-alarm-card.js` | 1841 | Custom Lovelace alarm card with WAF warning banner, multi-language. (Legacy filename `securitas-alarm-card.js` is a byte-identical copy retained as a deprecation shim served at the legacy `/securitas_panel/` URL prefix; both removed in v6.) |
+| `www/verisure_owa-camera-card.js` | 376 | Custom Lovelace camera card with capture button, image timestamp overlay, and loading spinner. (Same legacy-copy treatment as the alarm card.) |
+| `www/verisure_owa-events-card.js` | — | Custom Lovelace events card showing recent alarm-panel activity. (Same legacy-copy treatment.) |
