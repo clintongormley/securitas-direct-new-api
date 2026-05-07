@@ -82,12 +82,6 @@ on actual API responses, multi-axis state, or hardware configuration.
           value_template: "{{ not trigger.event.data.injected }}"
       ```
 
-      Then re-test the same automation using the deprecated event
-      name `event_type: securitas_activity` instead. It must also
-      fire (the legacy alias is preserved through the v5 deprecation
-      window) and the integration must log no warning beyond the
-      one-time deprecation logging it emits at setup. Removed in v6.
-
 - [ ] **Force-arm injects `armed_with_exceptions` with the exception
       list.** Trigger an arm with an open sensor → expect the integration
       to surface the persistent notification with Force Arm. Press Force
@@ -99,8 +93,8 @@ on actual API responses, multi-axis state, or hardware configuration.
       `arming_failed` row appears with the exceptions list.
 
 - [ ] **Disabling the activity log sensor does not break bus events.**
-      Originally the `verisure_owa_activity` (and legacy `securitas_activity`)
-      listener was attached inside `ActivityLogSensor.async_added_to_hass`,
+      Originally the `verisure_owa_activity` listener was attached inside
+      `ActivityLogSensor.async_added_to_hass`,
       so disabling the sensor entity in the entity registry silently killed
       all bus events too. Commit `a084e19` moved the listener to
       `async_setup_entry` so it lives for the lifetime of the integration.
@@ -270,10 +264,10 @@ on actual API responses, multi-axis state, or hardware configuration.
         Specific list of what's deprecated:
         - `securitas` integration domain (config entries auto-migrate)
         - `securitas.force_arm[_cancel]` services
-        - `securitas_arming_exception` and `securitas_activity` events
+        - `securitas_arming_exception` event
         - `/securitas_panel/` static URL prefix
-        - `custom:securitas-alarm-card` (and badge / chip / camera-card
-          / events-card) Lovelace types
+        - `custom:securitas-alarm-card` (and badge / chip / camera-card)
+          Lovelace types
       - Lovelace resource cleanup hint: users may see a duplicate
         resource entry (old `/securitas_panel/...js` + new
         `/verisure_owa_panel/...js`) — both work; either can be
@@ -326,7 +320,7 @@ on actual API responses, multi-axis state, or hardware configuration.
         card types) with the v6 removal date.
       - Legacy aliases active: `securitas.force_arm[_cancel]`
         services, `securitas_arming_exception` event,
-        `securitas_activity` event, `/securitas_panel/` URL prefix
+        `/securitas_panel/` URL prefix
         — all forward to / fire alongside the canonical
         `verisure_owa.*` names with one-time deprecation warnings.
       - Sentinel sensors / WiFi binary sensor / Refresh button

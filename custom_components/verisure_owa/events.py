@@ -22,8 +22,6 @@ if TYPE_CHECKING:
 
 
 ACTIVITY_EVENT_TYPE = "verisure_owa_activity"
-# Deprecated alias — fires alongside the canonical event, removed in v6.0.0.
-LEGACY_ACTIVITY_EVENT_TYPE = "securitas_activity"
 
 ARMING_EXCEPTION_EVENT_TYPE = "verisure_owa_arming_exception"
 # Deprecated alias — fires alongside the canonical event, removed in v6.0.0.
@@ -60,15 +58,12 @@ def fire_activity_events(
 ) -> None:
     """Fire one ``verisure_owa_activity`` HA event per ActivityEvent.
 
-    Also fires the deprecated ``securitas_activity`` alias with identical
-    payload — removed in v6.0.0.  Each ``event_data`` carries the originating
-    ``numinst`` so multi-installation users can disambiguate.
+    Each ``event_data`` carries the originating ``numinst`` so multi-installation
+    users can disambiguate.
     """
     for event in events:
         payload: dict[str, object] = {"numinst": numinst, **event.model_dump()}
         hass.bus.async_fire(ACTIVITY_EVENT_TYPE, payload)
-        # Deprecated alias — removed in v6.0.0.
-        hass.bus.async_fire(LEGACY_ACTIVITY_EVENT_TYPE, payload)
 
 
 async def resolve_ha_user(hass: HomeAssistant, context: Context | None) -> str:

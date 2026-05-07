@@ -55,7 +55,6 @@ _DEFAULT_ACTIVITY_INTERVAL = timedelta(seconds=60)
 _ACTIVITY_TIMELINE_WINDOW = 30
 _ACTIVITY_STORE_VERSION = 1
 _ACTIVITY_STORE_KEY_PREFIX = "verisure_owa_activity_log"
-_LEGACY_ACTIVITY_STORE_KEY_PREFIX = "securitas_activity_log"
 
 
 # ── Data models ──────────────────────────────────────────────────────────────
@@ -732,31 +731,13 @@ class ActivityCoordinator(DataUpdateCoordinator[ActivityData]):
             )
         return self._store
 
-    def _get_legacy_store(self) -> Store[dict[str, Any]]:
-        """Return a Store for the pre-v5 storage key."""
-        return Store(
-            self.hass,
-            _ACTIVITY_STORE_VERSION,
-            f"{_LEGACY_ACTIVITY_STORE_KEY_PREFIX}_{self.installation.number}",
-        )
-
     async def async_load_persisted(self) -> None:
-        """Load injected events from disk.  Idempotent; call once per setup.
-
-        If the new-key store is empty, tries the legacy key for migration.
-        """
+        """Load injected events from disk.  Idempotent; call once per setup."""
         if self._persisted_loaded:
             return
         self._persisted_loaded = True
         try:
             stored = await self._get_store().async_load()
-            # Migrate from legacy key on first upgrade
-            if not stored:
-                legacy_stored = await self._get_legacy_store().async_load()
-                if legacy_stored:
-                    stored = legacy_stored
-                    # Copy to new key so next load is fast
-                    await self._get_store().async_save(stored)
         except Exception:  # pylint: disable=broad-exception-caught
             _LOGGER.warning(
                 "Failed to load persisted activity log for %s",

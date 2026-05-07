@@ -255,8 +255,6 @@ class ActivityLogSensor(  # type: ignore[override]
     The `events` attribute holds the last 30 entries for dashboard viewing;
     `latest` exposes the full top entry.  Automations should use the
     `verisure_owa_activity` event bus rather than reading these attributes.
-    (The legacy `securitas_activity` event name still fires alongside it
-    for the v5 deprecation window — removed in v6.0.0.)
     """
 
     _attr_has_entity_name = False

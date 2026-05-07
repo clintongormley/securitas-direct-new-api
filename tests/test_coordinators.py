@@ -1174,7 +1174,7 @@ class TestActivityCoordinator:
     async def test_first_poll_after_restore_does_not_refire_polled_history(self):
         """After restoring persisted injected events, the first poll must
         still establish the polled-event baseline silently — otherwise up
-        to 30 historical polled rows would fire as `securitas_activity`
+        to 30 historical polled rows would fire as `verisure_owa_activity`
         bus events on every HA restart.
         """
         hass = _make_hass()
@@ -1275,8 +1275,8 @@ class TestActivityCoordinator:
     async def test_async_load_persisted_is_idempotent(self):
         """Calling load multiple times doesn't repeat I/O after the first call.
 
-        The first call checks the primary store, then the legacy store for
-        migration (2 async_load calls total).  Subsequent calls are no-ops.
+        The first call loads from the primary store (1 async_load call total).
+        Subsequent calls are no-ops.
         """
         hass = _make_hass()
         client = _make_client()
@@ -1308,9 +1308,9 @@ class TestActivityCoordinator:
             await coord.async_load_persisted()
             await coord.async_load_persisted()
             await coord.async_load_persisted()
-            # First call: primary store + legacy store = 2 async_load calls.
+            # First call: primary store = 1 async_load call.
             # Subsequent calls are short-circuited by _persisted_loaded = True.
-            assert load_calls == 2
+            assert load_calls == 1
         finally:
             cm.Store = original_store
 

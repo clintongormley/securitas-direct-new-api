@@ -46,14 +46,14 @@ def _make_event(id_signal: str, **overrides) -> ActivityEvent:
 
 class TestFireActivityEvents:
     def test_fires_one_event_per_activity(self):
-        """Each activity fires two bus events: canonical + legacy deprecated alias."""
+        """Each activity fires one bus event: the canonical verisure_owa_activity."""
         hass = MagicMock()
         events = [_make_event("999"), _make_event("998", type=720, alias="Disarmed")]
 
         fire_activity_events(hass, "2654190", events)
 
-        # 2 events × 2 fires (canonical + legacy) = 4
-        assert hass.bus.async_fire.call_count == 4
+        # 2 events × 1 fire each = 2
+        assert hass.bus.async_fire.call_count == 2
 
     def test_event_type_is_verisure_owa_activity(self):
         """The canonical event type is verisure_owa_activity."""
@@ -63,14 +63,6 @@ class TestFireActivityEvents:
         all_types = [call[0][0] for call in hass.bus.async_fire.call_args_list]
         assert "verisure_owa_activity" in all_types
         assert ACTIVITY_EVENT_TYPE == "verisure_owa_activity"
-
-    def test_legacy_securitas_activity_event_also_fires(self):
-        """The deprecated securitas_activity alias is also fired for backwards compat."""
-        hass = MagicMock()
-        fire_activity_events(hass, "2654190", [_make_event("999")])
-
-        all_types = [call[0][0] for call in hass.bus.async_fire.call_args_list]
-        assert "securitas_activity" in all_types
 
     def test_payload_includes_numinst(self):
         hass = MagicMock()
@@ -143,7 +135,7 @@ class TestAttachActivityListener:
         assert unsub is unsub_sentinel
 
     def test_registered_callback_fires_new_events(self):
-        """Callback fires canonical + legacy events for each new ActivityEvent."""
+        """Callback fires one canonical event per new ActivityEvent."""
         hass = MagicMock()
         coord = MagicMock(spec=ActivityCoordinator)
         new_event = _make_event("999")
@@ -153,9 +145,8 @@ class TestAttachActivityListener:
         callback = coord.async_add_listener.call_args[0][0]
         callback()
 
-        # 1 event × 2 fires (canonical + legacy) = 2
-        assert hass.bus.async_fire.call_count == 2
-        # Last call is the legacy alias — check the first (canonical) call
+        # 1 event × 1 fire = 1
+        assert hass.bus.async_fire.call_count == 1
         first_call = hass.bus.async_fire.call_args_list[0]
         assert first_call[0][0] == "verisure_owa_activity"
         payload = first_call[0][1]

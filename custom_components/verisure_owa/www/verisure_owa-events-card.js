@@ -535,7 +535,7 @@ class VerisureOwaEventsCard extends HTMLElement {
   }
 
   static getConfigElement() {
-    return document.createElement("securitas-events-card-editor");
+    return document.createElement("verisure-owa-events-card-editor");
   }
 
   static getStubConfig(hass) {
@@ -666,14 +666,14 @@ class VerisureOwaEventsCard extends HTMLElement {
       } else {
         // eslint-disable-next-line no-console
         console.warn(
-          "[securitas-events-card] fetch_activity_image returned no image_b64; result:",
+          "[verisure-owa-events-card] fetch_activity_image returned no image_b64; result:",
           result,
         );
         this._imageCache.set(id, { state: "error" });
       }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn("[securitas-events-card] fetch_activity_image threw:", e);
+      console.warn("[verisure-owa-events-card] fetch_activity_image threw:", e);
       this._imageCache.set(id, { state: "error" });
     }
     this._lastRenderedState = null;
@@ -1048,42 +1048,6 @@ if (!customElements.get("verisure-owa-events-card"))
   customElements.define("verisure-owa-events-card", VerisureOwaEventsCard);
 if (!customElements.get("verisure-owa-events-card-editor"))
   customElements.define("verisure-owa-events-card-editor", VerisureOwaEventsCardEditor);
-
-// Legacy tag-name shims — deprecated, removed in v6.0.0. Each shim warns
-// at most once per element instance per page load (deduplicated via the
-// _verisureOwaDeprecationLogged flag) so a dashboard with several legacy
-// cards doesn't flood the console.
-function _makeLegacyShim(canonicalClass, oldTag, newTag) {
-  return class extends canonicalClass {
-    connectedCallback() {
-      if (super.connectedCallback) super.connectedCallback();
-      if (!this._verisureOwaDeprecationLogged) {
-        console.warn(
-          `Lovelace card type 'custom:${oldTag}' is deprecated and will be ` +
-          `removed in v6. Update your dashboard to 'custom:${newTag}'.`
-        );
-        this._verisureOwaDeprecationLogged = true;
-      }
-    }
-  };
-}
-
-if (!customElements.get("securitas-events-card")) {
-  customElements.define(
-    "securitas-events-card",
-    _makeLegacyShim(VerisureOwaEventsCard, "securitas-events-card", "verisure-owa-events-card")
-  );
-}
-if (!customElements.get("securitas-events-card-editor")) {
-  customElements.define(
-    "securitas-events-card-editor",
-    _makeLegacyShim(
-      VerisureOwaEventsCardEditor,
-      "securitas-events-card-editor",
-      "verisure-owa-events-card-editor"
-    )
-  );
-}
 
 window.customCards = window.customCards || [];
 if (!window.customCards.find((c) => c.type === "verisure-owa-events-card")) {

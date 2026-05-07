@@ -54,12 +54,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "→ use `verisure_owa.force_arm` / `verisure_owa.force_arm_cancel`\n"
             "- Events: `securitas_arming_exception` "
             "→ use `verisure_owa_arming_exception`\n"
-            "- Events: `securitas_activity` "
-            "→ use `verisure_owa_activity`\n"
             "- Lovelace card URLs: `/securitas_panel/...` "
             "→ use `/verisure_owa_panel/...`\n"
             "- Lovelace card types: `custom:securitas-alarm-card` (and `-badge`, "
-            "`-chip`, `-camera-card`, `-events-card`) "
+            "`-chip`, `-camera-card`) "
             "→ use `custom:verisure-owa-alarm-card` (and matching new names)"
         ),
         title="Verisure OWA migration: restart required",
