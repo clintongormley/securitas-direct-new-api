@@ -117,6 +117,62 @@ on actual API responses, multi-axis state, or hardware configuration.
 
 ### V5 Verisure rebrand work
 
+- [ ] **🚧 BLOCKS v5.0.0 TAG: annex camera unique-id collision (issue #441) is still unfixed.**
+      The v5 spec §5 explicitly gates v5.0.0 release on this: "v5 does
+      not ship until investigation completes."
+      
+      What main *did* land via the subpanels work:
+      - `AnnexVerisureOwaAlarmPanel` and `ARMANNEX1` / `DARMANNEX1`
+        command wiring — covers the alarm-panel axis.
+      
+      What's still NOT addressed:
+      - The original [#441](https://github.com/guerrerotook/securitas-direct-new-api/issues/441)
+        report is about **camera** unique-id collisions:
+        `v5_verisure_owa.{numinst}_camera_{zone_id}` collides when main
+        and annex sub-panels both return `zone_id="YR08"`. The annex
+        camera + capture button get silently dropped at HA startup with
+        an `ERROR ... Platform does not generate unique IDs` log.
+      - Locks plausibly have the same collision risk if an annex
+        sub-panel numbers its locks independently from `device_id="01"`
+        — unconfirmed, needs investigation alongside cameras.
+      
+      What we have:
+      - Two HAR captures from Vatrinus (`vatrinus.json`,
+        `customers.verisure.co.uk.redacted.json` — same account, both
+        `numinst: ***5885`) but **neither contains `xSDeviceList`** —
+        only home / status / disarm screens were captured. The captures
+        confirm `panel: SDVFAST` is a per-installation hardware-type
+        identifier (not a per-device discriminator) and that the OWA
+        web frontend models alarm operations as
+        `{interior, exterior, smartLock}` axes — but neither tells us
+        what `xSDeviceList` returns for an annex camera.
+      
+      What we need:
+      - A fresh HAR capture from Vatrinus's OWA web client taken on
+        the *Cameras* screen. That will include the unredacted
+        `xSDeviceList` response and (likely) the `xSSrv` response that
+        delivers `Installation.alarm_partitions` — the two operations
+        we need to settle whether the discriminator is a per-device
+        partition field, a partition-segmented response shape, or
+        something else.
+      - Once we have that, the implementation is mechanical: add the
+        discriminator field to `CameraDevice` and `SmartLock` (only if
+        confirmed for locks too), adjust the unique-id format to
+        append the discriminator only when populated, and ride along
+        with the existing `migrate_legacy_entry` mapping table for
+        existing-user state preservation. The pattern is the same as
+        the `[_{discriminator}]` suffix scheme in the v5 design spec
+        §2's mapping table — the suffix is empty for main-panel
+        devices so existing main-only users come out unchanged after
+        migration.
+      
+      **What we still don't know:** the API field name and shape of
+      the discriminator. Earlier hypotheses (`panel`, partition `id`)
+      are educated guesses that could not be verified from the HAR
+      data we have. Do not pick one speculatively — picking wrong
+      either fails to fix #441 or breaks users who don't have an
+      annex.
+
 - [ ] **Upgrade-from-v4 smoke test (the migration path).** Install v4
       (current `main` minus this branch) into a Docker HA, configure a
       `securitas` integration entry, log in, let cameras/sensors
@@ -194,21 +250,6 @@ on actual API responses, multi-axis state, or hardware configuration.
       `alarm_control_panel.py` injects arm/disarm). Until then, lock
       events surface as either a `unknown`-category polled row or
       nothing at all.
-
-- [ ] **Annex camera unique-id collision (issue #441) — still open.**
-      Main now has `AnnexVerisureOwaAlarmPanel` and the `ARMANNEX1` /
-      `DARMANNEX1` commands wired up, which addresses the alarm-panel
-      side. But the original report
-      ([#441](https://github.com/guerrerotook/securitas-direct-new-api/issues/441))
-      is about **camera** unique-ID collisions (`v5_verisure_owa.{numinst}_camera_{zone_id}`
-      collides when main and annex sub-panels return the same `zone_id`),
-      which is unrelated to the new alarm-panel hierarchy. Vatrinus's
-      annex camera + capture button were getting silently dropped at
-      startup. Needs a fresh HAR capture from the **camera-list screen**
-      of his OWA web client (not the home/disarm screens) to determine
-      whether `xSDeviceList` exposes a partition / subzone field per
-      device, or whether the camera disambiguator should come from
-      somewhere else. Until then, annex-camera users are still affected.
 
 - [ ] **Repo rename + HACS update (release-day operation).** Per the
       v5 design spec §8.1: rename the GitHub repo from
