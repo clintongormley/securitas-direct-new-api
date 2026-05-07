@@ -64,10 +64,10 @@ PROTO_TO_STATE: dict[str, VerisureOwaState] = {
     "A": VerisureOwaState.TOTAL_PERI,
     # Annex-armed codes (interior-mode-bit × annex-bit, no perimeter).
     # Source: issue #441 status-code table.
-    "X": VerisureOwaState.ANNEX_ONLY,           # main disarmed,  annex armed
-    "R": VerisureOwaState.PARTIAL_DAY_ANNEX,    # main day,       annex armed
+    "X": VerisureOwaState.ANNEX_ONLY,  # main disarmed,  annex armed
+    "R": VerisureOwaState.PARTIAL_DAY_ANNEX,  # main day,       annex armed
     "S": VerisureOwaState.PARTIAL_NIGHT_ANNEX,  # main night,     annex armed
-    "O": VerisureOwaState.TOTAL_ANNEX,          # main total,     annex armed
+    "O": VerisureOwaState.TOTAL_ANNEX,  # main total,     annex armed
     # Annex + perimeter combinations (PERI_ANNEX, PARTIAL_DAY_PERI_ANNEX,
     # PARTIAL_NIGHT_PERI_ANNEX, TOTAL_PERI_ANNEX) haven't been observed in
     # any capture yet so are not yet mapped.

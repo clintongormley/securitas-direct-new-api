@@ -271,16 +271,51 @@ class TestGetCameraDevices:
         # filter still drops them.
         transport.execute.return_value = device_list_response(
             devices=[
-                {"id": "0", "code": "2", "zoneId": None, "name": "Entrance",
-                 "type": "YR", "isActive": None, "serialNumber": None},
-                {"id": "1", "code": "3", "zoneId": None, "name": "Landing",
-                 "type": "YR", "isActive": None, "serialNumber": None},
-                {"id": "2", "code": "8", "zoneId": None, "name": "ANNEX Anex PD",
-                 "type": "YR", "isActive": None, "serialNumber": None},
-                {"id": "3", "code": "1", "zoneId": None, "name": "Control Panel",
-                 "type": "CENT", "isActive": None, "serialNumber": None},
-                {"id": "7", "code": "8", "zoneId": None, "name": "ANNEX Anex PD",
-                 "type": "YR", "isActive": None, "serialNumber": None},
+                {
+                    "id": "0",
+                    "code": "2",
+                    "zoneId": None,
+                    "name": "Entrance",
+                    "type": "YR",
+                    "isActive": None,
+                    "serialNumber": None,
+                },
+                {
+                    "id": "1",
+                    "code": "3",
+                    "zoneId": None,
+                    "name": "Landing",
+                    "type": "YR",
+                    "isActive": None,
+                    "serialNumber": None,
+                },
+                {
+                    "id": "2",
+                    "code": "8",
+                    "zoneId": None,
+                    "name": "ANNEX Anex PD",
+                    "type": "YR",
+                    "isActive": None,
+                    "serialNumber": None,
+                },
+                {
+                    "id": "3",
+                    "code": "1",
+                    "zoneId": None,
+                    "name": "Control Panel",
+                    "type": "CENT",
+                    "isActive": None,
+                    "serialNumber": None,
+                },
+                {
+                    "id": "7",
+                    "code": "8",
+                    "zoneId": None,
+                    "name": "ANNEX Anex PD",
+                    "type": "YR",
+                    "isActive": None,
+                    "serialNumber": None,
+                },
             ]
         )
 
