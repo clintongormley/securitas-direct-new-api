@@ -362,5 +362,6 @@ class TestCountryCodes:
         }
 
     def test_is_a_list(self):
-        # HA's voluptuous schema sometimes assumes list ordering for selectors.
+        # The HA config-flow's CountrySelector consumes the list and renders it
+        # as a dropdown — it must be a list, not a set/frozenset/tuple.
         assert isinstance(COUNTRY_CODES, list)
