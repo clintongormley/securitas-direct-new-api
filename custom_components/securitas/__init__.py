@@ -18,8 +18,11 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "securitas"
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """No YAML config to set up — entries handled in async_setup_entry."""
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
+    """No YAML config to set up — entries handled in async_setup_entry.
+
+    The hass and config arguments are required by HA's integration contract.
+    """
     return True
 
 
@@ -70,6 +73,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return False
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
     """Nothing to unload — the entry was never set up."""
     return True

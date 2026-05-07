@@ -132,6 +132,7 @@ async def migrate_legacy_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     }
     if "subentries_data" in inspect.signature(ConfigEntry).parameters:
         config_entry_kwargs["subentries_data"] = None
+    # pylint: disable=missing-kwoa  # subentries_data is conditionally added above for older HA versions
     new_entry = ConfigEntry(**config_entry_kwargs)
     # Register the new entry directly, without triggering async_setup.
     # Using _entries is intentional: async_add() calls async_setup(), which
@@ -141,8 +142,10 @@ async def migrate_legacy_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # next boot, exactly as it does after a fresh config-flow installation.
     # MockConfigEntry.add_to_hass() uses the same pattern (it writes to
     # _entries directly), so this is the accepted HA test-infrastructure idiom.
+    # pylint: disable=protected-access
     hass.config_entries._entries[new_entry.entry_id] = new_entry  # noqa: SLF001
     hass.config_entries._async_schedule_save()  # noqa: SLF001
+    # pylint: enable=protected-access
 
     try:
         # 3. Re-platform entity registry FIRST.
@@ -198,8 +201,10 @@ async def migrate_legacy_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         )
         # Roll back: remove the partially-registered new entry so subsequent
         # runs don't see it and early-exit via the idempotency check.
+        # pylint: disable=protected-access
         hass.config_entries._entries.pop(new_entry.entry_id, None)  # noqa: SLF001
         hass.config_entries._async_schedule_save()  # noqa: SLF001
+        # pylint: enable=protected-access
         raise ConfigEntryError(
             f"Migration from securitas entry {entry.entry_id} failed: {exc}"
         ) from exc
