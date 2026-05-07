@@ -107,7 +107,14 @@ async def async_setup_entry(
         alarms.append(combined)
         all_entities.append(combined)
 
-        if enable_peri and coordinator.has_peri:
+        # Saved toggles are the source of truth — the options flow already
+        # gates each toggle on capability, so a saved toggle implies the
+        # capability was supported at config time. Don't gate entity creation
+        # on coordinator.has_peri/has_annex here: a transient capability-
+        # detection failure at startup (e.g. get_services 5xx) would otherwise
+        # permanently hide opted-in entities until the user reloads, even
+        # after the coordinator's later background refresh succeeds.
+        if enable_peri:
             all_entities.append(
                 PerimeterSecuritasAlarmPanel(
                     devices.installation,
@@ -117,7 +124,7 @@ async def async_setup_entry(
                 )
             )
 
-        if enable_annex and coordinator.has_annex:
+        if enable_annex:
             all_entities.append(
                 AnnexSecuritasAlarmPanel(
                     devices.installation,
@@ -127,7 +134,7 @@ async def async_setup_entry(
                 )
             )
 
-        if enable_interior and (coordinator.has_peri or coordinator.has_annex):
+        if enable_interior:
             all_entities.append(
                 InteriorSecuritasAlarmPanel(
                     devices.installation,

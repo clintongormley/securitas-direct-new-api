@@ -4289,8 +4289,16 @@ class TestSubPanelSetup:
         assert isinstance(added[0], CombinedSecuritasAlarmPanel)
 
     @pytest.mark.asyncio
-    async def test_perimeter_panel_requires_capability(self):
-        # toggle on but no PERI cap → no perimeter panel
+    async def test_perimeter_panel_created_when_toggle_on_even_if_caps_not_yet_detected(
+        self,
+    ):
+        """Toggle is the source of truth — the options flow already gates the
+        toggle on capability, so a saved toggle implies capability was supported
+        at config time. If capability pre-population fails at setup (transient
+        API error), the entity must still be created so a later background
+        refresh sees the entity ready to serve. Otherwise the user has to
+        reload the integration to recover.
+        """
         from custom_components.securitas.alarm_control_panel import (
             async_setup_entry,
             PerimeterSecuritasAlarmPanel,
@@ -4299,7 +4307,7 @@ class TestSubPanelSetup:
 
         hass, entry = self._setup_kwargs(
             options={CONF_ENABLE_PERIMETER_PANEL: True},
-            has_peri=False,
+            has_peri=False,  # transient: not yet detected
             has_annex=False,
         )
         added: list = []
@@ -4311,10 +4319,15 @@ class TestSubPanelSetup:
             "custom_components.securitas.alarm_control_panel.async_get_current_platform"
         ):
             await async_setup_entry(hass, entry, add)
-        assert not any(isinstance(p, PerimeterSecuritasAlarmPanel) for p in added)
+        assert any(isinstance(p, PerimeterSecuritasAlarmPanel) for p in added)
 
     @pytest.mark.asyncio
-    async def test_annex_panel_requires_capability(self):
+    async def test_annex_panel_created_when_toggle_on_even_if_caps_not_yet_detected(
+        self,
+    ):
+        """See test_perimeter_panel_created_when_toggle_on_even_if_caps_not_yet_detected
+        for the rationale — saved toggle is the source of truth.
+        """
         from custom_components.securitas.alarm_control_panel import (
             async_setup_entry,
             AnnexSecuritasAlarmPanel,
@@ -4335,7 +4348,7 @@ class TestSubPanelSetup:
             "custom_components.securitas.alarm_control_panel.async_get_current_platform"
         ):
             await async_setup_entry(hass, entry, add)
-        assert not any(isinstance(p, AnnexSecuritasAlarmPanel) for p in added)
+        assert any(isinstance(p, AnnexSecuritasAlarmPanel) for p in added)
 
     @pytest.mark.asyncio
     async def test_interior_panel_created_when_capability_present_no_siblings_enabled(
@@ -4370,9 +4383,13 @@ class TestSubPanelSetup:
         assert any(isinstance(p, InteriorSecuritasAlarmPanel) for p in added)
 
     @pytest.mark.asyncio
-    async def test_interior_panel_hidden_without_any_sibling_capability(self):
-        """Interior panel must NOT be created when neither perimeter nor annex
-        capability exists — the combined panel already drives the interior axis.
+    async def test_interior_panel_created_when_toggle_on_even_if_caps_not_yet_detected(
+        self,
+    ):
+        """Same rationale as the Perimeter/Annex variants: a saved Interior
+        toggle implies any sibling capability was supported at config time
+        (the toggle is hidden in options otherwise). Don't let a transient
+        capability-detection failure at startup permanently hide the entity.
         """
         from custom_components.securitas.alarm_control_panel import (
             async_setup_entry,
@@ -4382,7 +4399,7 @@ class TestSubPanelSetup:
 
         hass, entry = self._setup_kwargs(
             options={CONF_ENABLE_INTERIOR_PANEL: True},
-            has_peri=False,
+            has_peri=False,  # transient: not yet detected
             has_annex=False,
         )
         added: list = []
@@ -4394,7 +4411,7 @@ class TestSubPanelSetup:
             "custom_components.securitas.alarm_control_panel.async_get_current_platform"
         ):
             await async_setup_entry(hass, entry, add)
-        assert not any(isinstance(p, InteriorSecuritasAlarmPanel) for p in added)
+        assert any(isinstance(p, InteriorSecuritasAlarmPanel) for p in added)
 
     @pytest.mark.asyncio
     async def test_all_three_subpanels_with_full_capabilities(self):

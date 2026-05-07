@@ -1755,9 +1755,13 @@ class SecuritasClient:
             cap_set = frozenset(matched.get("cap") or [])
         elif jwt_installations:
             _LOGGER.warning(
-                "JWT capabilities token contains no entry for installation %s;"
-                " capability set will be empty. Entries present: %s",
+                "JWT capabilities token contains no entry for installation %s"
+                " (%d other entries present); capability set will be empty",
                 installation.number,
+                len(jwt_installations),
+            )
+            _LOGGER.debug(
+                "JWT installations[].ins values: %s",
                 [entry.get("ins") for entry in jwt_installations],
             )
 
