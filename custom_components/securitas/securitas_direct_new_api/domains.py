@@ -11,11 +11,12 @@ class ApiDomains:
             "AR": "https://customers.verisure.com.ar/owa-api/graphql",
             "BR": "https://customers.verisure.com.br/owa-api/graphql",
             "CL": "https://customers.verisure.cl/owa-api/graphql",
-            "ES": "https://customers.securitasdirect.es/owa-api/graphql",
+            "ES": "https://customers.verisure.es/owa-api/graphql",
             "FR": "https://customers.securitasdirect.fr/owa-api/graphql",
             "GB": "https://customers.verisure.co.uk/owa-api/graphql",
             "IE": "https://customers.verisure.ie/owa-api/graphql",
             "IT": "https://customers.verisure.it/owa-api/graphql",
+            "PE": "https://customers.verisure.pe/owa-api/graphql",
             "PT": "https://customers.verisure.pt/owa-api/graphql",
         }
 
@@ -30,6 +31,7 @@ class ApiDomains:
             "IE": "en",
             "IT": "it",
             "AR": "ar",
+            "PE": "es",
             "PT": "pt",
         }
 

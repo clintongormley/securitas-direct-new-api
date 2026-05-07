@@ -52,7 +52,7 @@ DEFAULT_CODE = ""
 DEFAULT_COUNTRY = "ES"
 API_CACHE_TTL = 60  # seconds — sensor data changes hourly at most
 
-COUNTRY_CODES: list[str] = ["AR", "BR", "CL", "ES", "FR", "GB", "IE", "IT", "PT"]
+COUNTRY_CODES: list[str] = ["AR", "BR", "CL", "ES", "FR", "GB", "IE", "IT", "PE", "PT"]
 
 PLATFORMS = [
     Platform.ALARM_CONTROL_PANEL,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from custom_components.securitas.const import SENTINEL_SERVICE_NAMES
+from custom_components.securitas.const import COUNTRY_CODES, SENTINEL_SERVICE_NAMES
 from custom_components.securitas.securitas_direct_new_api.const import (
     CommandType,
     PERI_DEFAULTS,
@@ -356,3 +356,20 @@ class TestSubPanelConstants:
         assert CONF_ENABLE_INTERIOR_PANEL == "enable_interior_panel"
         assert CONF_ENABLE_PERIMETER_PANEL == "enable_perimeter_panel"
         assert CONF_ENABLE_ANNEX_PANEL == "enable_annex_panel"
+
+
+class TestCountryCodes:
+    """Tests for the supported COUNTRY_CODES list."""
+
+    def test_includes_peru(self):
+        assert "PE" in COUNTRY_CODES
+
+    def test_includes_all_currently_supported(self):
+        # Lock the supported set so adding/removing requires a deliberate edit.
+        assert set(COUNTRY_CODES) == {
+            "AR", "BR", "CL", "ES", "FR", "GB", "IE", "IT", "PE", "PT"
+        }
+
+    def test_is_a_list(self):
+        # HA's voluptuous schema sometimes assumes list ordering for selectors.
+        assert isinstance(COUNTRY_CODES, list)
