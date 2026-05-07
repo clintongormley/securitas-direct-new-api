@@ -466,8 +466,11 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def _is_otp_expired(err: VerisureOwaError) -> bool:
         """Check if a VerisureOwaError indicates an expired OTP (auth-code 10002)."""
+        body = err.response_body
+        if body is None:
+            return False
         try:
-            return err.response_body["errors"][0]["data"].get("auth-code") == "10002"
+            return body["errors"][0]["data"].get("auth-code") == "10002"
         except (IndexError, KeyError, TypeError):
             return False
 
