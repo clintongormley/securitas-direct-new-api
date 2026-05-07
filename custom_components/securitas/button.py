@@ -41,6 +41,9 @@ async def async_setup_entry(
 class SecuritasRefreshButton(SecuritasEntity, ButtonEntity):
     """Representation of a Securitas refresh button."""
 
+    _attr_has_entity_name = True
+    _attr_name = "Refresh"
+
     def __init__(
         self,
         installation: Installation,
@@ -50,7 +53,6 @@ class SecuritasRefreshButton(SecuritasEntity, ButtonEntity):
     ) -> None:
         """Initialize the refresh button."""
         super().__init__(installation, client)
-        self._attr_name = f"Refresh {installation.alias}"
         self._attr_unique_id = f"v4_refresh_button_{installation.number}"
         self._entry_id = entry_id
         self.hass = hass

@@ -86,7 +86,8 @@ class SentinelTemperature(  # type: ignore[override]
 ):
     """Sentinel temperature sensor."""
 
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
+    _attr_name = "Temperature"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -101,7 +102,6 @@ class SentinelTemperature(  # type: ignore[override]
         super().__init__(coordinator)
         self._attr_device_info = securitas_device_info(installation)
         self._attr_unique_id = f"v4_{installation.number}_temperature_{service_id}"
-        self._attr_name = f"{installation.alias} Temperature"
 
     @property
     def native_value(self) -> float | None:  # type: ignore[override]
@@ -117,7 +117,8 @@ class SentinelHumidity(  # type: ignore[override]
 ):
     """Sentinel Humidity sensor."""
 
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
+    _attr_name = "Humidity"
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
@@ -132,7 +133,6 @@ class SentinelHumidity(  # type: ignore[override]
         super().__init__(coordinator)
         self._attr_device_info = securitas_device_info(installation)
         self._attr_unique_id = f"v4_{installation.number}_humidity_{service_id}"
-        self._attr_name = f"{installation.alias} Humidity"
 
     @property
     def native_value(self) -> float | None:  # type: ignore[override]
@@ -155,7 +155,8 @@ class SentinelAirQuality(  # type: ignore[override]
 ):
     """Air Quality sensor — numeric value from the most recent hourly reading."""
 
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
+    _attr_name = "Air Quality"
     _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
@@ -168,7 +169,6 @@ class SentinelAirQuality(  # type: ignore[override]
         super().__init__(coordinator)
         self._attr_device_info = securitas_device_info(installation)
         self._attr_unique_id = f"v4_{installation.number}_airquality_{service_id}"
-        self._attr_name = f"{installation.alias} Air Quality"
 
     @property
     def native_value(self) -> int | None:  # type: ignore[override]
@@ -184,7 +184,8 @@ class SentinelAirQualityStatus(  # type: ignore[override]
 ):
     """Air Quality Status sensor — categorical status (Good/Fair/Poor/Bad)."""
 
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
+    _attr_name = "Air Quality Status"
 
     def __init__(
         self,
@@ -198,7 +199,6 @@ class SentinelAirQualityStatus(  # type: ignore[override]
         self._attr_unique_id = (
             f"v4_{installation.number}_airquality_status_{service_id}"
         )
-        self._attr_name = f"{installation.alias} Air Quality Status"
 
     @property
     def native_value(self) -> str | None:  # type: ignore[override]

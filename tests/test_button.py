@@ -43,10 +43,14 @@ def make_button(entry_id: str = "test-entry-id") -> SecuritasRefreshButton:
 class TestSecuritasRefreshButtonInit:
     """Tests for SecuritasRefreshButton.__init__."""
 
-    def test_name_includes_installation_alias(self):
-        """Button name includes the installation alias."""
+    def test_name_is_short_form_without_alias(self):
+        """Refresh button name is the verb only; alias is on the device."""
         button = make_button()
-        assert button._attr_name == "Refresh Home"
+        assert button._attr_name == "Refresh"
+
+    def test_has_entity_name_is_true(self):
+        button = make_button()
+        assert button._attr_has_entity_name is True
 
     def test_unique_id_format(self):
         """unique_id follows refresh_button_{number} format."""
@@ -219,7 +223,7 @@ class TestAsyncSetupEntry:
         buttons = async_add_entities.call_args[0][0]
         assert len(buttons) == 1
         assert isinstance(buttons[0], SecuritasRefreshButton)
-        assert buttons[0]._attr_name == "Refresh Garage"
+        assert buttons[0]._attr_name == "Refresh"
         assert buttons[0]._attr_unique_id == "v4_refresh_button_333"
 
     async def test_update_flag_passed_to_async_add_entities(self):

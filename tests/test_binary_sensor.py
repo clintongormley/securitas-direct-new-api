@@ -41,13 +41,19 @@ class TestWifiConnectedSensorInit:
         sensor = make_sensor()
         assert sensor._attr_unique_id == "v4_123456_wifi_connected"
 
-    def test_name_includes_installation_alias(self):
+    def test_name_is_short_form_without_alias(self):
+        """Modern pattern: device name carries the alias; entity name is the suffix only."""
         sensor = make_sensor()
-        assert sensor._attr_name == "Home WiFi Connected"
+        assert sensor._attr_name == "WiFi Connected"
 
-    def test_name_uses_custom_alias(self):
+    def test_name_is_alias_independent(self):
+        """Changing the alias does not change the entity name (it lives on the device)."""
         sensor = make_sensor(installation_overrides={"alias": "Office"})
-        assert sensor._attr_name == "Office WiFi Connected"
+        assert sensor._attr_name == "WiFi Connected"
+
+    def test_has_entity_name_is_true(self):
+        sensor = make_sensor()
+        assert sensor._attr_has_entity_name is True
 
     def test_device_class_is_connectivity(self):
         sensor = make_sensor()

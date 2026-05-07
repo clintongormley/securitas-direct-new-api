@@ -203,12 +203,18 @@ class TestSentinelTemperature:
         assert str(service.id) in sensor._attr_unique_id  # type: ignore[operator]
         assert "temperature" in sensor._attr_unique_id  # type: ignore[operator]
 
-    def test_name_contains_installation_alias(self):
+    def test_name_is_short_form_without_alias(self):
+        """Modern pattern: entity name carries the suffix only; alias lives on the device."""
         installation = make_installation()
         coordinator = _make_sentinel_coordinator()
         sensor = SentinelTemperature(coordinator, installation, 1)
-        assert installation.alias in sensor._attr_name  # type: ignore[operator]
-        assert "Temperature" in sensor._attr_name  # type: ignore[operator]
+        assert sensor._attr_name == "Temperature"
+        assert installation.alias not in (sensor._attr_name or "")
+
+    def test_has_entity_name_is_true(self):
+        coordinator = _make_sentinel_coordinator()
+        sensor = SentinelTemperature(coordinator, make_installation(), 1)
+        assert sensor._attr_has_entity_name is True
 
 
 # ===========================================================================
