@@ -255,6 +255,46 @@ class TestGetCameraDevices:
 
         assert result == []
 
+    async def test_dedups_annex_double_listing(self, client, transport):
+        """Annex installations can return the same physical camera twice in
+        xSDeviceList (once per panel-view). Both entries share name, type
+        and code; only the row index ``id`` differs. ``zoneId`` is null for
+        every device in such installations, so the synthesised
+        f"{type}{code:02d}" zone_id collides for the duplicate rows
+        (https://github.com/guerrerotook/securitas-direct-new-api/issues/441).
+        get_camera_devices must collapse those rows by (type, code) so
+        each physical camera is registered exactly once.
+        """
+        # Captured from issue #441 reporter's annex install. Three physical
+        # cameras (codes 2, 3, 8); the annex one (code 8) appears at id=2
+        # and id=7. Two non-camera devices included so we also check the
+        # filter still drops them.
+        transport.execute.return_value = device_list_response(
+            devices=[
+                {"id": "0", "code": "2", "zoneId": None, "name": "Entrance",
+                 "type": "YR", "isActive": None, "serialNumber": None},
+                {"id": "1", "code": "3", "zoneId": None, "name": "Landing",
+                 "type": "YR", "isActive": None, "serialNumber": None},
+                {"id": "2", "code": "8", "zoneId": None, "name": "ANNEX Anex PD",
+                 "type": "YR", "isActive": None, "serialNumber": None},
+                {"id": "3", "code": "1", "zoneId": None, "name": "Control Panel",
+                 "type": "CENT", "isActive": None, "serialNumber": None},
+                {"id": "7", "code": "8", "zoneId": None, "name": "ANNEX Anex PD",
+                 "type": "YR", "isActive": None, "serialNumber": None},
+            ]
+        )
+
+        inst = _make_installation()
+        result = await client.get_camera_devices(inst)
+
+        # Three physical cameras returned, not four — annex camera deduplicated.
+        assert len(result) == 3
+        codes = sorted(c.code for c in result)
+        assert codes == [2, 3, 8]
+        # zone_ids must be distinct — otherwise HA would drop entities on register.
+        zone_ids = [c.zone_id for c in result]
+        assert len(zone_ids) == len(set(zone_ids))
+
 
 # ── capture_image tests ──────────────────────────────────────────────────────
 

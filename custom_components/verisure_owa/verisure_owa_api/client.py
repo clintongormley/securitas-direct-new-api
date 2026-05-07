@@ -1388,10 +1388,21 @@ class VerisureOwaClient:
             installation=installation,
         )
         devices = envelope.data.xSDeviceList.devices or []
+        # Annex installations can return the same physical camera twice in
+        # xSDeviceList (once per panel-view: main + annex sub-panel). The two
+        # rows share name + type + code; only the row index `id` differs.
+        # Without dedup HA's entity registry rejects the second row as a
+        # duplicate unique_id and silently drops the camera + capture button.
+        # See https://github.com/guerrerotook/securitas-direct-new-api/issues/441.
+        seen: set[tuple[str, str]] = set()
         result: list[CameraDevice] = []
         for d in devices:
             if d.get("type") not in CAMERA_DEVICE_TYPES or d.get("isActive") is False:
                 continue
+            dedup_key = (d.get("type") or "", str(d.get("code") or ""))
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
             code = int(d["code"]) if str(d.get("code", "")).isdigit() else None
             result.append(
                 CameraDevice(
