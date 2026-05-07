@@ -1,12 +1,12 @@
 """CI guardrail: every legacy unique-id format used in the codebase
-maps cleanly through OLD_TO_NEW_UNIQUE_ID."""
+maps cleanly through old_to_new_unique_id."""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-from custom_components.verisure_owa.migrate import OLD_TO_NEW_UNIQUE_ID
+from custom_components.verisure_owa.migrate import old_to_new_unique_id
 
 PLATFORM_DIR = Path(__file__).parent.parent / "custom_components" / "verisure_owa"
 
@@ -67,10 +67,10 @@ def test_every_unique_id_format_is_v5_compatible():
 
 
 def test_every_unique_id_format_is_idempotent_through_mapping():
-    """Passing a v5 form through OLD_TO_NEW_UNIQUE_ID returns it unchanged."""
+    """Passing a v5 form through old_to_new_unique_id returns it unchanged."""
     formats = _collect_unique_id_format_strings()
     for fmt in formats:
         instantiated = _instantiate_format(fmt)
-        assert OLD_TO_NEW_UNIQUE_ID(instantiated) == instantiated, (
+        assert old_to_new_unique_id(instantiated) == instantiated, (
             f"Mapping not idempotent for {instantiated!r}"
         )

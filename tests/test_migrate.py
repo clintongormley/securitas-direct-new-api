@@ -6,8 +6,8 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.verisure_owa.migrate import (
-    OLD_TO_NEW_IDENTIFIER,
-    OLD_TO_NEW_UNIQUE_ID,
+    old_to_new_identifier,
+    old_to_new_unique_id,
     migrate_legacy_entry,
 )
 
@@ -39,18 +39,18 @@ from custom_components.verisure_owa.migrate import (
     ],
 )
 def test_unique_id_mapping(old, new):
-    assert OLD_TO_NEW_UNIQUE_ID(old) == new
+    assert old_to_new_unique_id(old) == new
 
 
 def test_unique_id_mapping_already_migrated_is_idempotent():
     """If the input is already in v5 form, return it unchanged."""
     new = "v5_verisure_owa.100001_temperature_5"
-    assert OLD_TO_NEW_UNIQUE_ID(new) == new
+    assert old_to_new_unique_id(new) == new
 
 
 def test_unique_id_mapping_unknown_format_raises():
     with pytest.raises(ValueError):
-        OLD_TO_NEW_UNIQUE_ID("zzz_unknown_format")
+        old_to_new_unique_id("zzz_unknown_format")
 
 
 # ── Identifier (tuple) mapping ────────────────────────────────────────────
@@ -77,13 +77,13 @@ def test_unique_id_mapping_unknown_format_raises():
     ],
 )
 def test_identifier_mapping(old, new):
-    assert OLD_TO_NEW_IDENTIFIER(old) == new
+    assert old_to_new_identifier(old) == new
 
 
 def test_identifier_mapping_unknown_domain_returns_unchanged():
     """Identifiers under an unrelated domain are returned untouched."""
     other = ("hue", "abc123")
-    assert OLD_TO_NEW_IDENTIFIER(other) == other
+    assert old_to_new_identifier(other) == other
 
 
 # ── End-to-end migration tests (Phase D) ─────────────────────────────────────
