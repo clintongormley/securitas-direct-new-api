@@ -100,12 +100,7 @@ class TestFireActivityEvents:
         hass.bus.async_fire.assert_not_called()
 
     def test_each_event_gets_its_own_call(self):
-        """Multiple events each get a distinct fire with their own payload.
-
-        With the dual-fire pattern, 2 events produce 4 calls total (canonical +
-        legacy alias each).  We only check the canonical (verisure_owa_activity)
-        calls here.
-        """
+        """Multiple events each get a distinct fire with their own payload."""
         hass = MagicMock()
         ev1 = _make_event("1", alias="Armed")
         ev2 = _make_event("2", alias="Disarmed", type=720, signal_type=720)
@@ -113,9 +108,8 @@ class TestFireActivityEvents:
         fire_activity_events(hass, "2654190", [ev1, ev2])
 
         calls = hass.bus.async_fire.call_args_list
-        # Filter to canonical event type only
-        canonical_calls = [c for c in calls if c[0][0] == "verisure_owa_activity"]
-        payloads = [call[0][1] for call in canonical_calls]
+        assert [c[0][0] for c in calls] == ["verisure_owa_activity"] * 2
+        payloads = [call[0][1] for call in calls]
         ids = [p["id_signal"] for p in payloads]
         aliases = [p["alias"] for p in payloads]
         assert ids == ["1", "2"]
