@@ -1049,21 +1049,41 @@ if (!customElements.get("verisure-owa-events-card"))
 if (!customElements.get("verisure-owa-events-card-editor"))
   customElements.define("verisure-owa-events-card-editor", VerisureOwaEventsCardEditor);
 
-// Legacy shim — deprecated, removed in v6.0.0.
-if (!customElements.get("securitas-events-card")) {
-  customElements.define("securitas-events-card", class extends VerisureOwaEventsCard {
+// Legacy tag-name shims — deprecated, removed in v6.0.0. Each shim warns
+// at most once per element instance per page load (deduplicated via the
+// _verisureOwaDeprecationLogged flag) so a dashboard with several legacy
+// cards doesn't flood the console.
+function _makeLegacyShim(canonicalClass, oldTag, newTag) {
+  return class extends canonicalClass {
     connectedCallback() {
-      console.warn(
-        "[verisure_owa] 'custom:securitas-events-card' is deprecated. " +
-        "Use 'custom:verisure-owa-events-card' instead. " +
-        "This alias will be removed in v6.0.0."
-      );
       if (super.connectedCallback) super.connectedCallback();
+      if (!this._verisureOwaDeprecationLogged) {
+        console.warn(
+          `Lovelace card type 'custom:${oldTag}' is deprecated and will be ` +
+          `removed in v6. Update your dashboard to 'custom:${newTag}'.`
+        );
+        this._verisureOwaDeprecationLogged = true;
+      }
     }
-  });
+  };
 }
-if (!customElements.get("securitas-events-card-editor"))
-  customElements.define("securitas-events-card-editor", VerisureOwaEventsCardEditor);
+
+if (!customElements.get("securitas-events-card")) {
+  customElements.define(
+    "securitas-events-card",
+    _makeLegacyShim(VerisureOwaEventsCard, "securitas-events-card", "verisure-owa-events-card")
+  );
+}
+if (!customElements.get("securitas-events-card-editor")) {
+  customElements.define(
+    "securitas-events-card-editor",
+    _makeLegacyShim(
+      VerisureOwaEventsCardEditor,
+      "securitas-events-card-editor",
+      "verisure-owa-events-card-editor"
+    )
+  );
+}
 
 window.customCards = window.customCards || [];
 if (!window.customCards.find((c) => c.type === "verisure-owa-events-card")) {

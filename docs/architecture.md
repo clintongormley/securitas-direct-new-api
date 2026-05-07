@@ -493,7 +493,7 @@ When arming is blocked by open sensors (the API returns a `NON_BLOCKING` error),
 When the built-in handler is active it:
 - Creates a persistent notification listing open zones with instructions for how to force-arm.
 - Sends a mobile notification (if `notify_group` is configured) with **Force Arm** / **Cancel** action buttons.
-- Listens for `mobile_app_notification_action` events to handle button taps (`SECURITAS_FORCE_ARM_<num>` → `async_force_arm()`, `SECURITAS_CANCEL_FORCE_ARM_<num>` → cancel). The constant names retain the `SECURITAS_` prefix because they're determined by the Verisure mobile app's push-action protocol — the integration receives them as-is.
+- Listens for `mobile_app_notification_action` events to handle button taps (`SECURITAS_FORCE_ARM_<num>` → `async_force_arm()`, `SECURITAS_CANCEL_FORCE_ARM_<num>` → cancel). The action names retain the `SECURITAS_` prefix through the v5 deprecation window: the integration both sends the action (in the mobile notification payload) and listens for the resulting press event, so renaming would silently break any user automation hooked to `mobile_app_notification_action` events that match the action string. Renamed in v6 with explicit release-note guidance.
 - When force-arm context expires (180 s), updates the notification to inform the user the alarm was not armed.
 
 **Disabling the built-in handler:**

@@ -935,6 +935,16 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
         await _unregister_card_resource(
             hass, EVENTS_CARD_URL, "events_card_resource_id"
         )
+
+        # Tear down the deprecation-window service aliases that
+        # register_legacy_service_aliases set up at the legacy domain — leaving
+        # them registered after the integration unloads would mean a service
+        # call to securitas.force_arm proxies to a verisure_owa domain that
+        # no longer exists.
+        for name in _LEGACY_SERVICES:
+            if hass.services.has_service(LEGACY_DOMAIN, name):
+                hass.services.async_remove(LEGACY_DOMAIN, name)
+
         hass.data.pop(DOMAIN, None)
 
     return unload_ok

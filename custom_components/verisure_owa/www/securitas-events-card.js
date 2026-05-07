@@ -1,9 +1,9 @@
 /**
- * Securitas Events Card
+ * Verisure OWA Events Card
  *
  * Renders the alarm panel's activity timeline (xSActV2) as a clickable list.
  *
- * Reads from a sensor.<...>_activity_log entity created by the Securitas
+ * Reads from a sensor.<...>_activity_log entity created by the Verisure OWA
  * integration.  Each row shows:
  *   - icon for the event category (armed / alarm / power_cut / ...)
  *   - localised category label (e.g. "Armed") + actor ("by Luci" or "(Cucina)")
@@ -12,7 +12,7 @@
  *   - click to expand and show every populated field
  *
  * Card config:
- *   type: custom:securitas-events-card
+ *   type: custom:verisure-owa-events-card
  *   entity: sensor.home_activity_log    # required
  *   limit: 10                           # default 10, max 30
  *   title: "Recent activity"            # optional
@@ -403,7 +403,7 @@ function _renderRows(event, lang) {
 
 // ── Card ─────────────────────────────────────────────────────────────────────
 
-class SecuritasEventsCard extends HTMLElement {
+class VerisureOwaEventsCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -942,7 +942,7 @@ class SecuritasEventsCard extends HTMLElement {
 
 // ── Editor ────────────────────────────────────────────────────────────────────
 
-class SecuritasEventsCardEditor extends HTMLElement {
+class VerisureOwaEventsCardEditor extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -1044,17 +1044,53 @@ class SecuritasEventsCardEditor extends HTMLElement {
 
 // ── Registration ──────────────────────────────────────────────────────────────
 
-if (!customElements.get("securitas-events-card"))
-  customElements.define("securitas-events-card", SecuritasEventsCard);
-if (!customElements.get("securitas-events-card-editor"))
-  customElements.define("securitas-events-card-editor", SecuritasEventsCardEditor);
+if (!customElements.get("verisure-owa-events-card"))
+  customElements.define("verisure-owa-events-card", VerisureOwaEventsCard);
+if (!customElements.get("verisure-owa-events-card-editor"))
+  customElements.define("verisure-owa-events-card-editor", VerisureOwaEventsCardEditor);
+
+// Legacy tag-name shims — deprecated, removed in v6.0.0. Each shim warns
+// at most once per element instance per page load (deduplicated via the
+// _verisureOwaDeprecationLogged flag) so a dashboard with several legacy
+// cards doesn't flood the console.
+function _makeLegacyShim(canonicalClass, oldTag, newTag) {
+  return class extends canonicalClass {
+    connectedCallback() {
+      if (super.connectedCallback) super.connectedCallback();
+      if (!this._verisureOwaDeprecationLogged) {
+        console.warn(
+          `Lovelace card type 'custom:${oldTag}' is deprecated and will be ` +
+          `removed in v6. Update your dashboard to 'custom:${newTag}'.`
+        );
+        this._verisureOwaDeprecationLogged = true;
+      }
+    }
+  };
+}
+
+if (!customElements.get("securitas-events-card")) {
+  customElements.define(
+    "securitas-events-card",
+    _makeLegacyShim(VerisureOwaEventsCard, "securitas-events-card", "verisure-owa-events-card")
+  );
+}
+if (!customElements.get("securitas-events-card-editor")) {
+  customElements.define(
+    "securitas-events-card-editor",
+    _makeLegacyShim(
+      VerisureOwaEventsCardEditor,
+      "securitas-events-card-editor",
+      "verisure-owa-events-card-editor"
+    )
+  );
+}
 
 window.customCards = window.customCards || [];
-if (!window.customCards.find((c) => c.type === "securitas-events-card")) {
+if (!window.customCards.find((c) => c.type === "verisure-owa-events-card")) {
   window.customCards.push({
-    type: "securitas-events-card",
-    name: "Securitas Events Card",
-    description: "Shows recent alarm-panel events from a Securitas activity log entity.",
+    type: "verisure-owa-events-card",
+    name: "Verisure OWA Events Card",
+    description: "Shows recent alarm-panel events from a Verisure OWA activity log entity.",
     preview: false,
     documentationURL:
       "https://github.com/guerrerotook/securitas-direct-new-api",

@@ -25,6 +25,10 @@ ACTIVITY_EVENT_TYPE = "verisure_owa_activity"
 # Deprecated alias — fires alongside the canonical event, removed in v6.0.0.
 LEGACY_ACTIVITY_EVENT_TYPE = "securitas_activity"
 
+ARMING_EXCEPTION_EVENT_TYPE = "verisure_owa_arming_exception"
+# Deprecated alias — fires alongside the canonical event, removed in v6.0.0.
+LEGACY_ARMING_EXCEPTION_EVENT_TYPE = "securitas_arming_exception"
+
 # Display name attributed to synthetic events when the triggering HA call
 # carries no user_id (automation/script-driven actions).
 _HA_USER = "Home Assistant"

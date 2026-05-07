@@ -40,7 +40,11 @@ from .const import (
 )
 from .coordinators import AlarmCoordinator, AlarmStatusData
 from .entity import securitas_device_info
-from .events import inject_ha_event
+from .events import (
+    ARMING_EXCEPTION_EVENT_TYPE,
+    LEGACY_ARMING_EXCEPTION_EVENT_TYPE,
+    inject_ha_event,
+)
 from .notification_translations import get_notification_strings
 from .verisure_owa_api.models import ActivityCategory, ActivityException
 from .verisure_owa_api import (
@@ -278,7 +282,15 @@ class BaseVerisureOwaAlarmPanel(  # type: ignore[override]
 
     @callback
     def _handle_mobile_action(self, event: Event) -> None:
-        """Handle Force Arm / Cancel taps from mobile notification."""
+        """Handle Force Arm / Cancel taps from mobile notification.
+
+        The action names retain the SECURITAS_ prefix for the v5 deprecation
+        window: this integration both sends them (see _async_notify_arm_exceptions)
+        and listens for them here, but a user could have a custom automation
+        hooked to mobile_app_notification_action matching these strings.
+        Renamed to VERISURE_OWA_FORCE_ARM_<num> in v6 with release-note
+        guidance for affected users.
+        """
         action = event.data.get("action")
         num = self.installation.number
         if action == f"SECURITAS_FORCE_ARM_{num}":
@@ -764,9 +776,9 @@ class BaseVerisureOwaAlarmPanel(  # type: ignore[override]
             },
             "_event_id": str(uuid.uuid4()),
         }
-        self.hass.bus.async_fire("verisure_owa_arming_exception", payload)
+        self.hass.bus.async_fire(ARMING_EXCEPTION_EVENT_TYPE, payload)
         # Deprecated alias — removed in v6.0.0.
-        self.hass.bus.async_fire("securitas_arming_exception", payload)
+        self.hass.bus.async_fire(LEGACY_ARMING_EXCEPTION_EVENT_TYPE, payload)
 
     _FORCE_ARM_TTL = datetime.timedelta(seconds=180)
 
@@ -827,11 +839,11 @@ class BaseVerisureOwaAlarmPanel(  # type: ignore[override]
             self._notify_arm_exceptions_from_event(event)
 
         self._arming_event_unsub_new = self.hass.bus.async_listen(
-            "verisure_owa_arming_exception",
+            ARMING_EXCEPTION_EVENT_TYPE,
             _handle_arming_exception_event,
         )
         self._arming_event_unsub_legacy = self.hass.bus.async_listen(
-            "securitas_arming_exception",
+            LEGACY_ARMING_EXCEPTION_EVENT_TYPE,
             _handle_arming_exception_event,
         )
 
