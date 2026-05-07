@@ -367,7 +367,16 @@ class TestCountryCodes:
     def test_includes_all_currently_supported(self):
         # Lock the supported set so adding/removing requires a deliberate edit.
         assert set(COUNTRY_CODES) == {
-            "AR", "BR", "CL", "ES", "FR", "GB", "IE", "IT", "PE", "PT"
+            "AR",
+            "BR",
+            "CL",
+            "ES",
+            "FR",
+            "GB",
+            "IE",
+            "IT",
+            "PE",
+            "PT",
         }
 
     def test_is_a_list(self):
