@@ -2,17 +2,21 @@
 
 import pytest
 
-from custom_components.securitas.securitas_direct_new_api.command_resolver import (
+from custom_components.verisure_owa.verisure_owa_api.command_resolver import (
     AlarmState,
     CommandResolver,
     InteriorMode,
     PerimeterMode,
     PROTO_TO_ALARM_STATE,
     ALARM_STATE_TO_PROTO,
-    SECURITAS_STATE_TO_ALARM_STATE,
+    VERISURE_OWA_STATE_TO_ALARM_STATE,
 )
-from custom_components.securitas.securitas_direct_new_api.const import SecuritasState
-from custom_components.securitas.securitas_direct_new_api.models import AnnexMode
+from custom_components.verisure_owa.verisure_owa_api.const import VerisureOwaState
+from custom_components.verisure_owa.verisure_owa_api.models import AnnexMode
+
+# Backwards-compat aliases for existing tests
+SECURITAS_STATE_TO_ALARM_STATE = VERISURE_OWA_STATE_TO_ALARM_STATE
+SecuritasState = VerisureOwaState
 
 
 class TestAlarmState:

@@ -8,13 +8,13 @@ from unittest.mock import AsyncMock, MagicMock
 import jwt
 import pytest
 
-from custom_components.securitas.securitas_direct_new_api.client import (
-    SecuritasClient,
+from custom_components.verisure_owa.verisure_owa_api.client import (
+    VerisureOwaClient as SecuritasClient,
 )
-from custom_components.securitas.securitas_direct_new_api.http_transport import (
+from custom_components.verisure_owa.verisure_owa_api.http_transport import (
     HttpTransport,
 )
-from custom_components.securitas.securitas_direct_new_api.models import (
+from custom_components.verisure_owa.verisure_owa_api.models import (
     ActivityEvent,
     Installation,
 )
