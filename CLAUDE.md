@@ -3,8 +3,8 @@
 ## Git Workflow
 
 - **NEVER commit directly to main** — always create a feature branch first.
-- This checkout is a fork. Push branches to `origin` (clintongormley); PRs go to
-    `upstream` (guerrerotook/securitas-direct-new-api), which is `gh`'s default.
+- Work from a fork: push branches to your fork and open the PR against
+    `guerrerotook/securitas-direct-new-api` `main` (`gh repo set-default` there).
 - **Branch naming**: descriptive (e.g. `fix/reauth-on-dead-refresh-token`).
     Never include version numbers in branch names — HACS scans all branches and
     complains about non-compliant ones, even after deletion.
