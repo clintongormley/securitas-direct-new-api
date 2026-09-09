@@ -22,7 +22,7 @@ The headline this release is that the integration now lives in Home Assistant's 
 
 **The alarm no longer gets stuck offline after a login problem ([#568](https://github.com/guerrerotook/securitas-direct-new-api/issues/568)).**  Some accounts — usually ones first set up before v5.7.0 — hit a repeating server error that left the alarm unavailable, and the only way out was to delete the integration and add it again. Now, when that keeps happening, Home Assistant simply asks you to sign in again: enter your password once and everything reconnects, including any other installations on the same account. A one-off error is still retried quietly, so a brief server hiccup won't send you to the sign-in screen. Thanks to [@amullr](https://github.com/amullr) and [@rencmbr](https://github.com/rencmbr) for the reports and logs.
 
-**Sign-in requests are no longer retried when the server is busy.**  When the server replied "too many requests", the integration used to resend the same request. For sign-in and two-factor steps that could end the session instead of recovering it, so those are no longer retried; ordinary status checks still are.
+**Sign-in requests are no longer retried when the server is busy.**  When the server replied "too many requests", the integration used to resend the same request. For sign-in and two-factor steps, resending could end the session instead of recovering it, so those are no longer retried; ordinary status checks still are.
 
 **Blocked arming showed a confusing internal message.**  With a door or window open, some arm attempts showed a raw internal error instead of naming the open sensors. It now lists the sensors to close — on the card, in notifications and in the activity log.
 
